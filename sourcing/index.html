@@ -30,6 +30,7 @@ label{font-size:12px;color:var(--mute);display:block;margin-bottom:3px}
 .target:first-of-type{border-top:0}
 .target .t{font-weight:600}.target .m{color:var(--acc);font-size:13px;margin-left:6px}
 .links{display:flex;gap:5px;flex-wrap:wrap;margin-top:6px}
+.jq{font-size:12px;color:var(--acc);font-weight:600;align-self:center;margin-right:4px}
 .links a{font-size:12px;border:1px solid var(--line);border-radius:14px;padding:2px 9px;color:var(--ink);text-decoration:none;background:#fafafa}
 .links a:hover{background:var(--acc2);border-color:var(--acc)}
 .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:14px}
@@ -87,8 +88,9 @@ dialog::backdrop{background:#0007}
 <main>
 
 <section class="tab on" id="t-guide">
-  <p class="help">Lista del PDF "Top Performing Bags". Cada botón abre la búsqueda directamente en ese sitio (los resultados son en vivo, los precios cambian). Cuando encuentres algo bueno pulsa <b>+ Añadir hallazgo</b> en la marca. Los precios máximos del PDF ya van incluidos como aviso.</p>
+  <p class="help">Lista del PDF "Top Performing Bags". Cada botón abre la búsqueda directamente en ese sitio, en tu navegador (así usa tu sesión en Komehyo, Ecoring o AucNet). Las filas 🇯🇵 usan términos en japonés y el precio máximo convertido a yenes con el cambio de arriba (los resultados son en vivo, los precios cambian). Cuando encuentres algo bueno pulsa <b>+ Añadir hallazgo</b> en la marca. Los precios máximos del PDF ya van incluidos como aviso.</p>
   <div class="row noprint"><div><label>Filtrar marca / texto</label><input id="gf" placeholder="p. ej. Hermes, vintage, tote…"></div>
+  <div class="fix" style="width:120px"><label>1 USD = ¥</label><input id="rate" type="number" min="1" value="150"></div>
   <div><label>Webs a mostrar</label><div id="sitepick" class="links"></div></div></div>
   <div id="guide"></div>
 </section>
@@ -98,6 +100,8 @@ dialog::backdrop{background:#0007}
   <div class="row"><div><label>Búsqueda</label><input id="q" placeholder="hermes kelly 28 etoupe"></div>
   <div class="fix" style="width:130px"><label>Precio máx. (USD)</label><input id="qmax" type="number" min="0"></div></div>
   <div class="links" id="qlinks"></div>
+  <div class="row" style="margin-top:14px"><div><label>🇯🇵 Búsqueda en japonés (Komehyo, Ecoring, Yahoo JP, Mercari JP…)</label><input id="qjp" placeholder="エルメス バーキン 30"></div></div>
+  <div id="qjlinks"></div>
   <p style="margin-top:14px"><button class="b" id="qall">Abrir en todas las webs seleccionadas</button>
   <span class="help"> (el navegador puede pedir permiso para abrir varias pestañas)</span></p>
 </section>
@@ -162,40 +166,40 @@ dialog::backdrop{background:#0007}
 <script>
 const BRANDS=[
  {b:"Hermès",t:[
-  {n:"Birkin colores ricos o neutros",q:"hermes birkin"},
-  {n:"Kelly",q:"hermes kelly"},
-  {n:"Exóticos (cocodrilo, lagarto, avestruz…)",q:"hermes exotic crocodile lizard ostrich bag"},
-  {n:"Her line tote",q:"hermes herline tote"}]},
+  {n:"Birkin colores ricos o neutros",q:"hermes birkin",jp:["エルメス バーキン"]},
+  {n:"Kelly",q:"hermes kelly",jp:["エルメス ケリー"]},
+  {n:"Exóticos (cocodrilo, lagarto, avestruz…)",q:"hermes exotic crocodile lizard ostrich bag",jp:["エルメス クロコダイル","エルメス オーストリッチ","エルメス リザード"]},
+  {n:"Her line tote",q:"hermes herline tote",jp:["エルメス エールライン","エルメス エールライン トート"]}]},
  {b:"Chanel",t:[
-  {n:"Detalles carey (tortoise) y madera",q:"chanel tortoise wood bag"},
-  {n:"Vintage",q:"chanel vintage bag"}]},
+  {n:"Detalles carey (tortoise) y madera",q:"chanel tortoise wood bag",jp:["シャネル べっ甲","シャネル ウッド バッグ"]},
+  {n:"Vintage",q:"chanel vintage bag",jp:["シャネル ヴィンテージ バッグ","シャネル ビンテージ バッグ"]}]},
  {b:"Gucci",t:[
-  {n:"Vintage / era Tom Ford",q:"gucci tom ford vintage bag"},
-  {n:"Bamboo",q:"gucci bamboo bag"},
-  {n:"Estilos sporty",q:"gucci sporty vintage bag"},
-  {n:"Horsebit grande (oversized)",q:"gucci oversized horsebit bag"}]},
+  {n:"Vintage / era Tom Ford",q:"gucci tom ford vintage bag",jp:["グッチ トムフォード バッグ","オールドグッチ バッグ"]},
+  {n:"Bamboo",q:"gucci bamboo bag",jp:["グッチ バンブー バッグ"]},
+  {n:"Estilos sporty",q:"gucci sporty vintage bag",jp:["グッチ スポーツライン バッグ"]},
+  {n:"Horsebit grande (oversized)",q:"gucci oversized horsebit bag",jp:["グッチ ホースビット バッグ 大きめ","グッチ ホースビット ショルダー"]}]},
  {b:"Celine",t:[
-  {n:"Vintage macadam",q:"celine vintage macadam bag"},
-  {n:"Estilos únicos",q:"celine unique vintage bag"},
-  {n:"Box bag",q:"celine box bag",max:995}]},
+  {n:"Vintage macadam",q:"celine vintage macadam bag",jp:["セリーヌ マカダム バッグ"]},
+  {n:"Estilos únicos",q:"celine unique vintage bag",jp:["オールドセリーヌ バッグ","セリーヌ ヴィンテージ バッグ"]},
+  {n:"Box bag",q:"celine box bag",max:995,jp:["セリーヌ ボックス バッグ","セリーヌ クラシックボックス"]}]},
  {b:"Prada",t:[
-  {n:"Galleria tote",q:"prada galleria tote",max:950},
-  {n:"Canapa tote",q:"prada canapa tote"}]},
+  {n:"Galleria tote",q:"prada galleria tote",max:950,jp:["プラダ ガレリア トート"]},
+  {n:"Canapa tote",q:"prada canapa tote",jp:["プラダ カナパ トート"]}]},
  {b:"YSL",t:[
-  {n:"Estilos vintage",q:"yves saint laurent vintage bag"},
-  {n:"I-care tote",q:"ysl icare tote"}]},
+  {n:"Estilos vintage",q:"yves saint laurent vintage bag",jp:["イヴサンローラン ヴィンテージ バッグ","オールドイヴサンローラン バッグ"]},
+  {n:"I-care tote",q:"ysl icare tote",jp:["サンローラン アイケア トート"]}]},
  {b:"Bottega Veneta",t:[
-  {n:"Vintage únicos",q:"bottega veneta vintage bag"},
-  {n:"Nido crossbody",q:"bottega veneta nido crossbody",max:895},
-  {n:"Totes grandes (cabat, campana, roma)",q:"bottega veneta cabat campana roma tote"}]},
- {b:"Loewe",t:[{n:"Amazona",q:"loewe amazona",max:995}]},
+  {n:"Vintage únicos",q:"bottega veneta vintage bag",jp:["ボッテガヴェネタ ヴィンテージ バッグ"]},
+  {n:"Nido crossbody",q:"bottega veneta nido crossbody",max:895,jp:["ボッテガヴェネタ ニード ショルダー","ボッテガヴェネタ nido"]},
+  {n:"Totes grandes (cabat, campana, roma)",q:"bottega veneta cabat campana roma tote",jp:["ボッテガヴェネタ カバ","ボッテガヴェネタ カンパーナ","ボッテガヴェネタ ローマ トート"]}]},
+ {b:"Loewe",t:[{n:"Amazona",q:"loewe amazona",max:995,jp:["ロエベ アマソナ"]}]},
  {b:"Fendi",t:[
-  {n:"Peekaboo",q:"fendi peekaboo"},
-  {n:"Baguettes únicas a buen precio",q:"fendi baguette unique"}]},
+  {n:"Peekaboo",q:"fendi peekaboo",jp:["フェンディ ピーカブー"]},
+  {n:"Baguettes únicas a buen precio",q:"fendi baguette unique",jp:["フェンディ バゲット","フェンディ ズッカ バゲット"]}]},
  {b:"Dior",t:[
-  {n:"Vibe bowler bag",q:"dior vibe bowler bag"},
-  {n:"Vintage Trotter Boston bag",q:"dior vintage trotter boston bag"}]},
- {b:"The Row",t:[{n:"Margaux",q:"the row margaux"}]}
+  {n:"Vibe bowler bag",q:"dior vibe bowler bag",jp:["ディオール ヴァイブ ボウリング","ディオール ヴァイブ ボウラー"]},
+  {n:"Vintage Trotter Boston bag",q:"dior vintage trotter boston bag",jp:["ディオール トロッター ボストン","オールドディオール トロッター ボストン"]}]},
+ {b:"The Row",t:[{n:"Margaux",q:"the row margaux",jp:["ザ・ロウ マルゴー","ザロウ マルゴー"]}]}
 ];
 const SITES=[
  {id:"ebay",n:"eBay",u:(q,m)=>`https://www.ebay.com/sch/i.html?_nkw=${q}&LH_BIN=1&_sop=15${m?`&_udhi=${m}`:""}`},
@@ -207,14 +211,22 @@ const SITES=[
  {id:"etsy",n:"Etsy",u:(q,m)=>`https://www.etsy.com/search?q=${q}${m?`&max=${m}`:""}`},
  {id:"1d",n:"1stDibs",u:q=>`https://www.1stdibs.com/search/?q=${q}`},
  {id:"merc",n:"Mercari",u:q=>`https://www.mercari.com/search/?keyword=${q}`},
- {id:"buyee",n:"Japón (Buyee)",u:q=>`https://buyee.jp/item/search/query/${q}`},
+ {id:"buyee",n:"Buyee (Yahoo JP vía proxy)",u:q=>`https://buyee.jp/item/search/query/${q}`},
+ {id:"jkome",jp:1,n:"Komehyo",u:q=>`https://komehyo.jp/search/?q=${q}`},
+ {id:"jeco",jp:1,n:"Ecoring",u:q=>`https://www.ecoring.co.jp/search?keyword=${q}`},
+ {id:"jbo",jp:1,n:"Brand Off",u:q=>`https://www.brandoff.co.jp/store/search?keyword=${q}`},
+ {id:"jyah",jp:1,n:"Yahoo! Subastas JP",u:(q,m)=>`https://auctions.yahoo.co.jp/search/search?p=${q}${m?`&aucmaxprice=${m}`:""}&n=50`},
+ {id:"jmer",jp:1,n:"Mercari JP",u:(q,m)=>`https://jp.mercari.com/search?keyword=${q}${m?`&price_max=${m}`:""}&status=on_sale`},
+ {id:"jrak",jp:1,n:"Rakuma",u:(q,m)=>`https://fril.jp/s?query=${q}${m?`&max=${m}`:""}`},
+ {id:"jrkt",jp:1,n:"Rakuten",u:(q,m)=>`https://search.rakuten.co.jp/search/mall/${q}/${m?`?max=${m}`:""}`},
+ {id:"jauc",jp:1,copy:1,n:"AucNet (login)",u:()=>`https://www.aucnet.co.jp/`},
  {id:"gimg",n:"Google Imágenes",u:q=>`https://www.google.com/search?tbm=isch&q=${q}`},
  {id:"gshop",n:"Google Shopping",u:q=>`https://www.google.com/search?tbm=shop&q=${q}`}
 ];
 const REFS=["navy-birkin","burgundy-kelly-style","red-wallet","beige-quilted-chain","burgundy-quilted-flap","black-handle-flap","tan-lizard-hobo","ostrich-hobo","snake-lock-bag","brown-monogram-flap","brown-box-bag","burgundy-saddle","olive-tote","shearling-top-handle","black-muse-style","black-top-handle","burgundy-woven-clutch"];
 
 /* ---------- storage (IndexedDB, guarda fotos sin límite de 5MB) ---------- */
-let S={items:[],sites:SITES.slice(0,7).map(s=>s.id),sel:[]};
+let S={items:[],sites:["ebay","vc","trr","fp","rebag","posh","etsy","jkome","jeco","jbo","jyah","jmer","jrak","jauc"],sel:[],rate:150};
 const idb=()=>new Promise((res,rej)=>{const r=indexedDB.open("sourcing",1);r.onupgradeneeded=()=>r.result.createObjectStore("kv");r.onsuccess=()=>res(r.result);r.onerror=()=>rej(r.error)});
 async function load(){try{const d=await idb();const v=await new Promise(r=>{const q=d.transaction("kv").objectStore("kv").get("s");q.onsuccess=()=>r(q.result)});if(v)S=Object.assign(S,v)}catch(e){try{const v=JSON.parse(localStorage.getItem("s"));if(v)S=Object.assign(S,v)}catch(_){}}}
 async function save(){try{const d=await idb();d.transaction("kv","readwrite").objectStore("kv").put(S,"s")}catch(e){try{localStorage.setItem("s",JSON.stringify(S))}catch(_){alert("No se pudo guardar. Exporta una copia.")}}}
@@ -229,18 +241,24 @@ document.querySelectorAll("nav button").forEach(b=>b.onclick=()=>tab(b.dataset.t
 /* ---------- guía ---------- */
 function sitePick(){const el=$("#sitepick");el.innerHTML=SITES.map(s=>`<label style="display:inline-flex;gap:3px;align-items:center;margin:0 6px 0 0;font-size:13px;color:var(--ink)"><input type="checkbox" style="width:auto" data-s="${s.id}" ${S.sites.includes(s.id)?"checked":""}>${s.n}</label>`).join("");
  el.querySelectorAll("input").forEach(c=>c.onchange=()=>{S.sites=[...el.querySelectorAll("input:checked")].map(i=>i.dataset.s);save();renderGuide();renderQ()})}
-function links(q,max){return SITES.filter(s=>S.sites.includes(s.id)).map(s=>`<a href="${s.u(encodeURIComponent(q),max)}" target="_blank" rel="noopener">${s.n}</a>`).join("")}
+const yen=m=>m?Math.round(m*(S.rate||150)/1000)*1000:"";
+const aLink=(s,q,m)=>s.copy?`<a href="${s.u()}" target="_blank" rel="noopener" onclick="navigator.clipboard&&navigator.clipboard.writeText(decodeURIComponent('${encodeURIComponent(q)}'))" title="Copia la búsqueda al portapapeles y abre AucNet; pégala allí">${s.n} 📋</a>`:`<a href="${s.u(encodeURIComponent(q),m)}" target="_blank" rel="noopener">${s.n}</a>`;
+function links(q,max){return SITES.filter(s=>!s.jp&&S.sites.includes(s.id)).map(s=>aLink(s,q,max)).join("")}
+function jlinks(qs,max){const my=yen(max);const ss=SITES.filter(s=>s.jp&&S.sites.includes(s.id));
+ return (qs||[]).map(q=>`<div class="links"><span class="jq">🇯🇵 ${esc(q)}${my?` · máx ¥${my.toLocaleString("ja")}`:""}</span>${ss.map(s=>aLink(s,q,my)).join("")}</div>`).join("")}
 function renderGuide(){const f=$("#gf").value.toLowerCase();
  $("#guide").innerHTML=BRANDS.map(B=>{const ts=B.t.filter(t=>!f||(B.b+" "+t.n+" "+t.q).toLowerCase().includes(f));if(!ts.length)return"";
   const n=S.items.filter(i=>i.brand===B.b).length;
   return`<div class="card brand"><h3>${esc(B.b)} <button class="b sm" onclick="openForm(null,'${esc(B.b)}')">+ Añadir hallazgo</button> ${n?`<span class="tag">${n} guardados</span>`:""}</h3>`+
-  ts.map(t=>`<div class="target"><span class="t">${esc(t.n)}</span>${t.max?`<span class="m">máx. $${t.max}</span>`:""}<div class="links">${links(t.q,t.max)}</div></div>`).join("")+`</div>`}).join("")}
+  ts.map(t=>`<div class="target"><span class="t">${esc(t.n)}</span>${t.max?`<span class="m">máx. $${t.max}</span>`:""}<div class="links">${links(t.q,t.max)}</div>${jlinks(t.jp,t.max)}</div>`).join("")+`</div>`}).join("")}
 $("#gf").oninput=renderGuide;
 
 /* ---------- búsqueda libre ---------- */
-function renderQ(){const q=$("#q").value.trim();$("#qlinks").innerHTML=q?links(q,$("#qmax").value||""):"<span class='help'>Escribe algo arriba…</span>"}
-$("#q").oninput=$("#qmax").oninput=renderQ;
-$("#qall").onclick=()=>{const q=$("#q").value.trim();if(!q)return;SITES.filter(s=>S.sites.includes(s.id)).forEach(s=>window.open(s.u(encodeURIComponent(q),$("#qmax").value||""),"_blank","noopener"))};
+function renderQ(){$("#qjlinks").innerHTML=$("#qjp").value.trim()?jlinks([$("#qjp").value.trim()],$("#qmax").value||""):"";const q=$("#q").value.trim();$("#qlinks").innerHTML=q?links(q,$("#qmax").value||""):"<span class='help'>Escribe algo arriba…</span>"}
+$("#q").oninput=$("#qmax").oninput=$("#qjp").oninput=renderQ;
+$("#rate").onchange=e=>{S.rate=+e.target.value||150;save();renderGuide();renderQ()};
+$("#qall").onclick=()=>{const q=$("#q").value.trim(),j=$("#qjp").value.trim(),mx=$("#qmax").value||"";
+ SITES.filter(s=>S.sites.includes(s.id)&&!s.copy).forEach(s=>{const t=s.jp?j:q;if(t)window.open(s.u(encodeURIComponent(t),s.jp?yen(mx):mx),"_blank","noopener")})};
 
 /* ---------- hallazgos ---------- */
 function brandsOpts(){const bs=[...new Set([...BRANDS.map(b=>b.b),...S.items.map(i=>i.brand).filter(Boolean)])];
@@ -308,7 +326,7 @@ $("#exp").onclick=()=>dl("sourcing-copia.json",JSON.stringify(S),"application/js
 $("#imp").onclick=()=>$("#impf").click();
 $("#impf").onchange=async e=>{try{const v=JSON.parse(await e.target.files[0].text());S=Object.assign(S,v);await save();init()}catch(_){alert("Archivo no válido")}};
 
-function init(){sitePick();renderGuide();renderQ();renderItems();renderRefs()}
+function init(){$("#rate").value=S.rate||150;sitePick();renderGuide();renderQ();renderItems();renderRefs()}
 load().then(init);
 </script>
 </body>
