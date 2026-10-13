@@ -1,0 +1,315 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Sourcing de Bolsos</title>
+<style>
+:root{--bg:#f6f4f1;--card:#fff;--ink:#1c1a18;--mute:#777;--line:#e3dfd9;--acc:#7a1f2b;--acc2:#f1e3e5}
+*{box-sizing:border-box}
+body{margin:0;font:15px/1.4 system-ui,-apple-system,Segoe UI,sans-serif;background:var(--bg);color:var(--ink)}
+header{background:var(--ink);color:#fff;padding:12px 20px;display:flex;gap:16px;align-items:center;flex-wrap:wrap;position:sticky;top:0;z-index:5}
+header h1{font-size:18px;margin:0;font-weight:600;letter-spacing:.3px}
+nav{display:flex;gap:4px;flex:1}
+nav button{background:none;border:0;color:#ccc;padding:8px 14px;border-radius:6px;cursor:pointer;font-size:14px}
+nav button.on{background:#fff;color:var(--ink);font-weight:600}
+nav .cnt{background:var(--acc);color:#fff;border-radius:10px;padding:0 7px;font-size:12px;margin-left:4px}
+main{max-width:1200px;margin:0 auto;padding:20px}
+.tab{display:none}.tab.on{display:block}
+button,.btn{font:inherit;cursor:pointer}
+.b{background:var(--acc);color:#fff;border:0;border-radius:6px;padding:8px 14px}
+.b.alt{background:#fff;color:var(--ink);border:1px solid var(--line)}
+.b.sm{padding:4px 9px;font-size:13px}
+input,select,textarea{font:inherit;padding:8px 10px;border:1px solid var(--line);border-radius:6px;background:#fff;width:100%}
+label{font-size:12px;color:var(--mute);display:block;margin-bottom:3px}
+.row{display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;margin-bottom:12px}
+.row>*{flex:1;min-width:140px}.row>.fix{flex:none;min-width:0}
+.card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:14px;margin-bottom:12px}
+.brand h3{margin:0 0 8px;font-size:17px}
+.target{border-top:1px solid var(--line);padding:10px 0}
+.target:first-of-type{border-top:0}
+.target .t{font-weight:600}.target .m{color:var(--acc);font-size:13px;margin-left:6px}
+.links{display:flex;gap:5px;flex-wrap:wrap;margin-top:6px}
+.links a{font-size:12px;border:1px solid var(--line);border-radius:14px;padding:2px 9px;color:var(--ink);text-decoration:none;background:#fafafa}
+.links a:hover{background:var(--acc2);border-color:var(--acc)}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:14px}
+.it{background:#fff;border:1px solid var(--line);border-radius:10px;overflow:hidden;position:relative;display:flex;flex-direction:column}
+.it.sel{outline:2px solid var(--acc)}
+.it .ph{aspect-ratio:1;background:#eee center/cover no-repeat;cursor:pointer}
+.it .bd{padding:10px;flex:1}
+.it .pr{font-weight:700;font-size:17px}
+.it .tt{font-size:13px;margin:2px 0}
+.it .mt{font-size:12px;color:var(--mute)}
+.it .ck{position:absolute;top:8px;left:8px;width:20px;height:20px;accent-color:var(--acc)}
+.it .ac{display:flex;gap:4px;padding:0 10px 10px}
+.tag{display:inline-block;font-size:11px;padding:1px 7px;border-radius:9px;background:var(--acc2);color:var(--acc)}
+.refs .it .ph{aspect-ratio:3/4}
+dialog{border:0;border-radius:12px;padding:20px;max-width:640px;width:94%}
+dialog::backdrop{background:#0007}
+.prev{width:100%;max-height:200px;object-fit:contain;background:#eee;border-radius:6px;margin-top:6px}
+.help{font-size:13px;color:var(--mute);margin:0 0 12px}
+/* report */
+#report{background:#fff;border:1px solid var(--line);padding:30px;max-width:1000px;margin:16px auto}
+#report h2{margin:0;font-size:26px}
+#report .sub{color:var(--mute);margin:2px 0 18px}
+.rgrid{display:grid;gap:18px}
+.rgrid.c2{grid-template-columns:repeat(2,1fr)}.rgrid.c3{grid-template-columns:repeat(3,1fr)}
+.ri{break-inside:avoid;border:1px solid var(--line);border-radius:8px;overflow:hidden}
+.ri img{width:100%;aspect-ratio:1;object-fit:cover;display:block;background:#eee}
+.ri .bd{padding:10px}.ri .pr{font-size:18px;font-weight:700}
+.rtab{width:100%;border-collapse:collapse}
+.rtab td,.rtab th{border-bottom:1px solid var(--line);padding:8px;text-align:left;vertical-align:middle;font-size:14px}
+.rtab img{width:80px;height:80px;object-fit:cover;border-radius:4px}
+.tot{text-align:right;font-size:18px;margin-top:16px;font-weight:700}
+@media print{
+ header,.noprint,nav{display:none!important}
+ body{background:#fff}main{padding:0;max-width:none}
+ .tab{display:none!important}#t-report{display:block!important}
+ #report{border:0;padding:0;margin:0;max-width:none}
+}
+@media(max-width:600px){.rgrid.c2,.rgrid.c3{grid-template-columns:1fr 1fr}}
+</style>
+</head>
+<body>
+<header>
+  <h1>👜 Sourcing de Bolsos</h1>
+  <nav>
+    <button data-t="guide" class="on">Guía del cliente</button>
+    <button data-t="search">Búsqueda libre</button>
+    <button data-t="items">Mis hallazgos <span class="cnt" id="cnt">0</span></button>
+    <button data-t="report">Reporte</button>
+    <button data-t="refs">Fotos referencia</button>
+  </nav>
+  <button class="b alt sm" id="exp">Exportar copia</button>
+  <button class="b alt sm" id="imp">Importar</button>
+  <input type="file" id="impf" accept=".json" hidden>
+</header>
+<main>
+
+<section class="tab on" id="t-guide">
+  <p class="help">Lista del PDF "Top Performing Bags". Cada botón abre la búsqueda directamente en ese sitio (los resultados son en vivo, los precios cambian). Cuando encuentres algo bueno pulsa <b>+ Añadir hallazgo</b> en la marca. Los precios máximos del PDF ya van incluidos como aviso.</p>
+  <div class="row noprint"><div><label>Filtrar marca / texto</label><input id="gf" placeholder="p. ej. Hermes, vintage, tote…"></div>
+  <div><label>Webs a mostrar</label><div id="sitepick" class="links"></div></div></div>
+  <div id="guide"></div>
+</section>
+
+<section class="tab" id="t-search">
+  <p class="help">Escribe cualquier búsqueda (marca + modelo + color) y ábrela en todas las webs.</p>
+  <div class="row"><div><label>Búsqueda</label><input id="q" placeholder="hermes kelly 28 etoupe"></div>
+  <div class="fix" style="width:130px"><label>Precio máx. (USD)</label><input id="qmax" type="number" min="0"></div></div>
+  <div class="links" id="qlinks"></div>
+  <p style="margin-top:14px"><button class="b" id="qall">Abrir en todas las webs seleccionadas</button>
+  <span class="help"> (el navegador puede pedir permiso para abrir varias pestañas)</span></p>
+</section>
+
+<section class="tab" id="t-items">
+  <div class="row noprint">
+    <div><label>Buscar</label><input id="if" placeholder="texto…"></div>
+    <div><label>Marca</label><select id="ib"></select></div>
+    <div><label>Estado</label><select id="is"><option value="">Todos</option><option>Candidato</option><option>Enviado al cliente</option><option>Aprobado</option><option>Descartado</option><option>Comprado</option></select></div>
+    <div><label>Orden</label><select id="io"><option value="new">Más recientes</option><option value="pa">Precio ↑</option><option value="pd">Precio ↓</option><option value="b">Marca</option></select></div>
+    <div class="fix"><button class="b" onclick="openForm()">+ Añadir hallazgo</button></div>
+  </div>
+  <div class="row noprint"><div class="fix"><button class="b alt sm" id="selall">Seleccionar visibles</button> <button class="b alt sm" id="selnone">Ninguno</button> <button class="b sm" id="mkrep">Crear reporte con seleccionados →</button></div></div>
+  <div class="grid" id="items"></div>
+  <p class="help" id="noitems" style="display:none">Todavía no hay hallazgos. Pulsa “+ Añadir hallazgo”.</p>
+</section>
+
+<section class="tab" id="t-report">
+  <div class="card noprint">
+    <div class="row">
+      <div><label>Título</label><input id="rt" value="Selección de bolsos"></div>
+      <div><label>Para / Cliente</label><input id="rc" placeholder="Nombre del cliente"></div>
+      <div class="fix" style="width:150px"><label>Diseño</label><select id="rl"><option value="c3">Cuadrícula 3</option><option value="c2">Cuadrícula 2</option><option value="tab">Tabla</option></select></div>
+    </div>
+    <div class="row">
+      <div class="fix"><label><input type="checkbox" id="rlink" style="width:auto" checked> Mostrar enlaces</label></div>
+      <div class="fix"><label><input type="checkbox" id="rnote" style="width:auto"> Mostrar notas</label></div>
+      <div class="fix"><label><input type="checkbox" id="rtot" style="width:auto" checked> Mostrar total</label></div>
+      <div class="fix"><label><input type="checkbox" id="rsrc" style="width:auto"> Mostrar web de origen</label></div>
+      <div class="fix"><label>Margen (%) sobre precio</label><input id="rmg" type="number" value="0" style="width:90px"></div>
+      <div class="fix"><button class="b" onclick="window.print()">Imprimir / Guardar PDF</button> <button class="b alt" id="csv">CSV</button></div>
+    </div>
+    <p class="help">Se incluyen los hallazgos marcados en “Mis hallazgos”. El margen se suma al precio mostrado (0 = precio real).</p>
+  </div>
+  <div id="report"></div>
+</section>
+
+<section class="tab" id="t-refs">
+  <p class="help">Fotos del PDF del cliente. Pulsa una para guardarla como referencia dentro de un hallazgo, o para buscarla por imagen en Google Lens.</p>
+  <div class="grid refs" id="refs"></div>
+</section>
+</main>
+
+<dialog id="dlg">
+  <form method="dialog" id="frm">
+    <h3 id="dt" style="margin-top:0">Añadir hallazgo</h3>
+    <div class="row"><div><label>Marca</label><input id="f-brand" list="brands"></div><div><label>Título / modelo</label><input id="f-title" required></div></div>
+    <datalist id="brands"></datalist>
+    <div class="row"><div><label>Precio</label><input id="f-price" type="number" step="0.01" min="0"></div>
+      <div class="fix" style="width:90px"><label>Moneda</label><select id="f-cur"><option>USD</option><option>EUR</option><option>GBP</option><option>JPY</option></select></div>
+      <div><label>Estado</label><select id="f-status"><option>Candidato</option><option>Enviado al cliente</option><option>Aprobado</option><option>Descartado</option><option>Comprado</option></select></div></div>
+    <div class="row"><div><label>Web de origen</label><input id="f-src" list="srcs" placeholder="eBay, Vestiaire…"></div><datalist id="srcs"></datalist>
+      <div><label>Enlace del anuncio</label><input id="f-url" type="url" placeholder="https://…"></div></div>
+    <div class="row"><div><label>Foto: sube un archivo, pega una imagen (Ctrl+V) o URL</label>
+      <input type="file" id="f-file" accept="image/*"><input id="f-img" placeholder="o pega URL de imagen" style="margin-top:6px">
+      <img id="f-prev" class="prev" hidden></div></div>
+    <div class="row"><div><label>Notas (condición, medidas, color…)</label><textarea id="f-note" rows="2"></textarea></div></div>
+    <div class="row"><div class="fix"><button class="b" value="ok" id="f-save">Guardar</button> <button class="b alt" value="cancel" formnovalidate>Cancelar</button></div></div>
+  </form>
+</dialog>
+
+<script>
+const BRANDS=[
+ {b:"Hermès",t:[
+  {n:"Birkin colores ricos o neutros",q:"hermes birkin"},
+  {n:"Kelly",q:"hermes kelly"},
+  {n:"Exóticos (cocodrilo, lagarto, avestruz…)",q:"hermes exotic crocodile lizard ostrich bag"},
+  {n:"Her line tote",q:"hermes herline tote"}]},
+ {b:"Chanel",t:[
+  {n:"Detalles carey (tortoise) y madera",q:"chanel tortoise wood bag"},
+  {n:"Vintage",q:"chanel vintage bag"}]},
+ {b:"Gucci",t:[
+  {n:"Vintage / era Tom Ford",q:"gucci tom ford vintage bag"},
+  {n:"Bamboo",q:"gucci bamboo bag"},
+  {n:"Estilos sporty",q:"gucci sporty vintage bag"},
+  {n:"Horsebit grande (oversized)",q:"gucci oversized horsebit bag"}]},
+ {b:"Celine",t:[
+  {n:"Vintage macadam",q:"celine vintage macadam bag"},
+  {n:"Estilos únicos",q:"celine unique vintage bag"},
+  {n:"Box bag",q:"celine box bag",max:995}]},
+ {b:"Prada",t:[
+  {n:"Galleria tote",q:"prada galleria tote",max:950},
+  {n:"Canapa tote",q:"prada canapa tote"}]},
+ {b:"YSL",t:[
+  {n:"Estilos vintage",q:"yves saint laurent vintage bag"},
+  {n:"I-care tote",q:"ysl icare tote"}]},
+ {b:"Bottega Veneta",t:[
+  {n:"Vintage únicos",q:"bottega veneta vintage bag"},
+  {n:"Nido crossbody",q:"bottega veneta nido crossbody",max:895},
+  {n:"Totes grandes (cabat, campana, roma)",q:"bottega veneta cabat campana roma tote"}]},
+ {b:"Loewe",t:[{n:"Amazona",q:"loewe amazona",max:995}]},
+ {b:"Fendi",t:[
+  {n:"Peekaboo",q:"fendi peekaboo"},
+  {n:"Baguettes únicas a buen precio",q:"fendi baguette unique"}]},
+ {b:"Dior",t:[
+  {n:"Vibe bowler bag",q:"dior vibe bowler bag"},
+  {n:"Vintage Trotter Boston bag",q:"dior vintage trotter boston bag"}]},
+ {b:"The Row",t:[{n:"Margaux",q:"the row margaux"}]}
+];
+const SITES=[
+ {id:"ebay",n:"eBay",u:(q,m)=>`https://www.ebay.com/sch/i.html?_nkw=${q}&LH_BIN=1&_sop=15${m?`&_udhi=${m}`:""}`},
+ {id:"vc",n:"Vestiaire",u:q=>`https://www.vestiairecollective.com/search/?q=${q}`},
+ {id:"trr",n:"The RealReal",u:q=>`https://www.therealreal.com/search?keywords=${q}`},
+ {id:"fp",n:"Fashionphile",u:q=>`https://www.fashionphile.com/shop?search=${q}`},
+ {id:"rebag",n:"Rebag",u:q=>`https://shop.rebag.com/search?q=${q}`},
+ {id:"posh",n:"Poshmark",u:(q,m)=>`https://poshmark.com/search?query=${q}${m?`&max_price=${m}`:""}`},
+ {id:"etsy",n:"Etsy",u:(q,m)=>`https://www.etsy.com/search?q=${q}${m?`&max=${m}`:""}`},
+ {id:"1d",n:"1stDibs",u:q=>`https://www.1stdibs.com/search/?q=${q}`},
+ {id:"merc",n:"Mercari",u:q=>`https://www.mercari.com/search/?keyword=${q}`},
+ {id:"buyee",n:"Japón (Buyee)",u:q=>`https://buyee.jp/item/search/query/${q}`},
+ {id:"gimg",n:"Google Imágenes",u:q=>`https://www.google.com/search?tbm=isch&q=${q}`},
+ {id:"gshop",n:"Google Shopping",u:q=>`https://www.google.com/search?tbm=shop&q=${q}`}
+];
+const REFS=["navy-birkin","burgundy-kelly-style","red-wallet","beige-quilted-chain","burgundy-quilted-flap","black-handle-flap","tan-lizard-hobo","ostrich-hobo","snake-lock-bag","brown-monogram-flap","brown-box-bag","burgundy-saddle","olive-tote","shearling-top-handle","black-muse-style","black-top-handle","burgundy-woven-clutch"];
+
+/* ---------- storage (IndexedDB, guarda fotos sin límite de 5MB) ---------- */
+let S={items:[],sites:SITES.slice(0,7).map(s=>s.id),sel:[]};
+const idb=()=>new Promise((res,rej)=>{const r=indexedDB.open("sourcing",1);r.onupgradeneeded=()=>r.result.createObjectStore("kv");r.onsuccess=()=>res(r.result);r.onerror=()=>rej(r.error)});
+async function load(){try{const d=await idb();const v=await new Promise(r=>{const q=d.transaction("kv").objectStore("kv").get("s");q.onsuccess=()=>r(q.result)});if(v)S=Object.assign(S,v)}catch(e){try{const v=JSON.parse(localStorage.getItem("s"));if(v)S=Object.assign(S,v)}catch(_){}}}
+async function save(){try{const d=await idb();d.transaction("kv","readwrite").objectStore("kv").put(S,"s")}catch(e){try{localStorage.setItem("s",JSON.stringify(S))}catch(_){alert("No se pudo guardar. Exporta una copia.")}}}
+const $=s=>document.querySelector(s);
+const esc=s=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const money=(v,c)=>v===""||v==null||isNaN(v)?"—":new Intl.NumberFormat("es",{style:"currency",currency:c||"USD",maximumFractionDigits:0}).format(v);
+
+/* ---------- tabs ---------- */
+function tab(t){document.querySelectorAll("nav button").forEach(b=>b.classList.toggle("on",b.dataset.t===t));document.querySelectorAll(".tab").forEach(e=>e.classList.toggle("on",e.id==="t-"+t));if(t==="report")renderReport();if(t==="items")renderItems()}
+document.querySelectorAll("nav button").forEach(b=>b.onclick=()=>tab(b.dataset.t));
+
+/* ---------- guía ---------- */
+function sitePick(){const el=$("#sitepick");el.innerHTML=SITES.map(s=>`<label style="display:inline-flex;gap:3px;align-items:center;margin:0 6px 0 0;font-size:13px;color:var(--ink)"><input type="checkbox" style="width:auto" data-s="${s.id}" ${S.sites.includes(s.id)?"checked":""}>${s.n}</label>`).join("");
+ el.querySelectorAll("input").forEach(c=>c.onchange=()=>{S.sites=[...el.querySelectorAll("input:checked")].map(i=>i.dataset.s);save();renderGuide();renderQ()})}
+function links(q,max){return SITES.filter(s=>S.sites.includes(s.id)).map(s=>`<a href="${s.u(encodeURIComponent(q),max)}" target="_blank" rel="noopener">${s.n}</a>`).join("")}
+function renderGuide(){const f=$("#gf").value.toLowerCase();
+ $("#guide").innerHTML=BRANDS.map(B=>{const ts=B.t.filter(t=>!f||(B.b+" "+t.n+" "+t.q).toLowerCase().includes(f));if(!ts.length)return"";
+  const n=S.items.filter(i=>i.brand===B.b).length;
+  return`<div class="card brand"><h3>${esc(B.b)} <button class="b sm" onclick="openForm(null,'${esc(B.b)}')">+ Añadir hallazgo</button> ${n?`<span class="tag">${n} guardados</span>`:""}</h3>`+
+  ts.map(t=>`<div class="target"><span class="t">${esc(t.n)}</span>${t.max?`<span class="m">máx. $${t.max}</span>`:""}<div class="links">${links(t.q,t.max)}</div></div>`).join("")+`</div>`}).join("")}
+$("#gf").oninput=renderGuide;
+
+/* ---------- búsqueda libre ---------- */
+function renderQ(){const q=$("#q").value.trim();$("#qlinks").innerHTML=q?links(q,$("#qmax").value||""):"<span class='help'>Escribe algo arriba…</span>"}
+$("#q").oninput=$("#qmax").oninput=renderQ;
+$("#qall").onclick=()=>{const q=$("#q").value.trim();if(!q)return;SITES.filter(s=>S.sites.includes(s.id)).forEach(s=>window.open(s.u(encodeURIComponent(q),$("#qmax").value||""),"_blank","noopener"))};
+
+/* ---------- hallazgos ---------- */
+function brandsOpts(){const bs=[...new Set([...BRANDS.map(b=>b.b),...S.items.map(i=>i.brand).filter(Boolean)])];
+ $("#brands").innerHTML=bs.map(b=>`<option>${esc(b)}`).join("");
+ const cur=$("#ib").value;$("#ib").innerHTML='<option value="">Todas</option>'+bs.map(b=>`<option>${esc(b)}</option>`).join("");$("#ib").value=cur;
+ $("#srcs").innerHTML=SITES.map(s=>`<option>${esc(s.n)}`).join("")}
+function filtered(){let l=S.items.slice();const f=$("#if").value.toLowerCase(),b=$("#ib").value,st=$("#is").value,o=$("#io").value;
+ l=l.filter(i=>(!f||(i.title+" "+i.brand+" "+i.note+" "+i.src).toLowerCase().includes(f))&&(!b||i.brand===b)&&(!st||i.status===st));
+ if(o==="pa")l.sort((a,b)=>(a.price||0)-(b.price||0));else if(o==="pd")l.sort((a,b)=>(b.price||0)-(a.price||0));else if(o==="b")l.sort((a,b)=>(a.brand||"").localeCompare(b.brand||""));else l.sort((a,b)=>b.ts-a.ts);return l}
+function renderItems(){brandsOpts();const l=filtered();$("#cnt").textContent=S.items.length;$("#noitems").style.display=S.items.length?"none":"block";
+ $("#items").innerHTML=l.map(i=>`<div class="it ${S.sel.includes(i.id)?"sel":""}"><input type="checkbox" class="ck" ${S.sel.includes(i.id)?"checked":""} onchange="tog('${i.id}',this.checked)">
+  <div class="ph" style="background-image:url('${esc(i.img)}')" onclick="openForm('${i.id}')"></div>
+  <div class="bd"><div class="pr">${money(i.price,i.cur)}</div><div class="tt"><b>${esc(i.brand)}</b> ${esc(i.title)}</div>
+  <div class="mt">${esc(i.src)} · <span class="tag">${esc(i.status)}</span></div></div>
+  <div class="ac">${i.url?`<a class="b alt sm" href="${esc(i.url)}" target="_blank" rel="noopener">Abrir</a>`:""}<button class="b alt sm" onclick="openForm('${i.id}')">Editar</button><button class="b alt sm" onclick="del('${i.id}')">🗑</button></div></div>`).join("")}
+["#if","#ib","#is","#io"].forEach(s=>$(s).oninput=renderItems);
+function tog(id,on){S.sel=S.sel.filter(x=>x!==id);if(on)S.sel.push(id);save();renderItems()}
+$("#selall").onclick=()=>{S.sel=[...new Set([...S.sel,...filtered().map(i=>i.id)])];save();renderItems()};
+$("#selnone").onclick=()=>{S.sel=[];save();renderItems()};
+$("#mkrep").onclick=()=>{if(!S.sel.length)return alert("Marca primero los hallazgos con la casilla.");tab("report")};
+function del(id){if(!confirm("¿Borrar este hallazgo?"))return;S.items=S.items.filter(i=>i.id!==id);S.sel=S.sel.filter(x=>x!==id);save();renderItems();renderGuide()}
+
+/* ---------- formulario ---------- */
+let editId=null,curImg="";
+function setPrev(){const p=$("#f-prev");if(curImg){p.src=curImg;p.hidden=false}else p.hidden=true}
+function shrink(file){return new Promise(res=>{const r=new FileReader();r.onload=()=>{const im=new Image();im.onload=()=>{const k=Math.min(1,900/Math.max(im.width,im.height));const c=document.createElement("canvas");c.width=im.width*k;c.height=im.height*k;c.getContext("2d").drawImage(im,0,0,c.width,c.height);res(c.toDataURL("image/jpeg",.82))};im.src=r.result};r.readAsDataURL(file)})}
+async function takeFile(f){if(f&&f.type.startsWith("image/")){curImg=await shrink(f);$("#f-img").value="";setPrev()}}
+function openForm(id,brand,img){editId=id||null;const i=id?S.items.find(x=>x.id===id):{brand:brand||"",title:"",price:"",cur:"USD",status:"Candidato",src:"",url:"",img:img||"",note:""};
+ $("#dt").textContent=id?"Editar hallazgo":"Añadir hallazgo";
+ $("#f-brand").value=i.brand;$("#f-title").value=i.title;$("#f-price").value=i.price;$("#f-cur").value=i.cur;$("#f-status").value=i.status;$("#f-src").value=i.src;$("#f-url").value=i.url;$("#f-note").value=i.note;$("#f-file").value="";
+ curImg=i.img;$("#f-img").value=/^https?:/.test(i.img)?i.img:"";setPrev();brandsOpts();$("#dlg").showModal()}
+$("#f-file").onchange=e=>takeFile(e.target.files[0]);
+$("#f-img").oninput=e=>{curImg=e.target.value.trim();setPrev()};
+document.addEventListener("paste",e=>{if(!$("#dlg").open)return;const f=[...e.clipboardData.files].find(f=>f.type.startsWith("image/"));if(f){e.preventDefault();takeFile(f)}});
+$("#frm").onsubmit=e=>{if(e.submitter?.value!=="ok")return;
+ const p=$("#f-price").value;const o={id:editId||("i"+Date.now()+Math.random().toString(36).slice(2,6)),ts:editId?S.items.find(x=>x.id===editId).ts:Date.now(),
+ brand:$("#f-brand").value.trim(),title:$("#f-title").value.trim(),price:p===""?"":+p,cur:$("#f-cur").value,status:$("#f-status").value,src:$("#f-src").value.trim(),url:$("#f-url").value.trim(),img:curImg,note:$("#f-note").value.trim()};
+ if(editId)S.items=S.items.map(x=>x.id===editId?o:x);else S.items.push(o);
+ save();renderItems();renderGuide()};
+
+/* ---------- referencias ---------- */
+function renderRefs(){$("#refs").innerHTML=REFS.map(r=>`<div class="it"><div class="ph" style="background-image:url('refs/${r}.jpg')"></div><div class="ac" style="padding-top:8px"><button class="b alt sm" onclick="useRef('${r}')">Guardar como referencia</button><a class="b alt sm" target="_blank" rel="noopener" href="https://lens.google.com/">Lens</a></div></div>`).join("")}
+async function useRef(r){let img=`refs/${r}.jpg`;
+ try{const b=await (await fetch(img)).blob();img=await new Promise(res=>{const fr=new FileReader();fr.onload=()=>res(fr.result);fr.readAsDataURL(b)})}catch(_){}
+ tab("items");openForm(null,"",img)}
+
+/* ---------- reporte ---------- */
+function repItems(){return S.items.filter(i=>S.sel.includes(i.id))}
+function adj(i){const m=+$("#rmg").value||0;return i.price===""?"":Math.round(i.price*(1+m/100))}
+function renderReport(){const l=repItems(),lay=$("#rl").value,L=$("#rlink").checked,N=$("#rnote").checked,SRC=$("#rsrc").checked;
+ const date=new Date().toLocaleDateString("es",{day:"numeric",month:"long",year:"numeric"});
+ let h=`<h2>${esc($("#rt").value)}</h2><div class="sub">${$("#rc").value?"Para "+esc($("#rc").value)+" · ":""}${date} · ${l.length} artículos</div>`;
+ if(!l.length)h+="<p class='help'>No hay artículos seleccionados. Ve a “Mis hallazgos” y marca los que quieras incluir.</p>";
+ else if(lay==="tab")h+=`<table class="rtab"><tr><th></th><th>Artículo</th><th>${SRC?"Origen":""}</th><th>Precio</th></tr>`+l.map(i=>`<tr><td><img src="${esc(i.img)}"></td><td><b>${esc(i.brand)}</b> ${esc(i.title)}${N&&i.note?`<br><span class="mt" style="color:var(--mute);font-size:12px">${esc(i.note)}</span>`:""}${L&&i.url?`<br><a href="${esc(i.url)}" style="font-size:12px">${esc(i.url.slice(0,60))}</a>`:""}</td><td>${SRC?esc(i.src):""}</td><td><b>${money(adj(i),i.cur)}</b></td></tr>`).join("")+"</table>";
+ else h+=`<div class="rgrid ${lay}">`+l.map(i=>`<div class="ri"><img src="${esc(i.img)}"><div class="bd"><div class="pr">${money(adj(i),i.cur)}</div><div><b>${esc(i.brand)}</b> ${esc(i.title)}</div>${SRC&&i.src?`<div class="mt" style="font-size:12px;color:var(--mute)">${esc(i.src)}</div>`:""}${N&&i.note?`<div style="font-size:12px;color:var(--mute)">${esc(i.note)}</div>`:""}${L&&i.url?`<div style="font-size:12px"><a href="${esc(i.url)}">Ver anuncio</a></div>`:""}</div></div>`).join("")+"</div>";
+ if($("#rtot").checked&&l.length){const t={};l.forEach(i=>{if(i.price!=="")t[i.cur]=(t[i.cur]||0)+adj(i)});h+=`<div class="tot">Total: ${Object.entries(t).map(([c,v])=>money(v,c)).join(" + ")||"—"}</div>`}
+ $("#report").innerHTML=h}
+["#rt","#rc","#rl","#rlink","#rnote","#rtot","#rsrc","#rmg"].forEach(s=>$(s).oninput=renderReport);
+$("#csv").onclick=()=>{const q=v=>`"${String(v??"").replace(/"/g,'""')}"`;const rows=[["Marca","Título","Precio","Moneda","Estado","Origen","Enlace","Notas"],...repItems().map(i=>[i.brand,i.title,adj(i),i.cur,i.status,i.src,i.url,i.note])];
+ dl("reporte.csv","﻿"+rows.map(r=>r.map(q).join(",")).join("\n"),"text/csv")};
+
+/* ---------- copia de seguridad ---------- */
+function dl(n,t,m){const a=document.createElement("a");a.href=URL.createObjectURL(new Blob([t],{type:m}));a.download=n;a.click()}
+$("#exp").onclick=()=>dl("sourcing-copia.json",JSON.stringify(S),"application/json");
+$("#imp").onclick=()=>$("#impf").click();
+$("#impf").onchange=async e=>{try{const v=JSON.parse(await e.target.files[0].text());S=Object.assign(S,v);await save();init()}catch(_){alert("Archivo no válido")}};
+
+function init(){sitePick();renderGuide();renderQ();renderItems();renderRefs()}
+load().then(init);
+</script>
+</body>
+</html>
