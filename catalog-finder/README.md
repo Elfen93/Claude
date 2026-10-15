@@ -8,8 +8,8 @@ App local para ver tus artículos con sus fotos a partir de un CSV de Google She
 3. Filtra por marca, tipo, grading o entidad, busca por texto, ordena por precio y haz clic en una foto para ampliarla (flechas ← → para navegar).
 
 ## Columnas
-Se detectan solas por el nombre (inglés o español): `Brand`, `Item Type`, `Grading`, `Original Price`, `Currency`, `Entity`.
-La columna **Entity/Code/ID** se usa como código de la foto (ej. `C332933`). Si tu código está en otra columna o necesita prefijo, cámbialo en **Ajustes**.
+Se detectan solas por el nombre (inglés o español): `Brand Name`, `Price after Tax`, `currency`, `CTag`, `Item Description`, `Public Notes`, `Entity`.
+La columna **CTag** se usa como código de la foto (ej. `C332933`). Si tu código está en otra columna o necesita prefijo, cámbialo en **Ajustes**.
 
 ## Fotos
 Se prueban `…/photographs/{código}/medium/1.jpg`, `2.jpg`, … hasta que una no exista (máx. 12, configurable).
