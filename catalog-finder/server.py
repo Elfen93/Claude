@@ -7,11 +7,36 @@ Uso:  python3 server.py [puerto]
 Sirve index.html y un proxy /fetch?url=... para descargar el CSV de Google Sheets
 (el navegador no puede hacerlo directamente por CORS).
 """
-import concurrent.futures, http.client, http.server, json, os, re, ssl, sys, threading, time, urllib.error, urllib.parse, urllib.request, webbrowser
+import concurrent.futures, hashlib, http.client, http.server, json, os, re, ssl, sys, threading, time, urllib.error, urllib.parse, urllib.request, webbrowser
 
 ROOT = os.path.dirname(os.path.abspath(__file__))
 KEY_FILE = os.path.join(ROOT, ".api_key")
 CACHE_FILE = os.path.join(ROOT, ".photo_cache.json")
+DESC_CACHE_FILE = os.path.join(ROOT, ".desc_cache.json")
+DESC_VERSION = "v1"
+DESC_SYSTEM = """You write the 'detailed grading' blurb of a luxury resale listing from structured condition notes. For EACH item return ONE short paragraph (1-3 sentences) of natural, polished English.
+Rules:
+- Be faithful: use only facts present in the notes. Never invent, soften or drop a defect/flaw/odor/alteration (re-painted/re-dyed, tarnish, stains, scratches, cracks, etc.).
+- Start with: "This {color} {size N }item is in Grade {X} condition" using the grade letters exactly as given (AB, B+, SA, ...; ignore any parenthetical like "(Good)"). Omit color or size if not given. A measurement like 30" becomes "size 30". Use "item", not "bag".
+- Then summarise wear with "showing ...". If exterior and interior notes are the same say "both the interior and exterior"; if they differ, describe each. "No visible signs of wear" -> "showing no visible signs of wear".
+- Alterations such as Re-Painted/Re-Dyed: "and has been repainted or re-dyed".
+- Add-ons (key, lock, dust bag, strap, box, clochette...): final sentence "It comes complete with its lock and key." (say "lock and key" when both exist).
+- Mention odor only if the notes do (e.g. "No odor present" -> "It has no noticeable odor.").
+- No marketing fluff or adjectives that are not in the notes.
+Example input: ITEM GRADING: AB / EXTERIOR QUALITY: Minor Wear Throughout, Re-Painted/Re-Dyed / INTERIOR QUALITY: Minor Wear Throughout / ADDON(s): Key, Lock / COLOR(s): Red / 30"
+Example output: This red size 30 item is in Grade AB condition, showing minor wear throughout both the interior and exterior, and has been repainted or re-dyed. It comes complete with its lock and key."""
+DESC_TOOL = {
+    "name": "write_descriptions",
+    "description": "Devuelve una descripcion por articulo",
+    "input_schema": {"type": "object", "properties": {"descriptions": {"type": "array", "items": {
+        "type": "object", "properties": {"id": {"type": "string"}, "text": {"type": "string"}}, "required": ["id", "text"]}}},
+        "required": ["descriptions"]},
+}
+try:
+    with open(DESC_CACHE_FILE) as _f:
+        _desc_cache = json.load(_f)
+except Exception:  # noqa: BLE001
+    _desc_cache = {}
 PHOTO_HOSTS = tuple(os.environ.get("CATALOG_PHOTO_HOSTS", "s3.amazonaws.com").split(","))
 TTL_ZERO, TTL_POS = 6 * 3600, 30 * 86400  # sin fotos: reintentar a las 6 h; con fotos: 30 dias
 _cache_lock = threading.Lock()
@@ -169,7 +194,7 @@ class Handler(http.server.SimpleHTTPRequestHandler):
 
     def do_POST(self):
         path = urllib.parse.urlparse(self.path).path
-        if path not in ("/ai", "/ai-key") or not self._local_only():
+        if path not in ("/ai", "/ai-key", "/describe") or not self._local_only():
             return self._err(403, "Prohibido")
         try:
             data = json.loads(self.rfile.read(int(self.headers.get("Content-Length") or 0)) or b"{}")
@@ -184,21 +209,51 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             elif os.path.exists(KEY_FILE):
                 os.remove(KEY_FILE)
             return self._json({"configured": bool(api_key())})
+        if path == "/describe":
+            return self._describe(data)
         return self._ai(data)
 
-    def _photos(self, q):
-        if not self._local_only():
-            return self._err(403, "Prohibido")
-        tpl = q.get("tpl", [""])[0]
-        size = re.sub(r"[^A-Za-z0-9_-]", "", q.get("size", ["medium"])[0]) or "medium"
-        maxn = max(1, min(30, int(q.get("maxn", ["13"])[0] or 13)))
-        host = urllib.parse.urlparse(tpl).hostname or ""
-        if host not in PHOTO_HOSTS or "{id}" not in tpl or "{n}" not in tpl:
-            return self._err(400, "Plantilla de foto no permitida (solo " + ", ".join(PHOTO_HOSTS) + ")")
-        ids = [i for i in q.get("ids", [""])[0].split(",") if re.fullmatch(r"[A-Za-z0-9_-]{1,40}", i)][:300]
-        counts = dict(zip(ids, _ids_pool.map(lambda i: count_photos(tpl, size, i, maxn), ids)))
-        save_cache()
-        return self._json({"counts": counts})
+    def _describe(self, d):
+        """Reescribe el 'detailed grading' estructurado como texto natural (con cache en disco)."""
+        key = api_key()
+        if not key:
+            return self._err(400, "Falta la clave de API")
+        items = [i for i in d.get("items", [])[:40] if isinstance(i, dict) and str(i.get("text", "")).strip()]
+        out, todo = {}, []
+        for it in items:
+            h = hashlib.sha1((DESC_VERSION + MODEL + it["text"]).encode()).hexdigest()
+            if h in _desc_cache:
+                out[str(it["k"])] = _desc_cache[h]
+            else:
+                todo.append((str(it["k"]), h, it["text"]))
+        if todo:
+            payload = {
+                "model": MODEL, "max_tokens": 4000, "temperature": 0, "system": DESC_SYSTEM,
+                "tools": [DESC_TOOL], "tool_choice": {"type": "tool", "name": "write_descriptions"},
+                "messages": [{"role": "user", "content": json.dumps([{"id": k, "notes": t[:3000]} for k, _, t in todo], ensure_ascii=False)}],
+            }
+            req = urllib.request.Request(API_BASE + "/v1/messages", data=json.dumps(payload).encode(),
+                                         headers={"x-api-key": key, "anthropic-version": "2023-06-01", "content-type": "application/json"})
+            try:
+                with urllib.request.urlopen(req, timeout=120, context=_ssl_ctx) as r:
+                    resp = json.load(r)
+            except urllib.error.HTTPError as e:
+                return self._err(502, f"La API respondio {e.code}: {e.read().decode('utf-8', 'replace')[:300]}")
+            except Exception as e:  # noqa: BLE001
+                return self._err(502, f"No se pudo contactar con la API: {e}")
+            by_id = {k: h for k, h, _ in todo}
+            for block in resp.get("content", []):
+                if block.get("type") == "tool_use":
+                    for e in block["input"].get("descriptions", []):
+                        k, txt = str(e.get("id")), str(e.get("text", "")).strip()
+                        if k in by_id and txt:
+                            out[k] = _desc_cache[by_id[k]] = txt
+            with _cache_lock:
+                tmp = DESC_CACHE_FILE + ".tmp"
+                with open(tmp, "w") as f:
+                    json.dump(_desc_cache, f)
+                os.replace(tmp, DESC_CACHE_FILE)
+        return self._json({"descs": out})
 
     def _json(self, obj, code=200):
         body = json.dumps(obj).encode()

@@ -30,11 +30,12 @@ Si pegas una lista con varias peticiones, la IA las ejecuta una por una (`search
 Todo se convierte a USD con el tipo de cambio actual (open.er-api.com, respaldo frankfurter.dev, caché 1 h; sin conexión usa el último guardado). El botón **Aplicar 35% + ¥2.500** calcula `USD × 1,35 + 2.500 JPY en USD` (cambiable en Ajustes). Los filtros de precio y el orden usan el precio que ves.
 
 ## Excel customer
-Columnas: `BRAND, SKU, ITEM NAME, DETAILED GRADING, GRADING (RANK), Purchase?, Buy Now Price, Picture #1, Star Rating, Picture #2…#13, 1…13`.
+Columnas: `BRAND, SKU, ITEM NAME, DETAILED GRADING, GRADING (RANK), Purchase?, Buy Now Price, Picture #1…#13, 1…13`.
 - `Buy Now Price`: precio USD actual, con o sin margen según el botón (la barra inferior lo indica).
 - `Picture #n` = `=image("…/photographs/{CTag}/n.jpg",4,100,100)` y `1…13` = `=iferror(HYPERLINK(…,"{CTag} - photon"))`, solo para fotos existentes. Son fórmulas de **Google Sheets**: sube el .xlsx a Drive y ábrelo con Sheets. En Excel esas fórmulas no se verán.
 - El rank sale del texto `GRADING: B (Good)` del detailed grading (en cualquier columna): 1=SA con etiquetas, 2=SA, 3=S, 4=A, 5=AB, 6=B+, 7=B, 8=B-, 9=BC, 10=C. Las etiquetas entre paréntesis se editan en Ajustes.
-- `Purchase?` y `Star Rating` salen vacías. También hay botón CSV.
+- `Purchase?` sale vacía. También hay botón CSV.
+- **Detailed grading en lenguaje natural** (activado por defecto; se desactiva en Ajustes): convierte el texto estructurado en una frase, p. ej. `This red size 30 item is in Grade AB condition, showing minor wear throughout both the interior and exterior, and has been repainted or re-dyed. It comes complete with its lock and key.` Con clave de IA la redacta Claude respetando solo lo que dicen las notas (no inventa ni suaviza defectos) y guarda el resultado en `.desc_cache.json`. Sin clave usa reglas simples que cubren los formatos habituales pero suenan más planas. **Revisa una muestra antes de enviarlo al cliente.**
 
 ## Columnas de tu hoja
 Se detectan por nombre: `Brand Name, CTag, Item Name / Item Description, Public Notes, Price after Tax, currency, Entity`. Si algo no se detecta, cámbialo en *Ajustes avanzados*.

@@ -97,6 +97,7 @@
         <label>Máx. fotos <input id="maxn" type="text" style="width:50px"></label>
       </div>
       <div class="row">
+        <label><input type="checkbox" id="natural" checked> Detailed grading en lenguaje natural</label>
         <label>URL foto (export) <input id="exp" type="text" style="min-width:380px"></label>
         <label>Etiquetas del rank (n=texto) <textarea id="labels" rows="3" style="width:200px"></textarea></label>
       </div>
@@ -257,7 +258,7 @@ async function loadRates() {
     if (old) { rates = old.rates; ratesDate = old.date + ' (guardado, sin conexión)'; }
     else { $('fx').textContent = '⚠ sin tipos de cambio'; $('fx').className = 'err'; return; }
   }
-  $('fx').textContent = `1 USD = ${rates.JPY.toFixed(2)} JPY · ${rates.CNY.toFixed(3)} CNY · ${ratesDate}`;
+  $('fx').textContent = `1 USD = ${(rates.JPY || 0).toFixed(2)} JPY · ${(rates.CNY || 0).toFixed(3)} CNY · ${ratesDate}`;
   if (rows.length) refresh(false);
 }
 function setMarkupBtn() {
@@ -617,6 +618,57 @@ async function aiStatus() {
   if ($('keyOff')) $('keyOff').onclick = async () => { await fetch('/ai-key', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Catalog-Finder': '1' }, body: JSON.stringify({ key: '' }) }); aiStatus(); };
 }
 
+/* ============ detailed grading en lenguaje natural ============ */
+function plainDescribe(text) { // respaldo sin IA: reglas simples sobre el texto estructurado
+  const L = text.split(/\n/).map(l => l.trim()).filter(Boolean);
+  let grade = '', size = '', cur = '', odor = ''; const ext = [], int = [], add = [], col = [];
+  const put = (list, v) => v && list.push(v.replace(/\s+/g, ' ').trim());
+  for (const l of L) {
+    let m;
+    if ((m = l.match(/^(?:item\s+)?grading\s*:\s*(.*)$/i))) { grade = (m[1].match(/^(SA\s+with\s+tags|SA|S|AB|A|BC|B\+|B-|B|C)(?![A-Za-z])/i) || [''])[0].toUpperCase(); cur = ''; }
+    else if ((m = l.match(/^exterior(?:\s+(?:quality|condition))?\s*[:\-]\s*(.*)$/i))) { cur = 'e'; put(ext, m[1]); }
+    else if ((m = l.match(/^interior(?:\s+(?:quality|condition))?\s*[:\-]\s*(.*)$/i))) { cur = 'i'; put(int, m[1]); }
+    else if ((m = l.match(/^add-?ons?(?:\(s\))?\s*[:\-]\s*(.*)$/i))) { cur = 'a'; put(add, m[1]); }
+    else if ((m = l.match(/^colou?rs?(?:\(s\))?\s*[:\-]\s*(.*)$/i))) { cur = 'c'; put(col, m[1]); }
+    else if ((m = l.match(/^odou?r\s*[:\-]\s*(.*)$/i))) { cur = 'o'; odor = m[1].trim(); }
+    else if (/^item\s+quality\s*[:\-]?\s*$/i.test(l)) cur = '';
+    else if ((m = l.match(/^(\d+(?:\.\d+)?)\s*(?:"|”|''|in\b|inch)/i))) size = m[1];
+    else if (cur === 'e') put(ext, l); else if (cur === 'i') put(int, l); else if (cur === 'a') put(add, l); else if (cur === 'c') put(col, l);
+    else if (cur === 'o' && !col.length && /^[A-Za-z][A-Za-z\/ &-]{1,30}$/.test(l)) put(col, l);
+  }
+  const lc = a => a.map(x => x.toLowerCase());
+  const altRe = /re-?\s?paint|re-?\s?dy/i, alt = [...ext, ...int].some(x => altRe.test(x));
+  const clean = a => lc(a.filter(x => !altRe.test(x))).join(', ');
+  const e = clean(ext), i = clean(int);
+  let wear = '';
+  if (e && e === i) wear = /throughout/.test(e) ? `${e.replace(/\s*throughout\s*/, ' throughout')} both the interior and exterior` : `${e} on both the interior and exterior`;
+  else if (e && i) wear = `${e} on the exterior and ${i} on the interior`;
+  else if (e || i) wear = `${e || i} on the ${e ? 'exterior' : 'interior'}`;
+  const join = a => a.length < 2 ? a.join('') : a.slice(0, -1).join(', ') + ' and ' + a[a.length - 1];
+  const items = lc(add).filter(Boolean); if (items.includes('key') && items.includes('lock')) { items.splice(items.indexOf('key'), 1); items[items.indexOf('lock')] = 'lock and key'; }
+  let out = `This ${col.length ? lc(col).join('/') + ' ' : ''}${size ? 'size ' + size + ' ' : ''}item${grade ? ` is in Grade ${grade} condition` : ' is in the condition described'}`;
+  out += (wear ? `, showing ${wear}` : '') + (alt ? `${wear ? ', and' : ', and'} has been repainted or re-dyed` : '') + '.';
+  if (odor) out += ` ${/^no\b/i.test(odor) ? 'It has no noticeable odor.' : 'Odor: ' + odor.toLowerCase() + '.'}`;
+  if (items.length) out += ` It comes complete with its ${items.length > 1 && !items.includes('lock and key') ? join(items) : join(items)}.`;
+  return out;
+}
+async function describeAll(texts) { // → Map(texto → descripción) y nº de descripciones por IA
+  const map = new Map(), uniq = [...new Set(texts.filter(Boolean))]; let viaAI = 0;
+  if (aiOn && uniq.length) {
+    const chunks = []; for (let i = 0; i < uniq.length; i += 20) chunks.push(uniq.slice(i, i + 20)); let done = 0;
+    await pool(chunks, async ch => {
+      try {
+        const r = await fetch('/describe', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Catalog-Finder': '1' }, body: JSON.stringify({ items: ch.map((text, k) => ({ k, text })) }) });
+        if (!r.ok) throw new Error(await r.text());
+        const { descs } = await r.json(); ch.forEach((t, k) => { if (descs[k]) { map.set(t, descs[k]); viaAI++; } });
+      } catch (e) { /* esos artículos usarán el respaldo */ }
+      setStatus(`Redactando descripciones… ${Math.min(uniq.length, (++done) * 20)}/${uniq.length}`);
+    }, 3);
+  }
+  uniq.forEach(t => { if (!map.has(t)) map.set(t, plainDescribe(t)); });
+  return { map, viaAI, total: uniq.length };
+}
+
 /* ============ export customer ============ */
 const NPIC = 13;
 const photoUrl = (id, n) => $('exp').value.trim().replace('{id}', id).replace('{n}', n);
@@ -625,7 +677,8 @@ async function buildCustomer() {
   if (!rates) throw new Error('No hay tipos de cambio; no se puede calcular el precio USD');
   const sel = rows.filter(r => selected.has(code(r))).sort((a, b) => (a._ord ?? 1e9) - (b._ord ?? 1e9)), urls = []; let done = 0;
   await pool(sel, async (r, i) => { urls[i] = code(r) ? await findImages(code(r)) : []; if (++done % 10 === 0) setStatus(`Buscando fotos… ${done}/${sel.length}`); });
-  const head = ['BRAND', 'SKU', 'ITEM NAME', 'DETAILED GRADING', 'GRADING (RANK)', 'Purchase?', 'Buy Now Price', 'Picture #1', 'Star Rating'];
+  const nat = $('natural').checked, D = nat ? await describeAll(sel.map(r => r._detail)) : null;
+  const head = ['BRAND', 'SKU', 'ITEM NAME', 'DETAILED GRADING', 'GRADING (RANK)', 'Purchase?', 'Buy Now Price', 'Picture #1'];
   for (let n = 2; n <= NPIC; n++) head.push('Picture #' + n);
   for (let n = 1; n <= NPIC; n++) head.push(String(n));
   let nopic = 0, noid = 0, noprice = 0;
@@ -633,12 +686,12 @@ async function buildCustomer() {
     const id = code(r), have = Math.min(urls[i].length, NPIC), price = finalOf(r);
     if (!id) noid++; else if (!have) nopic++; if (isNaN(price)) noprice++;
     const pic = n => n <= have ? { f: `image("${photoUrl(id, n)}",4,100,100)` } : {};
-    const row = [{ v: get(r, 'brand') }, { v: id }, { v: nameOf(r) }, { v: r._detail }, { v: rankText(r) }, {}, isNaN(price) ? {} : { v: Math.round(price * 100) / 100, money: 1 }, pic(1), {}];
+    const row = [{ v: get(r, 'brand') }, { v: id }, { v: nameOf(r) }, { v: nat && r._detail ? D.map.get(r._detail) : r._detail }, { v: rankText(r) }, {}, isNaN(price) ? {} : { v: Math.round(price * 100) / 100, money: 1 }, pic(1)];
     for (let n = 2; n <= NPIC; n++) row.push(pic(n));
     for (let n = 1; n <= NPIC; n++) row.push(n <= have ? { f: `iferror(HYPERLINK("${photoUrl(id, n)}","${id} - photo${n}"))` } : {});
     return row;
   });
-  const w = [noid && `${noid} sin CTag`, nopic && `${nopic} sin fotos`, noprice && `${noprice} sin precio USD`].filter(Boolean);
+  const w = [nat && D.total > D.viaAI && `${D.total - D.viaAI} descripciones con redacción básica (sin IA)`, noid && `${noid} sin CTag`, nopic && `${nopic} sin fotos`, noprice && `${noprice} sin precio USD`].filter(Boolean);
   return { head, body, warn: w.join(', ') };
 }
 const stamp = () => new Date().toISOString().slice(0, 10);
@@ -667,7 +720,7 @@ async function exportXlsx() {
       else ws[a] = { t: 's', v: '', s: B };
     }));
     ws['!ref'] = XLSX.utils.encode_range({ s: { r: 0, c: 0 }, e: { r: body.length, c: head.length - 1 } });
-    ws['!cols'] = head.map((h, c) => ({ wch: [16, 12, 30, 46, 24, 11, 14][c] || (c < 9 + 12 ? 15 : 19) }));
+    ws['!cols'] = head.map((h, c) => ({ wch: [16, 12, 30, 46, 24, 11, 14][c] || (c < 7 + 13 ? 15 : 19) }));
     ws['!rows'] = [{ hpx: 34 }].concat(body.map(() => ({ hpx: 105 })));
     ws['!autofilter'] = { ref: ws['!ref'] };
     const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, 'Customer');
@@ -682,11 +735,13 @@ $('exportX').onclick = exportXlsx; $('exportCsv').onclick = exportCsv;
 $('markup').onclick = () => { markupOn = !markupOn; store.set('markupOn', markupOn ? '1' : '0'); setMarkupBtn(); if (rows.length) refresh(false); };
 ['pct', 'fee'].forEach(id => bind(id, 'change', () => { store.set(id, $(id).value); setMarkupBtn(); if (rows.length) refresh(false); }));
 ['labels', 'exp'].forEach(id => bind(id, 'change', () => store.set(id, $(id).value)));
+bind('natural', 'change', () => store.set('natural', $('natural').checked ? '1' : '0'));
 ['tpl', 'size', 'prefix', 'maxn'].forEach(id => bind(id, 'change', () => { store.set(id, $(id).value); imgCache.clear(); photoPending.clear(); if (rows.length) { prep(); refresh(false); } }));
 $('tpl').value = store.get('tpl', 'https://s3.amazonaws.com/storage.j-ports/photographs/{id}/{size}/{n}.jpg');
 $('size').value = store.get('size', 'medium'); $('prefix').value = store.get('prefix', ''); $('maxn').value = store.get('maxn', '13');
 $('exp').value = store.get('exp', 'https://s3.amazonaws.com/storage.j-ports/photographs/{id}/{n}.jpg');
 $('labels').value = store.get('labels', '1=With Tags\n4=Superb Condition\n7=Good Condition');
+$('natural').checked = store.get('natural', '1') === '1';
 $('url').value = store.get('url', ''); $('pct').value = store.get('pct', '35'); $('fee').value = store.get('fee', '2500');
 saveSel(); setMarkupBtn(); loadRates(); aiStatus();
 </script>

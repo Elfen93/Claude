@@ -2,3 +2,5 @@
 __pycache__/
 .photo_cache.json
 .photo_cache.json.tmp
+.desc_cache.json
+.desc_cache.json.tmp
