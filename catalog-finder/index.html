@@ -1,0 +1,311 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Catalog Finder</title>
+<style>
+  :root { --bg:#f6f5f2; --card:#fff; --ink:#1d1d1b; --mute:#6b6a66; --line:#e3e1db; --acc:#1f4d3a; --warn:#b3261e; }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg:#161615; --card:#201f1e; --ink:#eeeceb; --mute:#9d9a94; --line:#33312f; --acc:#7cc4a0; --warn:#ff8a80; }
+  }
+  * { box-sizing:border-box; }
+  body { margin:0; font:14px/1.4 system-ui,-apple-system,Segoe UI,sans-serif; background:var(--bg); color:var(--ink); }
+  header { position:sticky; top:0; z-index:5; background:var(--bg); border-bottom:1px solid var(--line); padding:12px 16px; }
+  h1 { font-size:16px; margin:0 0 10px; }
+  .row { display:flex; flex-wrap:wrap; gap:8px; align-items:center; margin-bottom:8px; }
+  input, select, button { font:inherit; color:var(--ink); background:var(--card); border:1px solid var(--line); border-radius:6px; padding:6px 9px; }
+  input[type=text] { min-width:160px; }
+  #url { flex:1; min-width:260px; }
+  button { cursor:pointer; }
+  button.primary { background:var(--acc); color:#fff; border-color:var(--acc); }
+  @media (prefers-color-scheme: dark) { button.primary { color:#111; } }
+  .mute { color:var(--mute); }
+  #status { padding:0 16px; min-height:20px; }
+  #status.err { color:var(--warn); }
+  details { margin:0 0 8px; } summary { cursor:pointer; color:var(--mute); }
+  details .row { margin-top:8px; }
+  label { display:flex; gap:6px; align-items:center; color:var(--mute); }
+  #grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(230px,1fr)); gap:14px; padding:16px; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:10px; overflow:hidden; display:flex; flex-direction:column; }
+  .photo { position:relative; aspect-ratio:1; background:var(--line); display:flex; align-items:center; justify-content:center; cursor:zoom-in; }
+  .photo img { width:100%; height:100%; object-fit:cover; display:block; }
+  .photo .n { position:absolute; right:6px; bottom:6px; background:#000a; color:#fff; border-radius:10px; padding:1px 7px; font-size:11px; }
+  .photo .none { color:var(--mute); font-size:12px; padding:8px; text-align:center; }
+  .info { padding:10px 12px 12px; }
+  .brand { font-weight:600; }
+  .code { font-family:ui-monospace,monospace; font-size:12px; color:var(--mute); }
+  .meta { margin-top:4px; display:flex; flex-wrap:wrap; gap:4px; }
+  .tag { background:var(--bg); border:1px solid var(--line); border-radius:4px; padding:0 6px; font-size:12px; }
+  .price { margin-top:6px; font-weight:600; }
+  #more { display:block; margin:0 auto 30px; }
+  #lb { position:fixed; inset:0; background:#000d; display:none; z-index:20; flex-direction:column; align-items:center; justify-content:center; gap:10px; }
+  #lb.on { display:flex; }
+  #lb img { max-width:92vw; max-height:78vh; }
+  #lb .thumbs { display:flex; gap:6px; max-width:92vw; overflow-x:auto; }
+  #lb .thumbs img { height:64px; width:auto; max-width:none; border:2px solid transparent; cursor:pointer; }
+  #lb .thumbs img.cur { border-color:#fff; }
+  #lb .cap { color:#fff; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Catalog Finder</h1>
+  <div class="row">
+    <input id="url" type="text" placeholder="URL del CSV de Google Sheets (Archivo → Compartir → Publicar en la web → CSV)">
+    <button class="primary" id="load">Cargar</button>
+    <span class="mute">o</span>
+    <input id="file" type="file" accept=".csv,.tsv,text/csv">
+  </div>
+  <details id="settings">
+    <summary>Ajustes (columnas e imágenes)</summary>
+    <div class="row" id="mapping"></div>
+    <div class="row">
+      <label>URL de imagen <input id="tpl" type="text" style="min-width:420px"></label>
+      <label>Tamaño <input id="size" type="text" style="min-width:70px;width:80px"></label>
+      <label>Prefijo código <input id="prefix" type="text" style="min-width:50px;width:60px" placeholder="ej. C"></label>
+      <label>Máx. fotos <input id="maxn" type="text" style="min-width:40px;width:50px"></label>
+    </div>
+  </details>
+  <div class="row" id="filters" style="display:none">
+    <input id="q" type="text" placeholder="Buscar (código, marca, tipo…)">
+    <select id="fBrand"></select><select id="fType"></select><select id="fGrade"></select><select id="fEntity"></select>
+    <select id="sort">
+      <option value="">Orden original</option><option value="brand">Marca</option>
+      <option value="pa">Precio ↑</option><option value="pd">Precio ↓</option>
+    </select>
+    <label><input type="checkbox" id="onlyImg"> solo con fotos</label>
+    <button id="export">Exportar CSV filtrado</button>
+  </div>
+</header>
+<div id="status" class="mute"></div>
+<div id="grid"></div>
+<button id="more" style="display:none">Mostrar más</button>
+<div id="lb"><div class="cap"></div><img><div class="thumbs"></div></div>
+
+<script>
+const FIELDS = {
+  id:     { label:'Código/Entity', alias:['entity','code','codigo','código','id','sku','item','item id','ref','reference','referencia'] },
+  brand:  { label:'Marca',         alias:['brand','marca'] },
+  type:   { label:'Tipo',          alias:['item type','type','tipo','category','categoria','categoría'] },
+  grade:  { label:'Grading',       alias:['grading','grade','condition','estado','condicion','condición'] },
+  price:  { label:'Precio orig.',  alias:['original price','price','precio','precio original','retail'] },
+  cur:    { label:'Moneda',        alias:['currency','moneda','curr'] },
+  entity: { label:'Entidad',       alias:['entity name','entidad','owner','seller','vendor','company'] },
+};
+const $ = id => document.getElementById(id);
+const store = {
+  get(k, d) { try { return localStorage.getItem(k) ?? d; } catch { return d; } },
+  set(k, v) { try { localStorage.setItem(k, v); } catch {} },
+};
+let rows = [], headers = [], map = {}, view = [], shown = 0;
+const PAGE = 60;
+const imgCache = new Map(); // id -> Promise<[urls]>
+
+/* ---------- CSV ---------- */
+function parseCSV(text) {
+  text = text.replace(/^﻿/, '');
+  const first = text.split(/\r?\n/, 1)[0];
+  const delim = [',', ';', '\t'].map(d => [d, first.split(d).length]).sort((a, b) => b[1] - a[1])[0][0];
+  const out = []; let row = [], f = '', q = false;
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (q) {
+      if (c === '"') { if (text[i + 1] === '"') { f += '"'; i++; } else q = false; } else f += c;
+    } else if (c === '"') q = true;
+    else if (c === delim) { row.push(f); f = ''; }
+    else if (c === '\n' || c === '\r') {
+      if (c === '\r' && text[i + 1] === '\n') i++;
+      row.push(f); f = ''; if (row.some(x => x.trim())) out.push(row); row = [];
+    } else f += c;
+  }
+  row.push(f); if (row.some(x => x.trim())) out.push(row);
+  return out;
+}
+const norm = s => (s || '').toLowerCase().trim().replace(/\s+/g, ' ');
+
+function ingest(text) {
+  const t = parseCSV(text);
+  if (t.length < 2) throw new Error('El CSV está vacío');
+  headers = t[0].map(h => h.trim());
+  rows = t.slice(1).map((r, i) => { const o = { _i: i }; headers.forEach((h, j) => o[h] = (r[j] || '').trim()); return o; });
+  const saved = JSON.parse(store.get('map', '{}'));
+  map = {};
+  for (const [k, def] of Object.entries(FIELDS)) {
+    const byAlias = headers.find(h => def.alias.includes(norm(h)));
+    map[k] = (saved[k] && headers.includes(saved[k])) ? saved[k] : (byAlias || '');
+  }
+  buildMapping(); refresh(true);
+}
+
+/* ---------- ajustes ---------- */
+function buildMapping() {
+  $('mapping').innerHTML = '';
+  for (const [k, def] of Object.entries(FIELDS)) {
+    const l = document.createElement('label'); l.textContent = def.label + ' ';
+    const s = document.createElement('select');
+    s.innerHTML = '<option value="">—</option>' + headers.map(h => `<option>${esc(h)}</option>`).join('');
+    s.value = map[k] || '';
+    s.onchange = () => { map[k] = s.value; store.set('map', JSON.stringify(map)); refresh(true); };
+    l.append(s); $('mapping').append(l);
+  }
+}
+const cfg = () => ({
+  tpl: $('tpl').value.trim(), size: $('size').value.trim() || 'medium',
+  prefix: $('prefix').value.trim(), maxn: Math.max(1, parseInt($('maxn').value) || 12),
+});
+const code = r => { const v = (r[map.id] || '').trim(); const p = cfg().prefix; return v && p && !v.toUpperCase().startsWith(p.toUpperCase()) ? p + v : v; };
+const get = (r, k) => map[k] ? (r[map[k]] || '') : '';
+const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+
+/* ---------- imágenes: 1.jpg, 2.jpg… hasta que falle ---------- */
+function probe(url) {
+  return new Promise(res => { const im = new Image(); im.onload = () => res(true); im.onerror = () => res(false); im.src = url; });
+}
+function findImages(id) {
+  const { tpl, size, maxn } = cfg(); const key = [id, tpl, size, maxn].join('|');
+  if (!imgCache.has(key)) imgCache.set(key, (async () => {
+    const urls = [];
+    for (let n = 1; n <= maxn; n++) {
+      const u = tpl.replace('{id}', encodeURIComponent(id)).replace('{size}', size).replace('{n}', n);
+      if (!(await probe(u))) break;
+      urls.push(u);
+    }
+    return urls;
+  })());
+  return imgCache.get(key);
+}
+
+/* ---------- filtros / vista ---------- */
+const priceNum = s => {
+  let v = String(s).replace(/[^\d.,-]/g, ''); if (!v) return NaN;
+  const lc = v.lastIndexOf(','), ld = v.lastIndexOf('.');
+  v = lc > ld ? v.replace(/\./g, '').replace(',', '.') : v.replace(/,/g, '');
+  return parseFloat(v);
+};
+function fillSelect(sel, label, key) {
+  const cur = sel.value;
+  const vals = [...new Set(rows.map(r => get(r, key)).filter(Boolean))].sort((a, b) => a.localeCompare(b));
+  sel.innerHTML = `<option value="">${label}</option>` + vals.map(v => `<option>${esc(v)}</option>`).join('');
+  sel.value = vals.includes(cur) ? cur : '';
+  sel.style.display = map[key] ? '' : 'none';
+}
+function refresh(rebuild) {
+  runId++;
+  $('filters').style.display = '';
+  if (rebuild) {
+    fillSelect($('fBrand'), 'Todas las marcas', 'brand'); fillSelect($('fType'), 'Todos los tipos', 'type');
+    fillSelect($('fGrade'), 'Todos los grading', 'grade'); fillSelect($('fEntity'), 'Todas las entidades', 'entity');
+  }
+  const q = norm($('q').value), fb = $('fBrand').value, ft = $('fType').value, fg = $('fGrade').value, fe = $('fEntity').value;
+  view = rows.filter(r =>
+    (!fb || get(r, 'brand') === fb) && (!ft || get(r, 'type') === ft) &&
+    (!fg || get(r, 'grade') === fg) && (!fe || get(r, 'entity') === fe) &&
+    (!q || norm(code(r) + ' ' + Object.values(r).join(' ')).includes(q)));
+  const s = $('sort').value;
+  if (s === 'brand') view.sort((a, b) => get(a, 'brand').localeCompare(get(b, 'brand')));
+  if (s === 'pa' || s === 'pd') view.sort((a, b) => ((priceNum(get(a, 'price')) || 0) - (priceNum(get(b, 'price')) || 0)) * (s === 'pa' ? 1 : -1));
+  if ($('onlyImg').checked) return onlyWithPhotos();
+  shown = 0; $('grid').innerHTML = ''; more();
+  setStatus(`${view.length} de ${rows.length} artículos` + (map.id ? '' : ' — ⚠ elige la columna de código en Ajustes para ver fotos'));
+}
+let runId = 0;
+async function onlyWithPhotos() {
+  const me = ++runId, queue = [...view], keep = new Set(); let done = 0, total = view.length;
+  $('grid').innerHTML = ''; shown = 0;
+  await Promise.all(Array.from({ length: 8 }, async () => {
+    while (queue.length && me === runId) {
+      const r = queue.shift(), id = code(r);
+      if (id && (await findImages(id)).length) keep.add(r);
+      if (++done % 25 === 0) setStatus(`Comprobando fotos… ${done}/${total}`);
+    }
+  }));
+  if (me !== runId) return;
+  view = view.filter(r => keep.has(r)); more();
+  setStatus(`${view.length} de ${total} artículos con fotos`);
+}
+function more() {
+  const slice = view.slice(shown, shown + PAGE); shown += slice.length;
+  slice.forEach(addCard);
+  $('more').style.display = shown < view.length ? '' : 'none';
+}
+const io = new IntersectionObserver(es => es.forEach(e => {
+  if (!e.isIntersecting) return; io.unobserve(e.target); loadCard(e.target);
+}), { rootMargin: '300px' });
+
+function addCard(r) {
+  const c = document.createElement('div'); c.className = 'card'; c._r = r;
+  const price = [get(r, 'price'), get(r, 'cur')].filter(Boolean).join(' ');
+  c.innerHTML = `<div class="photo"><span class="none">cargando…</span></div>
+    <div class="info"><div class="brand">${esc(get(r, 'brand') || '—')}</div>
+    <div class="code">${esc(code(r))}</div>
+    <div class="meta">${['type', 'grade', 'entity'].map(k => get(r, k) ? `<span class="tag">${esc(get(r, k))}</span>` : '').join('')}</div>
+    ${price ? `<div class="price">${esc(price)}</div>` : ''}</div>`;
+  $('grid').append(c); io.observe(c);
+}
+async function loadCard(c) {
+  const id = code(c._r), ph = c.querySelector('.photo');
+  if (!id) { ph.innerHTML = '<span class="none">sin código</span>'; return; }
+  const urls = await findImages(id); c._urls = urls;
+  if (!urls.length) { ph.innerHTML = '<span class="none">sin imágenes</span>'; ph.style.cursor = 'default'; return; }
+  ph.innerHTML = `<img src="${urls[0]}" loading="lazy"><span class="n">${urls.length}</span>`;
+  ph.onclick = () => openLB(urls, `${get(c._r, 'brand')} · ${id}`);
+}
+
+/* ---------- lightbox ---------- */
+function openLB(urls, cap, i = 0) {
+  const lb = $('lb'); lb.classList.add('on'); lb.querySelector('.cap').textContent = cap;
+  lb.querySelector('img').src = urls[i];
+  const t = lb.querySelector('.thumbs'); t.innerHTML = '';
+  urls.forEach((u, j) => { const im = new Image(); im.src = u; if (j === i) im.className = 'cur'; im.onclick = e => { e.stopPropagation(); openLB(urls, cap, j); }; t.append(im); });
+  lb._st = { urls, cap, i };
+}
+$('lb').onclick = e => { if (e.target.tagName !== 'IMG' || e.target.parentElement.id === 'lb') $('lb').classList.remove('on'); };
+document.addEventListener('keydown', e => {
+  const lb = $('lb'); if (!lb.classList.contains('on')) return;
+  const s = lb._st;
+  if (e.key === 'Escape') lb.classList.remove('on');
+  if (e.key === 'ArrowRight') openLB(s.urls, s.cap, (s.i + 1) % s.urls.length);
+  if (e.key === 'ArrowLeft') openLB(s.urls, s.cap, (s.i - 1 + s.urls.length) % s.urls.length);
+});
+
+/* ---------- carga y export ---------- */
+function setStatus(m, err) { $('status').textContent = m; $('status').className = err ? 'err' : 'mute'; }
+async function loadURL() {
+  const u = $('url').value.trim(); if (!u) return;
+  store.set('url', u); setStatus('Descargando…');
+  try {
+    const r = await fetch('/fetch?url=' + encodeURIComponent(u));
+    if (!r.ok) throw new Error(await r.text());
+    ingest(await r.text());
+  } catch (e) { setStatus('Error: ' + e.message + (location.protocol === 'file:' ? ' (abre la app con python3 server.py)' : ''), true); }
+}
+$('load').onclick = loadURL;
+$('url').onkeydown = e => { if (e.key === 'Enter') loadURL(); };
+$('file').onchange = async e => {
+  const f = e.target.files[0]; if (!f) return;
+  try { ingest(await f.text()); } catch (err) { setStatus('Error: ' + err.message, true); }
+};
+$('more').onclick = more;
+['q', 'fBrand', 'fType', 'fGrade', 'fEntity', 'sort', 'onlyImg'].forEach(id => $(id).addEventListener(id === 'q' ? 'input' : 'change', debounce(() => refresh(false), 150)));
+function debounce(f, ms) { let t; return (...a) => { clearTimeout(t); t = setTimeout(() => f(...a), ms); }; }
+['tpl', 'size', 'prefix', 'maxn'].forEach(id => $(id).addEventListener('change', () => {
+  store.set(id, $(id).value); imgCache.clear(); if (rows.length) refresh(false);
+}));
+$('export').onclick = () => {
+  const q = v => '"' + String(v).replace(/"/g, '""') + '"';
+  const csv = [headers.concat('image_1').map(q).join(',')].concat(view.map(r => {
+    const id = code(r), { tpl, size } = cfg();
+    return headers.map(h => q(r[h])).concat(q(id ? tpl.replace('{id}', id).replace('{size}', size).replace('{n}', 1) : '')).join(',');
+  })).join('\n');
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob(['﻿' + csv], { type: 'text/csv' })); a.download = 'catalogo_filtrado.csv'; a.click();
+};
+
+/* ---------- init ---------- */
+$('tpl').value = store.get('tpl', 'https://s3.amazonaws.com/storage.j-ports/photographs/{id}/{size}/{n}.jpg');
+$('size').value = store.get('size', 'medium'); $('prefix').value = store.get('prefix', ''); $('maxn').value = store.get('maxn', '12');
+$('url').value = store.get('url', '');
+</script>
+</body>
+</html>
