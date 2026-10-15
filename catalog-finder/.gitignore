@@ -1,2 +1,4 @@
 .api_key
 __pycache__/
+.photo_cache.json
+.photo_cache.json.tmp

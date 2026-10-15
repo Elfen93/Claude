@@ -21,6 +21,11 @@ Si pegas una lista con varias peticiones, la IA las ejecuta una por una (`search
 - Los topes ("under $995") se comparan con el precio que ves: **activa el botón de margen antes de buscar** si el tope es el precio final del cliente.
 - Requiere IA (clave de API); el modo básico no sabe montar listas.
 
+## Velocidad y exactitud
+- **Fotos**: el servidor local comprueba las fotos en paralelo (solo pide la cabecera, sin descargar la imagen) y guarda el resultado en `.photo_cache.json`. Sin fotos se reintenta a las 6 h; con fotos, a los 30 días. Borra ese archivo para forzar una comprobación nueva.
+- **Plantilla guardada**: una petición que ya interpretó la IA se guarda en el navegador; repetirla (mismo texto) no llama a la IA ni cuesta nada. Botón *↻ Reinterpretar con IA* para rehacerla.
+- **Precisión**: las palabras de modelo (birkin, kelly, box…) se buscan solo en nombre/descripción y al inicio de palabra, no en las notas ni en el texto de grading. Si no hay suficientes resultados, amplía a todo el texto y lo avisa. YSL = Saint Laurent, Bottega = Bottega Veneta, etc.
+
 ## Precios en USD
 Todo se convierte a USD con el tipo de cambio actual (open.er-api.com, respaldo frankfurter.dev, caché 1 h; sin conexión usa el último guardado). El botón **Aplicar 35% + ¥2.500** calcula `USD × 1,35 + 2.500 JPY en USD` (cambiable en Ajustes). Los filtros de precio y el orden usan el precio que ves.
 

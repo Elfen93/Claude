@@ -110,6 +110,7 @@
     <div class="row" style="margin-top:8px">
       <button class="primary" id="askGo">Buscar</button>
       <button id="reset">Quitar todos los filtros</button>
+      <button id="redo" style="display:none" title="Vuelve a pedirle a la IA que interprete la petición">↻ Reinterpretar con IA</button>
       <span id="aiState" class="mute"></span>
       <span id="keyBox"></span>
     </div>
@@ -220,8 +221,11 @@ function prep() { // precalcula por fila: texto de búsqueda, detalle de grading
     r._rank = m ? rankEntry(m[1])[1] : 0;
     r._letter = m ? rankEntry(m[1])[2] : '';
     r._text = strip(vals.join(' ') + ' ' + code(r));
+    r._core = strip([get(r, 'name'), get(r, 'desc')].filter(v => v && !/GRADING:/i.test(v)).join(' ')) || r._text;
   }
 }
+const rxCache = new Map();
+const hit = (text, w) => { let re = rxCache.get(w); if (!re) rxCache.set(w, re = new RegExp('(^|[^a-z0-9])' + w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))); return re.test(text); };
 const nameOf = r => [get(r, 'name'), get(r, 'desc')].find(v => v && !/GRADING:/i.test(v)) || '';
 const labels = () => { const o = {}; $('labels').value.split(/\n/).forEach(l => { const m = l.match(/^\s*(\d+)\s*=\s*(.+?)\s*$/); if (m) o[m[1]] = m[2]; }); return o; };
 const rankText = r => r._rank ? `${r._rank} - ${r._letter} RANK` + (labels()[r._rank] ? ` (${labels()[r._rank]})` : '') : '';
@@ -264,14 +268,32 @@ function setMarkupBtn() {
 
 /* ============ fotos ============ */
 const probe = url => new Promise(res => { const im = new Image(); im.onload = () => res(true); im.onerror = () => res(false); im.src = url; });
+let serverPhotos = true, photoQ = [], photoTimer = null; const photoPending = new Map();
+function photoCount(id) { // cuántas fotos tiene: pregunta al servidor local (en lote, en paralelo, con caché en disco)
+  if (!serverPhotos) return Promise.resolve(null);
+  if (photoPending.has(id)) return photoPending.get(id);
+  const pr = new Promise(res => { photoQ.push({ id, res }); }); photoPending.set(id, pr);
+  clearTimeout(photoTimer); photoTimer = setTimeout(flushPhotos, 15);
+  return pr;
+}
+async function flushPhotos() {
+  const { tpl, size, maxn } = cfg();
+  while (photoQ.length) {
+    const batch = photoQ.splice(0, 150);
+    try {
+      const r = await fetch('/photos?' + new URLSearchParams({ tpl, size, maxn, ids: batch.map(x => x.id).join(',') }), { headers: { 'X-Catalog-Finder': '1' } });
+      if (!r.ok) throw new Error(await r.text());
+      const { counts } = await r.json(); batch.forEach(x => x.res(counts[x.id] ?? null));
+    } catch (e) { serverPhotos = false; batch.forEach(x => x.res(null)); photoQ.splice(0).forEach(x => x.res(null)); }
+  }
+}
 function findImages(id) {
-  const { tpl, size, maxn } = cfg(), key = [id, tpl, size, maxn].join('|');
+  const { tpl, size, maxn } = cfg(), key = [id, tpl, size, maxn].join('|'), url = n => tpl.replace('{id}', encodeURIComponent(id)).replace('{size}', size).replace('{n}', n);
   if (!imgCache.has(key)) imgCache.set(key, (async () => {
-    const urls = [];
-    for (let n = 1; n <= maxn; n++) {
-      const u = tpl.replace('{id}', encodeURIComponent(id)).replace('{size}', size).replace('{n}', n);
-      if (!(await probe(u))) break; urls.push(u);
-    }
+    const n = await photoCount(id);
+    if (n != null) return Array.from({ length: n }, (_, i) => url(i + 1));
+    const urls = []; // respaldo: comprobar desde el navegador, una a una
+    for (let i = 1; i <= maxn; i++) { if (!(await probe(url(i)))) break; urls.push(url(i)); }
     return urls;
   })());
   return imgCache.get(key);
@@ -318,9 +340,9 @@ $('loaded').onclick = () => { if (rows.length) $('loadBox').style.display = $('l
 $('loaded').style.cursor = 'pointer'; $('loaded').title = 'Clic para cambiar de hoja';
 
 /* ============ filtros ============ */
-const F = { catalog: null, q: '', brands: new Set(), entities: new Set(), min: null, max: null, rank: 0, groups: [], exclude: [], sort: '', onlyImg: false };
+const F = { loose: false, catalog: null, q: '', brands: new Set(), entities: new Set(), min: null, max: null, rank: 0, groups: [], exclude: [], sort: '', onlyImg: false };
 function resetFilters(redraw = true) {
-  Object.assign(F, { catalog: null, q: '', min: null, max: null, rank: 0, groups: [], exclude: [], sort: '', onlyImg: false }); F.brands.clear(); F.entities.clear();
+  Object.assign(F, { loose: false, catalog: null, q: '', min: null, max: null, rank: 0, groups: [], exclude: [], sort: '', onlyImg: false }); F.brands.clear(); F.entities.clear();
   $('q').value = ''; $('pmin').value = $('pmax').value = ''; $('frank').value = '0'; $('sort').value = ''; $('onlyImg').checked = false;
   if (redraw) refresh(false);
 }
@@ -331,8 +353,9 @@ function matches(r, skip, f = F) {
   if (f.rank && !(r._rank && r._rank <= f.rank)) return false;
   if (f.min != null || f.max != null) { const p = finalOf(r); if (isNaN(p) || (f.min != null && p < f.min) || (f.max != null && p > f.max)) return false; }
   if (f.q && !r._text.includes(f.q)) return false;
-  for (const g of f.groups) if (!g.some(w => r._text.includes(w))) return false;
-  for (const w of f.exclude) if (r._text.includes(w)) return false;
+  const t = f.loose ? r._text : r._core;
+  for (const g of f.groups) if (!g.some(w => hit(t, w))) return false;
+  for (const w of f.exclude) if (hit(r._text, w)) return false;
   return true;
 }
 function chips(el, facet, set, max) {
@@ -364,6 +387,7 @@ function refresh(rebuild) {
   $('pmin').value = F.min ?? ''; $('pmax').value = F.max ?? ''; $('frank').value = String(F.rank);
   facets(); priceChips();
   view = rows.filter(r => matches(r));
+  if (!view.length && F.groups.length && !F.loose) { F.loose = true; view = rows.filter(r => matches(r)); if (!view.length) F.loose = false; }
   const s = F.sort;
   if (s === 'brand') view.sort((a, b) => get(a, 'brand').localeCompare(get(b, 'brand')));
   if (s === 'pa' || s === 'pd') view.sort((a, b) => ((finalOf(a) || 0) - (finalOf(b) || 0)) * (s === 'pa' ? 1 : -1));
@@ -377,7 +401,7 @@ function stats() {
   const nograde = view.filter(r => !r._rank).length;
   $('stats').innerHTML = `<span><b>${view.length.toLocaleString('en-US')}</b> resultados de ${rows.length.toLocaleString('en-US')}</span>` +
     (ps.length ? `<span class="mute">precio medio <b style="font-size:inherit">${fmtUSD(sum / ps.length)}</b> · de ${fmtUSD(Math.min(...ps))} a ${fmtUSD(Math.max(...ps))}</span>` : '') +
-    (F.rank && nograde ? '' : '');
+    (F.loose ? '<span class="mute">palabras buscadas también en notas (no había coincidencias en el nombre)</span>' : '');
   setStatus('');
 }
 async function onlyWithPhotos() {
@@ -502,35 +526,50 @@ function describe(s) {
   if (s.select_count) p.push(`seleccionar ${s.select_count}${s.diversify_brands ? ' variando marcas' : ''}`);
   return p.length ? p.join(' · ') : 'no he entendido ningún filtro';
 }
+const BRAND_SYN = [['ysl', 'saint laurent', 'yves saint laurent'], ['bottega', 'bottega veneta'], ['celine', 'celine paris'], ['lv', 'louis vuitton'], ['hermes', 'hermes paris'], ['the row', 'therow'], ['dg', 'dolce & gabbana', 'dolce gabbana']];
+function canonList(list, key) {
+  const idx = new Map(rows.map(r => [strip(get(r, key)), get(r, key)]));
+  return (list || []).map(x => { const k = strip(x); if (idx.has(k)) return idx.get(k); const g = BRAND_SYN.find(g => g.includes(k)); return g && g.map(z => idx.get(z)).find(Boolean); }).filter(Boolean);
+}
 async function runSearches(list, said) {
-  const canon = (l, key) => { const idx = new Map(rows.map(r => [strip(get(r, key)), get(r, key)])); return (l || []).map(x => idx.get(strip(x))).filter(Boolean); };
   rows.forEach(r => { delete r._tag; delete r._ord; });
   resetFilters(false);
-  const picked = [], seen = new Set(), report = [], rep = $('reply'); rep.style.display = '';
-  for (const [si, s] of list.entries()) {
-    rep.textContent = `Buscando ${si + 1}/${list.length}: ${s.label || ''}…`;
-    const f = { catalog: null, q: '', brands: new Set(canon(s.brands, 'brand')), entities: new Set(canon(s.entities, 'entity')),
+  const rep = $('reply'); rep.style.display = ''; rep.textContent = 'Preparando búsquedas…';
+  const plan = list.map((s, si) => {
+    const f = { loose: false, catalog: null, q: '', brands: new Set(canonList(s.brands, 'brand')), entities: new Set(canonList(s.entities, 'entity')),
       groups: (s.keyword_groups || []).map(g => g.map(strip).filter(Boolean)).filter(g => g.length), exclude: (s.exclude_keywords || []).map(strip).filter(Boolean),
       min: s.min_price ?? null, max: s.max_price ?? null, rank: s.worst_rank_allowed || 0 };
-    const pref = (s.prefer_keywords || []).map(strip).filter(Boolean), sc = r => pref.reduce((n, w) => n + (r._text.includes(w) ? 1 : 0), 0);
-    const cand = rows.filter(r => code(r) && !seen.has(code(r)) && matches(r, null, f))
-      .sort((a, b) => sc(b) - sc(a) || (a._rank || 99) - (b._rank || 99));
-    const want = s.count || 6; let got = 0;
-    for (let i = 0; i < cand.length && got < want; i += 16) {
-      const batch = cand.slice(i, i + 16), ok = await Promise.all(batch.map(async r => (await findImages(code(r))).length > 0));
-      batch.forEach((r, j) => { if (ok[j] && got < want) { got++; seen.add(code(r)); r._tag = s.label || `búsqueda ${si + 1}`; r._ord = picked.length; picked.push(r); } });
+    const pref = (s.prefer_keywords || []).map(strip).filter(Boolean), sc = r => pref.reduce((n, w) => n + (hit(r._text, w) ? 1 : 0), 0);
+    const cmp = (a, b) => sc(b) - sc(a) || (a._rank || 99) - (b._rank || 99);
+    const strict = rows.filter(r => code(r) && matches(r, null, f)).sort(cmp), want = s.count || 6;
+    let loose = [];
+    if (strict.length < want && f.groups.length) { const ss = new Set(strict); loose = rows.filter(r => code(r) && !ss.has(r) && matches(r, null, { ...f, loose: true })).sort(cmp); }
+    return { s, si, want, strict, loose, label: s.label || `búsqueda ${si + 1}` };
+  });
+  // comprobar fotos de los mejores candidatos de TODAS las líneas a la vez (el servidor lo hace en paralelo)
+  const ids = [...new Set(plan.flatMap(p => [...p.strict.slice(0, p.want * 2), ...p.loose.slice(0, p.want * 2)]).map(code))];
+  let done = 0; const t0 = Date.now();
+  await Promise.all(ids.map(async id => { await findImages(id); if (++done % 25 === 0) rep.textContent = `Comprobando fotos… ${done}/${ids.length}`; }));
+  const picked = [], seen = new Set(), report = [];
+  for (const p of plan) {
+    let got = 0, viaLoose = 0;
+    for (const [pool_, isLoose] of [[p.strict, false], [p.loose, true]]) {
+      for (let i = 0; i < pool_.length && got < p.want; i += 16) {
+        const batch = pool_.slice(i, i + 16).filter(r => !seen.has(code(r))), ok = await Promise.all(batch.map(async r => (await findImages(code(r))).length > 0));
+        batch.forEach((r, j) => { if (ok[j] && got < p.want) { got++; if (isLoose) viaLoose++; seen.add(code(r)); r._tag = p.label; r._ord = picked.length; picked.push(r); } });
+      }
     }
-    report.push(`${got >= want ? '✓' : got ? '⚠' : '✗'} ${s.label || 'búsqueda ' + (si + 1)}: ${got}/${want}${cand.length < want ? ` (solo ${cand.length} candidatos)` : ''}`);
+    const cands = p.strict.length + p.loose.length;
+    report.push(`${got >= p.want ? '✓' : got ? '⚠' : '✗'} ${p.label}: ${got}/${p.want}${got < p.want ? ` (${cands} candidatos${cands > got ? ', el resto sin fotos o ya elegidos en otra línea' : ''})` : ''}${viaLoose ? ` · ${viaLoose} encontrados solo en notas` : ''}`);
   }
   F.catalog = new Set(picked); selected.clear(); picked.forEach(r => selected.add(code(r))); saveSel();
   refresh(false); syncChecks();
-  rep.textContent = (said ? said + '\n' : '') + `Catálogo montado: ${picked.length} artículos, todos seleccionados.\n` + report.join('\n');
+  rep.textContent = (said ? said + '\n' : '') + `Catálogo montado en ${Math.round((Date.now() - t0) / 1000)} s: ${picked.length} artículos, todos seleccionados.\n` + report.join('\n');
 }
 async function applySpec(s, said) {
   if (s.searches?.length) return runSearches(s.searches, said);
-  const canon = (list, key) => { const idx = new Map(rows.map(r => [strip(get(r, key)), get(r, key)])); return (list || []).map(x => idx.get(strip(x))).filter(Boolean); };
   resetFilters(false);
-  canon(s.brands, 'brand').forEach(b => F.brands.add(b)); canon(s.entities, 'entity').forEach(b => F.entities.add(b));
+  canonList(s.brands, 'brand').forEach(b => F.brands.add(b)); canonList(s.entities, 'entity').forEach(b => F.entities.add(b));
   F.groups = (s.keyword_groups || []).map(g => g.map(strip).filter(Boolean)).filter(g => g.length);
   F.exclude = (s.exclude_keywords || []).map(strip).filter(Boolean);
   F.min = s.min_price ?? null; F.max = s.max_price ?? null; F.rank = s.worst_rank_allowed || 0;
@@ -539,13 +578,18 @@ async function applySpec(s, said) {
   const rep = $('reply'); rep.style.display = ''; rep.textContent = (said ? said + ' — ' : '') + `${describe(s)} → ${view.length} resultados`;
   if (s.select_count > 0) { const n = await pickFirst(s.select_count, !!s.diversify_brands, true); rep.textContent += ` · ${n} seleccionados`; }
 }
-let aiOn = false;
+let aiOn = false, lastPlan = '';
+const planKey = t => 'plan:' + [...strip(t)].reduce((h, c) => (Math.imul(h, 31) + c.charCodeAt(0)) | 0, 7);
+
 async function askGo() {
   const text = $('ask').value.trim(); if (!text || !rows.length) return;
   const multi = text.split(/\n/).filter(l => l.trim()).length >= 3;
   if (multi && !aiOn) { const r = $('reply'); r.style.display = ''; r.textContent = 'Esta petición tiene varias líneas y solo la IA sabe montarla. Pulsa "Activar IA…" y pega tu clave.'; return; }
   $('askGo').disabled = true; $('askGo').textContent = 'Pensando…';
   try {
+    const pk = planKey(text), saved = store.get(pk, '');
+    if (saved) { lastPlan = pk; $('redo').style.display = ''; const sp = JSON.parse(saved); return await applySpec(sp, (sp.reply || '') + ' (plantilla guardada, sin IA)'); }
+    $('redo').style.display = 'none'; lastPlan = '';
     if (aiOn) {
       try {
         const cnt = new Map(); rows.forEach(r => { const b = get(r, 'brand'); if (b) cnt.set(b, (cnt.get(b) || 0) + 1); });
@@ -553,13 +597,14 @@ async function askGo() {
         const r = await fetch('/ai', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Catalog-Finder': '1' },
           body: JSON.stringify({ query: text, brands: [...cnt].sort((a, b) => b[1] - a[1]).slice(0, 400).map(([b, n]) => `${b} (${n})`), entities: ents, total: rows.length }) });
         if (!r.ok) throw new Error(await r.text());
-        const s = await r.json(); return await applySpec(s, s.reply);
+        const s = await r.json(); store.set(pk, JSON.stringify(s)); return await applySpec(s, s.reply);
       } catch (e) { setStatus('La IA falló (' + e.message.slice(0, 160) + ')' + (multi ? '' : '. Uso el modo básico.'), true); if (multi) return; }
     }
     await applySpec(basicParse(text), '');
   } finally { $('askGo').disabled = false; $('askGo').textContent = 'Buscar'; }
 }
 $('askGo').onclick = askGo;
+$('redo').onclick = () => { if (lastPlan) store.set(lastPlan, ''); askGo(); };
 $('ask').onkeydown = e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); askGo(); } };
 async function aiStatus() {
   try { aiOn = (await (await fetch('/ai-status')).json()).configured; } catch { aiOn = false; }
@@ -637,7 +682,7 @@ $('exportX').onclick = exportXlsx; $('exportCsv').onclick = exportCsv;
 $('markup').onclick = () => { markupOn = !markupOn; store.set('markupOn', markupOn ? '1' : '0'); setMarkupBtn(); if (rows.length) refresh(false); };
 ['pct', 'fee'].forEach(id => bind(id, 'change', () => { store.set(id, $(id).value); setMarkupBtn(); if (rows.length) refresh(false); }));
 ['labels', 'exp'].forEach(id => bind(id, 'change', () => store.set(id, $(id).value)));
-['tpl', 'size', 'prefix', 'maxn'].forEach(id => bind(id, 'change', () => { store.set(id, $(id).value); imgCache.clear(); if (rows.length) { prep(); refresh(false); } }));
+['tpl', 'size', 'prefix', 'maxn'].forEach(id => bind(id, 'change', () => { store.set(id, $(id).value); imgCache.clear(); photoPending.clear(); if (rows.length) { prep(); refresh(false); } }));
 $('tpl').value = store.get('tpl', 'https://s3.amazonaws.com/storage.j-ports/photographs/{id}/{size}/{n}.jpg');
 $('size').value = store.get('size', 'medium'); $('prefix').value = store.get('prefix', ''); $('maxn').value = store.get('maxn', '13');
 $('exp').value = store.get('exp', 'https://s3.amazonaws.com/storage.j-ports/photographs/{id}/{n}.jpg');

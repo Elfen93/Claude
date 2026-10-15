@@ -7,10 +7,96 @@ Uso:  python3 server.py [puerto]
 Sirve index.html y un proxy /fetch?url=... para descargar el CSV de Google Sheets
 (el navegador no puede hacerlo directamente por CORS).
 """
-import http.server, json, os, ssl, sys, time, urllib.error, urllib.parse, urllib.request, webbrowser
+import concurrent.futures, http.client, http.server, json, os, re, ssl, sys, threading, time, urllib.error, urllib.parse, urllib.request, webbrowser
 
 ROOT = os.path.dirname(os.path.abspath(__file__))
 KEY_FILE = os.path.join(ROOT, ".api_key")
+CACHE_FILE = os.path.join(ROOT, ".photo_cache.json")
+PHOTO_HOSTS = tuple(os.environ.get("CATALOG_PHOTO_HOSTS", "s3.amazonaws.com").split(","))
+TTL_ZERO, TTL_POS = 6 * 3600, 30 * 86400  # sin fotos: reintentar a las 6 h; con fotos: 30 dias
+_cache_lock = threading.Lock()
+_ids_pool = concurrent.futures.ThreadPoolExecutor(16)
+_pic_pool = concurrent.futures.ThreadPoolExecutor(48)
+try:
+    with open(CACHE_FILE) as _f:
+        _cache = json.load(_f)
+except Exception:  # noqa: BLE001
+    _cache = {}
+
+
+_ssl_ctx = ssl.create_default_context()
+_tls = threading.local()
+
+
+def _head_status(url):
+    """HEAD reutilizando la conexion de cada hilo (evita repetir el handshake TLS en cada foto)."""
+    u = urllib.parse.urlsplit(url)
+    key, path = (u.scheme, u.netloc), u.path + ("?" + u.query if u.query else "")
+    conns = _tls.__dict__.setdefault("conns", {})
+    for attempt in (0, 1):
+        c = conns.get(key)
+        if c is None:
+            c = conns[key] = (http.client.HTTPSConnection(u.netloc, timeout=15, context=_ssl_ctx) if u.scheme == "https"
+                              else http.client.HTTPConnection(u.netloc, timeout=15))
+        try:
+            c.request("HEAD", path, headers={"User-Agent": "catalog-finder"})
+            r = c.getresponse()
+            r.read()
+            if (r.getheader("Connection") or "").lower() == "close":
+                c.close()
+                conns.pop(key, None)
+            return r.status
+        except (http.client.HTTPException, OSError):
+            c.close()
+            conns.pop(key, None)
+            if attempt:
+                raise
+
+
+def _exists(url):
+    """True/False si la foto existe (HEAD, sin descargarla). Lanza si el fallo no es concluyente."""
+    st = _head_status(url)
+    if st == 200:
+        return True
+    if st in (403, 404):  # S3 devuelve 403 para claves que no existen
+        return False
+    raise OSError(f"HTTP {st}")
+
+
+def count_photos(tpl, size, pid, maxn):
+    """Cuantas fotos consecutivas 1..maxn existen. None si no se pudo comprobar."""
+    key = f"{tpl}|{size}|{maxn}|{pid}"
+    now = time.time()
+    with _cache_lock:
+        hit = _cache.get(key)
+    if hit and now - hit["t"] < (TTL_POS if hit["n"] else TTL_ZERO):
+        return hit["n"]
+    url = lambda n: tpl.replace("{id}", urllib.parse.quote(pid)).replace("{size}", size).replace("{n}", str(n))  # noqa: E731
+    try:
+        if not _exists(url(1)):
+            n = 0
+        else:
+            flags = list(_pic_pool.map(lambda i: _exists(url(i)), range(2, maxn + 1)))
+            n = 1
+            for ok in flags:
+                if not ok:
+                    break
+                n += 1
+    except Exception:  # noqa: BLE001
+        return None
+    with _cache_lock:
+        _cache[key] = {"n": n, "t": now}
+    return n
+
+
+def save_cache():
+    with _cache_lock:
+        tmp = CACHE_FILE + ".tmp"
+        with open(tmp, "w") as f:
+            json.dump(_cache, f)
+        os.replace(tmp, CACHE_FILE)
+
+
 API_BASE = os.environ.get("ANTHROPIC_BASE_URL", "https://api.anthropic.com")
 MODEL = os.environ.get("CATALOG_MODEL", "claude-haiku-5-5")
 SYSTEM = """Eres el asistente de un catalogo de articulos de lujo de segunda mano (bolsos, carteras, accesorios).
@@ -100,6 +186,20 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             return self._json({"configured": bool(api_key())})
         return self._ai(data)
 
+    def _photos(self, q):
+        if not self._local_only():
+            return self._err(403, "Prohibido")
+        tpl = q.get("tpl", [""])[0]
+        size = re.sub(r"[^A-Za-z0-9_-]", "", q.get("size", ["medium"])[0]) or "medium"
+        maxn = max(1, min(30, int(q.get("maxn", ["13"])[0] or 13)))
+        host = urllib.parse.urlparse(tpl).hostname or ""
+        if host not in PHOTO_HOSTS or "{id}" not in tpl or "{n}" not in tpl:
+            return self._err(400, "Plantilla de foto no permitida (solo " + ", ".join(PHOTO_HOSTS) + ")")
+        ids = [i for i in q.get("ids", [""])[0].split(",") if re.fullmatch(r"[A-Za-z0-9_-]{1,40}", i)][:300]
+        counts = dict(zip(ids, _ids_pool.map(lambda i: count_photos(tpl, size, i, maxn), ids)))
+        save_cache()
+        return self._json({"counts": counts})
+
     def _json(self, obj, code=200):
         body = json.dumps(obj).encode()
         self.send_response(code)
@@ -141,6 +241,8 @@ class Handler(http.server.SimpleHTTPRequestHandler):
 
     def do_GET(self):
         u = urllib.parse.urlparse(self.path)
+        if u.path == "/photos":
+            return self._photos(urllib.parse.parse_qs(u.query))
         if u.path == "/ai-status":
             return self._json({"configured": bool(api_key())})
         if u.path == "/rates":
