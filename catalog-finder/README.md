@@ -21,6 +21,13 @@ Si pegas una lista con varias peticiones, la IA las ejecuta una por una (`search
 - Los topes ("under $995") se comparan con el precio que ves: **activa el botón de margen antes de buscar** si el tope es el precio final del cliente.
 - Requiere IA (clave de API); el modo básico no sabe montar listas.
 
+## Descargar exactamente lo que quieres
+- **La selección no se pierde** al filtrar ni al quitar filtros (se guarda por CTag). La barra inferior dice cuántos seleccionados ves y cuántos quedan fuera de los filtros.
+- **Catálogo montado**: tras una búsqueda múltiple, el botón 🎯 *Dentro del catálogo montado (N)* mantiene la vista limitada a esos N; *Quitar filtros* no lo tira. Con él activo puedes filtrar **dentro** del catálogo por entity, marca, precio o estado. Pulsa el botón para salir de él y de nuevo para volver.
+- **Ver solo seleccionados**: revisa y quita casillas antes de descargar.
+- **Al pulsar Descargar**, si hay seleccionados fuera de tu vista, pregunta: *los N seleccionados* o *solo los M seleccionados que veo* (así cualquier filtro sirve para sacar una parte). Sin selección, ofrece descargar los resultados que ves.
+- **Dividir por** Entity, Marca, Estado o Rango de precio (menos de 200, 200-500, 500-1000, 1000-2500, más de 2500; precio que ves, con o sin margen): crea **una pestaña por grupo en un solo archivo**, o **un archivo por grupo**. Las descripciones y fotos se calculan una sola vez. La división solo existe para Excel, no para CSV.
+
 ## Velocidad y exactitud
 - **Fotos**: el servidor local comprueba las fotos en paralelo (solo pide la cabecera, sin descargar la imagen) y guarda el resultado en `.photo_cache.json`. Sin fotos se reintenta a las 6 h; con fotos, a los 30 días. Borra ese archivo para forzar una comprobación nueva.
 - **Plantilla guardada**: una petición que ya interpretó la IA se guarda en el navegador; repetirla (mismo texto) no llama a la IA ni cuesta nada. Botón *↻ Reinterpretar con IA* para rehacerla.

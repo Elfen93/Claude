@@ -57,6 +57,10 @@
   #bar { position:fixed; left:0; right:0; bottom:0; z-index:10; background:var(--card); border-top:1px solid var(--line); padding:10px 16px; display:flex; flex-wrap:wrap; gap:10px; align-items:center; }
   #bar .sp { margin-right:auto; }
   #bar button.primary { padding:9px 18px; font-size:15px; }
+  .overlay { position:fixed; inset:0; background:#0008; z-index:30; display:flex; align-items:center; justify-content:center; padding:16px; }
+  .box { background:var(--card); border-radius:12px; padding:18px 20px; max-width:460px; }
+  .box p { margin:0 0 14px; white-space:pre-line; }
+  #seeSel { color:var(--acc); cursor:pointer; text-decoration:underline; background:none; border:none; padding:0; }
   #lb { position:fixed; inset:0; background:#000d; display:none; z-index:20; flex-direction:column; align-items:center; justify-content:center; gap:10px; }
   #lb.on { display:flex; }
   #lb img { max-width:92vw; max-height:78vh; }
@@ -147,6 +151,7 @@
       <button id="selFirst">Seleccionar</button>
       <label><input type="checkbox" id="selDiv"> variando marcas</label>
       <button id="selNone">Limpiar selección</button>
+      <label><input type="checkbox" id="onlySel"> ver solo seleccionados</label>
     </div>
     <div id="status" class="mute"></div>
     <div id="grid" style="margin-top:10px"></div>
@@ -155,10 +160,13 @@
 </div>
 
 <div id="bar" style="display:none">
-  <span class="sp"><b id="selN">0</b> seleccionados · Buy Now <b id="bnMode"></b></span>
+  <span class="sp"><b id="selN">0</b> seleccionados<span id="selView" class="mute"></span> · Buy Now <b id="bnMode"></b> · <button id="seeSel" title="Muestra solo los artículos seleccionados para revisarlos">ver solo seleccionados</button></span>
+  <label title="Parte los artículos descargados en grupos">Dividir por <select id="splitBy"><option value="">— (una sola hoja)</option><option value="entity">Entity</option><option value="brand">Marca</option><option value="grade">Estado</option><option value="price">Rango de precio</option></select></label>
+  <label id="splitOutL" style="display:none"><select id="splitOut"><option value="tabs">en pestañas (1 archivo)</option><option value="files">en archivos separados</option></select></label>
   <button id="exportCsv">CSV</button>
   <button id="exportX" class="primary">Descargar Excel (.xlsx)</button>
 </div>
+<div id="dlg" class="overlay" style="display:none"><div class="box"><p id="dlgMsg"></p><div class="row" id="dlgBtns"></div></div></div>
 <div id="lb"><div class="cap"></div><img><div class="thumbs"></div></div>
 
 <script src="vendor/xlsx.bundle.js"></script>
@@ -183,7 +191,7 @@ const store = {
 const strip = s => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/\s+/g, ' ').trim();
 const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const debounce = (f, ms) => { let t; return (...a) => { clearTimeout(t); t = setTimeout(() => f(...a), ms); }; };
-let rows = [], headers = [], map = {}, view = [], shown = 0, runId = 0;
+let lastCatalog = null, rows = [], headers = [], map = {}, view = [], shown = 0, runId = 0;
 const PAGE = 60, imgCache = new Map();
 const get = (r, k) => map[k] ? (r[map[k]] || '') : '';
 const cfg = () => ({ tpl: $('tpl').value.trim(), size: $('size').value.trim() || 'medium', prefix: $('prefix').value.trim(), maxn: Math.max(1, parseInt($('maxn').value) || 13) });
@@ -312,7 +320,8 @@ function ingest(text) {
     const byAlias = headers.find(h => def.alias.includes(strip(h)));
     map[k] = (saved[k] && headers.includes(saved[k])) ? saved[k] : (byAlias || '');
   }
-  buildMapping(); prep();
+  lastCatalog = null; buildMapping(); prep();
+  { const have = new Set(rows.map(code)); [...selected].forEach(c => { if (!have.has(c)) selected.delete(c); }); }
   $('s2').style.display = $('s3').style.display = $('bar').style.display = '';
   $('loaded').textContent = `✓ ${rows.length.toLocaleString('en-US')} artículos cargados`;
   $('loadBox').style.display = 'none'; resetFilters(false); refresh(true);
@@ -341,14 +350,16 @@ $('loaded').onclick = () => { if (rows.length) $('loadBox').style.display = $('l
 $('loaded').style.cursor = 'pointer'; $('loaded').title = 'Clic para cambiar de hoja';
 
 /* ============ filtros ============ */
-const F = { loose: false, catalog: null, q: '', brands: new Set(), entities: new Set(), min: null, max: null, rank: 0, groups: [], exclude: [], sort: '', onlyImg: false };
-function resetFilters(redraw = true) {
-  Object.assign(F, { loose: false, catalog: null, q: '', min: null, max: null, rank: 0, groups: [], exclude: [], sort: '', onlyImg: false }); F.brands.clear(); F.entities.clear();
-  $('q').value = ''; $('pmin').value = $('pmax').value = ''; $('frank').value = '0'; $('sort').value = ''; $('onlyImg').checked = false;
+const F = { onlySel: false, loose: false, catalog: null, q: '', brands: new Set(), entities: new Set(), min: null, max: null, rank: 0, groups: [], exclude: [], sort: '', onlyImg: false };
+function resetFilters(redraw = true, keepCatalog = false) {
+  const cat = F.catalog;
+  Object.assign(F, { onlySel: false, loose: false, catalog: keepCatalog ? cat : null, q: '', min: null, max: null, rank: 0, groups: [], exclude: [], sort: '', onlyImg: false }); F.brands.clear(); F.entities.clear();
+  $('q').value = ''; $('pmin').value = $('pmax').value = ''; $('frank').value = '0'; $('sort').value = ''; $('onlyImg').checked = false; $('onlySel').checked = false;
   if (redraw) refresh(false);
 }
 function matches(r, skip, f = F) {
   if (f.catalog && !f.catalog.has(r)) return false;
+  if (f.onlySel && !selected.has(code(r))) return false;
   if (skip !== 'brands' && f.brands.size && !f.brands.has(get(r, 'brand'))) return false;
   if (skip !== 'entities' && f.entities.size && !f.entities.has(get(r, 'entity'))) return false;
   if (f.rank && !(r._rank && r._rank <= f.rank)) return false;
@@ -403,7 +414,12 @@ function stats() {
   $('stats').innerHTML = `<span><b>${view.length.toLocaleString('en-US')}</b> resultados de ${rows.length.toLocaleString('en-US')}</span>` +
     (ps.length ? `<span class="mute">precio medio <b style="font-size:inherit">${fmtUSD(sum / ps.length)}</b> · de ${fmtUSD(Math.min(...ps))} a ${fmtUSD(Math.max(...ps))}</span>` : '') +
     (F.loose ? '<span class="mute">palabras buscadas también en notas (no había coincidencias en el nombre)</span>' : '');
-  setStatus('');
+  if (F.catalog || lastCatalog) {
+    const on = !!F.catalog, c = document.createElement('button'); c.className = 'chip' + (on ? ' on' : '');
+    c.textContent = on ? `🎯 Dentro del catálogo montado (${F.catalog.size}) ✕ quitar` : `🎯 Volver al catálogo montado (${lastCatalog.size})`;
+    c.onclick = () => { F.catalog = on ? null : lastCatalog; refresh(false); }; $('stats').append(c);
+  }
+  updateBar(); setStatus('');
 }
 async function onlyWithPhotos() {
   const me = runId, items = [...view], keep = new Set(); let done = 0;
@@ -420,7 +436,7 @@ bind('onlyImg', 'change', () => { F.onlyImg = $('onlyImg').checked; refresh(fals
 bind('frank', 'change', () => { F.rank = +$('frank').value; refresh(false); });
 ['pmin', 'pmax'].forEach(id => bind(id, 'change', () => { const v = k => { const n = parseFloat($(k).value.replace(',', '.')); return isNaN(n) ? null : n; }; F.min = v('pmin'); F.max = v('pmax'); refresh(false); }));
 bind('bAdd', 'change', () => { const v = strip($('bAdd').value), hit = rows.map(r => get(r, 'brand')).find(b => strip(b) === v); if (hit) { F.brands.add(hit); $('bAdd').value = ''; refresh(false); } });
-$('reset').onclick = () => { $('reply').style.display = 'none'; resetFilters(); };
+$('reset').onclick = () => resetFilters(true, true); // quita los filtros pero conserva el catálogo montado y la selección
 
 /* ============ tarjetas ============ */
 const io = new IntersectionObserver(es => es.forEach(e => { if (e.isIntersecting) { io.unobserve(e.target); loadCard(e.target); } }), { rootMargin: '300px' });
@@ -460,7 +476,14 @@ document.addEventListener('keydown', e => {
 
 /* ============ selección ============ */
 const selected = new Set(JSON.parse(store.get('selected', '[]')));
-function saveSel() { store.set('selected', JSON.stringify([...selected])); $('selN').textContent = selected.size; }
+function saveSel() { store.set('selected', JSON.stringify([...selected])); updateBar(); }
+function selCounts() { const inView = view.filter(r => selected.has(code(r))).length; return { inView, hidden: selected.size - inView }; }
+function updateBar() {
+  $('selN').textContent = selected.size;
+  const { inView, hidden } = selCounts();
+  $('selView').textContent = selected.size && hidden ? ` (${inView} en esta vista · ${hidden} fuera de los filtros)` : '';
+  $('seeSel').textContent = F.onlySel ? 'ver todos los resultados' : 'ver solo seleccionados';
+}
 function toggle(k, on) { if (!k) return; on ? selected.add(k) : selected.delete(k); saveSel(); }
 function syncChecks() { document.querySelectorAll('.card').forEach(c => { const on = selected.has(code(c._r)); c.classList.toggle('sel', on); c.querySelector('.pick').checked = on; }); }
 function diversify(list) {
@@ -480,6 +503,9 @@ async function pickFirst(n, div, replace) {
 }
 $('selAll').onclick = () => { view.forEach(r => code(r) && selected.add(code(r))); saveSel(); syncChecks(); setStatus(`Seleccionados ${view.length} resultados`); };
 $('selFirst').onclick = () => pickFirst(Math.max(1, parseInt($('selN1').value) || 30), $('selDiv').checked, false);
+function setOnlySel(on) { F.onlySel = on; $('onlySel').checked = on; refresh(false); }
+$('onlySel').onchange = () => setOnlySel($('onlySel').checked);
+$('seeSel').onclick = () => setOnlySel(!F.onlySel);
 $('selNone').onclick = () => { selected.clear(); saveSel(); syncChecks(); };
 
 /* ============ asistente (IA o modo básico) ============ */
@@ -563,7 +589,7 @@ async function runSearches(list, said) {
     const cands = p.strict.length + p.loose.length;
     report.push(`${got >= p.want ? '✓' : got ? '⚠' : '✗'} ${p.label}: ${got}/${p.want}${got < p.want ? ` (${cands} candidatos${cands > got ? ', el resto sin fotos o ya elegidos en otra línea' : ''})` : ''}${viaLoose ? ` · ${viaLoose} encontrados solo en notas` : ''}`);
   }
-  F.catalog = new Set(picked); selected.clear(); picked.forEach(r => selected.add(code(r))); saveSel();
+  F.catalog = lastCatalog = new Set(picked); selected.clear(); picked.forEach(r => selected.add(code(r))); saveSel();
   refresh(false); syncChecks();
   rep.textContent = (said ? said + '\n' : '') + `Catálogo montado en ${Math.round((Date.now() - t0) / 1000)} s: ${picked.length} artículos, todos seleccionados.\n` + report.join('\n');
 }
@@ -681,10 +707,31 @@ async function describeRows(sel, urls) { // → { text: Map(texto→descripción
 /* ============ export customer ============ */
 const NPIC = 13;
 const photoUrl = (id, n) => $('exp').value.trim().replace('{id}', id).replace('{n}', n);
-async function buildCustomer() {
-  if (!selected.size) throw new Error('Selecciona artículos primero');
+function ask(msg, buttons) { // → valor del botón pulsado (o null)
+  return new Promise(res => {
+    $('dlgMsg').textContent = msg; const box = $('dlgBtns'); box.innerHTML = '';
+    buttons.forEach(([label, val, primary]) => { const b = document.createElement('button'); b.textContent = label; if (primary) b.className = 'primary'; b.onclick = () => { $('dlg').style.display = 'none'; res(val); }; box.append(b); });
+    $('dlg').style.display = '';
+  });
+}
+async function chooseScope() { // qué artículos se descargan: lo dejo siempre claro antes de generar el archivo
+  const { inView, hidden } = selCounts(), n = selected.size, nv = view.filter(r => code(r)).length;
+  if (n && !hidden) return 'all';
+  if (!n) {
+    if (!nv) { setStatus('No hay nada que descargar: ni seleccionados ni resultados', true); return null; }
+    return ask(`No has seleccionado nada.\n¿Descargo los ${nv.toLocaleString('en-US')} resultados que ves ahora?${nv > 300 ? '\n(Son muchos: tardará bastante en buscar fotos y redactar.)' : ''}`, [[`Sí, descargar los ${nv.toLocaleString('en-US')}`, 'viewAll', true], ['Cancelar', null]]);
+  }
+  const opts = [[`Los ${n} seleccionados`, 'all', true]];
+  if (inView) opts.push([`Solo los ${inView} seleccionados que veo`, 'view']);
+  opts.push(['Cancelar', null]);
+  return ask(`Tienes ${n} artículos seleccionados, pero con los filtros actuales solo ves ${inView} de ellos (${hidden} quedan fuera de la vista).\n¿Qué descargo?`, opts);
+}
+async function buildCustomer(scope = 'all') {
+  if (scope !== 'viewAll' && !selected.size) throw new Error('Selecciona artículos primero');
   if (!rates) throw new Error('No hay tipos de cambio; no se puede calcular el precio USD');
-  const sel = rows.filter(r => selected.has(code(r))).sort((a, b) => (a._ord ?? 1e9) - (b._ord ?? 1e9)), urls = []; let done = 0;
+  let sel; const urls = []; let done = 0;
+  if (scope === 'viewAll') sel = view.filter(r => code(r));
+  else { sel = rows.filter(r => selected.has(code(r))); if (scope === 'view') { const vs = new Set(view); sel = sel.filter(r => vs.has(r)); } sel.sort((a, b) => (a._ord ?? 1e9) - (b._ord ?? 1e9)); }
   await pool(sel, async (r, i) => { urls[i] = code(r) ? await findImages(code(r)) : []; if (++done % 10 === 0) setStatus(`Buscando fotos… ${done}/${sel.length}`); });
   const nat = $('natural').checked, D = nat ? await describeRows(sel, urls) : null;
   const head = ['BRAND', 'SKU', 'ITEM NAME', 'DETAILED GRADING', 'GRADING (RANK)', 'Purchase?', 'Buy Now Price', 'Picture #1'];
@@ -701,43 +748,65 @@ async function buildCustomer() {
     return row;
   });
   const w = [nat && D.st.rules && `${D.st.rules} descripciones con redacción básica (sin IA; el texto en otros idiomas se descarta)`, nat && D.st.photo && `${D.st.photo} descripciones hechas SOLO desde las fotos (celdas naranjas): revísalas`, nat && D.st.empty && `${D.st.empty} sin descripción (sin notas${aiOn ? ' ni fotos' : ' y sin IA para leer las fotos'})`, noid && `${noid} sin CTag`, nopic && `${nopic} sin fotos`, noprice && `${noprice} sin precio USD`].filter(Boolean);
-  return { head, body, warn: w.join(', ') };
+  return { head, body, sel, warn: w.join(', ') };
 }
 const stamp = () => new Date().toISOString().slice(0, 10);
 function download(blob, name) { const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name; a.click(); }
 async function exportCsv() {
   try {
-    const { head, body, warn } = await buildCustomer(), q = v => '"' + String(v ?? '').replace(/"/g, '""') + '"';
+    const scope = await chooseScope(); if (!scope) return;
+    const { head, body, warn } = await buildCustomer(scope), q = v => '"' + String(v ?? '').replace(/"/g, '""') + '"';
     const lines = [head.map(q).join(',')].concat(body.map(r => r.map(c => q(c.f ? '=' + c.f : c.v ?? '')).join(',')));
     download(new Blob(['﻿' + lines.join('\n')], { type: 'text/csv' }), `customer_${stamp()}.csv`);
     done(body.length, warn);
   } catch (e) { setStatus(e.message, true); }
 }
+const PRICE_BANDS = [[0, 200, 'Under 200'], [200, 500, '200-500'], [500, 1000, '500-1000'], [1000, 2500, '1000-2500'], [2500, Infinity, 'Over 2500']];
+const SPLITS = { // → [etiqueta, orden]
+  entity: r => [get(r, 'entity') || '(no entity)', get(r, 'entity') || '~'],
+  brand: r => [get(r, 'brand') || '(no brand)', strip(get(r, 'brand')) || '~'],
+  grade: r => [r._rank ? `Grade ${r._letter}` : '(no grade)', String(r._rank || 99).padStart(2, '0')],
+  price: r => { const p = finalOf(r), i = PRICE_BANDS.findIndex(([lo, hi]) => p >= lo && p < hi); return i < 0 ? ['(no price)', '9'] : [PRICE_BANDS[i][2], String(i)]; },
+};
+function buildSheet(head, body) {
+  const ws = {}, thin = { style: 'thin', color: { rgb: 'BFBFBF' } }, border = { top: thin, bottom: thin, left: thin, right: thin };
+  const H = rgb => ({ font: { bold: true, sz: 10 }, fill: { patternType: 'solid', fgColor: { rgb } }, alignment: { horizontal: 'center', vertical: 'center', wrapText: true }, border });
+  const B = { alignment: { horizontal: 'center', vertical: 'center', wrapText: true }, border }, BL = { alignment: { horizontal: 'left', vertical: 'center', wrapText: true }, border };
+  head.forEach((h, c) => { ws[XLSX.utils.encode_cell({ r: 0, c })] = { t: 's', v: h, s: H(h === 'Purchase?' ? 'B6D7A8' : 'FFF2CC') }; });
+  body.forEach((row, i) => row.forEach((cell, c) => {
+    const a = XLSX.utils.encode_cell({ r: i + 1, c });
+    if (cell.f) ws[a] = { t: 's', v: '', f: cell.f, s: B };
+    else if (cell.money) ws[a] = { t: 'n', v: cell.v, z: '$#,##0', s: { ...B, font: { sz: 12 } } };
+    else if (cell.v !== undefined && cell.v !== '') ws[a] = { t: 's', v: String(cell.v), s: cell.photo ? { ...BL, fill: { patternType: 'solid', fgColor: { rgb: 'FFE699' } } } : c === 3 ? BL : B };
+    else ws[a] = { t: 's', v: '', s: B };
+  }));
+  ws['!ref'] = XLSX.utils.encode_range({ s: { r: 0, c: 0 }, e: { r: body.length, c: head.length - 1 } });
+  ws['!cols'] = head.map((h, c) => ({ wch: [16, 12, 30, 46, 24, 11, 14][c] || (c < 7 + 13 ? 15 : 19) }));
+  ws['!rows'] = [{ hpx: 34 }].concat(body.map(() => ({ hpx: 105 })));
+  ws['!autofilter'] = { ref: ws['!ref'] };
+  return ws;
+}
 async function exportXlsx() {
   if (typeof XLSX === 'undefined') return setStatus('No se cargó la librería xlsx (falta vendor/xlsx.bundle.js). Usa el botón CSV.', true);
   try {
-    const { head, body, warn } = await buildCustomer(), ws = {};
-    const thin = { style: 'thin', color: { rgb: 'BFBFBF' } }, border = { top: thin, bottom: thin, left: thin, right: thin };
-    const H = (rgb) => ({ font: { bold: true, sz: 10 }, fill: { patternType: 'solid', fgColor: { rgb } }, alignment: { horizontal: 'center', vertical: 'center', wrapText: true }, border });
-    const B = { alignment: { horizontal: 'center', vertical: 'center', wrapText: true }, border }, BL = { alignment: { horizontal: 'left', vertical: 'center', wrapText: true }, border };
-    head.forEach((h, c) => { ws[XLSX.utils.encode_cell({ r: 0, c })] = { t: 's', v: h, s: H(h === 'Purchase?' ? 'B6D7A8' : 'FFF2CC') }; });
-    body.forEach((row, i) => row.forEach((cell, c) => {
-      const a = XLSX.utils.encode_cell({ r: i + 1, c });
-      if (cell.f) ws[a] = { t: 's', v: '', f: cell.f, s: B };
-      else if (cell.money) ws[a] = { t: 'n', v: cell.v, z: '$#,##0', s: { ...B, font: { sz: 12 } } };
-      else if (cell.v !== undefined && cell.v !== '') ws[a] = { t: 's', v: String(cell.v), s: cell.photo ? { ...BL, fill: { patternType: 'solid', fgColor: { rgb: 'FFE699' } } } : c === 3 ? BL : B };
-      else ws[a] = { t: 's', v: '', s: B };
-    }));
-    ws['!ref'] = XLSX.utils.encode_range({ s: { r: 0, c: 0 }, e: { r: body.length, c: head.length - 1 } });
-    ws['!cols'] = head.map((h, c) => ({ wch: [16, 12, 30, 46, 24, 11, 14][c] || (c < 7 + 13 ? 15 : 19) }));
-    ws['!rows'] = [{ hpx: 34 }].concat(body.map(() => ({ hpx: 105 })));
-    ws['!autofilter'] = { ref: ws['!ref'] };
-    const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, 'Customer');
-    XLSX.writeFile(wb, `customer_${stamp()}.xlsx`);
-    done(body.length, warn);
+    const scope = await chooseScope(); if (!scope) return;
+    const { head, body, sel, warn } = await buildCustomer(scope), by = $('splitBy').value;
+    if (!by) { const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, buildSheet(head, body), 'Customer'); XLSX.writeFile(wb, `customer_${stamp()}.xlsx`); return done(body.length, warn); }
+    const groups = new Map(); // etiqueta → { ord, idx[] }
+    sel.forEach((r, i) => { const [label, ord] = SPLITS[by](r); if (!groups.has(label)) groups.set(label, { ord, idx: [] }); groups.get(label).idx.push(i); });
+    const list = [...groups].sort((a, b) => a[1].ord.localeCompare(b[1].ord)), used = new Set();
+    const nameOf_ = label => { let n = label.replace(/[:\\\/?*\[\]]/g, '-').slice(0, 28) || 'Sheet', k = 1, base = n; while (used.has(n.toLowerCase())) n = `${base.slice(0, 25)}_${++k}`; used.add(n.toLowerCase()); return n; };
+    if ($('splitOut').value === 'files') {
+      for (const [label, g] of list) { const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, buildSheet(head, g.idx.map(i => body[i])), nameOf_(label)); XLSX.writeFile(wb, `customer_${by}_${nameOf_(label).replace(/\s+/g, '_')}_${stamp()}.xlsx`); await new Promise(r => setTimeout(r, 400)); }
+    } else {
+      const wb = XLSX.utils.book_new(); for (const [label, g] of list) XLSX.utils.book_append_sheet(wb, buildSheet(head, g.idx.map(i => body[i])), nameOf_(label));
+      XLSX.writeFile(wb, `customer_por_${by}_${stamp()}.xlsx`);
+    }
+    done(body.length, warn, ` · ${list.length} grupos (${list.map(([l, g]) => `${l}: ${g.idx.length}`).join(', ')})`);
   } catch (e) { setStatus(e.message, true); }
 }
-function done(n, warn) { setStatus(`Descargados ${n} artículos · Buy Now ${markupOn ? 'CON' : 'SIN'} margen` + (warn ? ' · ⚠ ' + warn : ''), !!warn); }
+function done(n, warn, extra = '') { setStatus(`Descargados ${n} artículos · Buy Now ${markupOn ? 'CON' : 'SIN'} margen${extra}` + (warn ? ' · ⚠ ' + warn : ''), !!warn); }
+$('splitBy').onchange = () => { $('splitOutL').style.display = $('splitBy').value ? '' : 'none'; };
 $('exportX').onclick = exportXlsx; $('exportCsv').onclick = exportCsv;
 
 /* ============ ajustes / init ============ */
