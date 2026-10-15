@@ -234,7 +234,7 @@ function prep() { // precalcula por fila: texto de búsqueda, detalle de grading
   }
 }
 const rxCache = new Map();
-const hit = (text, w) => { let re = rxCache.get(w); if (!re) rxCache.set(w, re = new RegExp('(^|[^a-z0-9])' + w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))); return re.test(text); };
+const hit = (text, w) => { let re = rxCache.get(w); if (!re) rxCache.set(w, re = new RegExp('(^|[^a-z0-9])' + w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + (/^\d+$/.test(w) ? '(?![0-9])' : ''))); return re.test(text); };
 const nameOf = r => [get(r, 'name'), get(r, 'desc')].find(v => v && !/GRADING:/i.test(v)) || '';
 const labels = () => { const o = {}; $('labels').value.split(/\n/).forEach(l => { const m = l.match(/^\s*(\d+)\s*=\s*(.+?)\s*$/); if (m) o[m[1]] = m[2]; }); return o; };
 const rankText = r => r._rank ? `${r._rank} - ${r._letter} RANK` + (labels()[r._rank] ? ` (${labels()[r._rank]})` : '') : '';
@@ -350,10 +350,10 @@ $('loaded').onclick = () => { if (rows.length) $('loadBox').style.display = $('l
 $('loaded').style.cursor = 'pointer'; $('loaded').title = 'Clic para cambiar de hoja';
 
 /* ============ filtros ============ */
-const F = { onlySel: false, loose: false, catalog: null, q: '', brands: new Set(), entities: new Set(), min: null, max: null, rank: 0, groups: [], exclude: [], sort: '', onlyImg: false };
+const F = { rankMin: 0, onlySel: false, loose: false, catalog: null, q: '', brands: new Set(), entities: new Set(), min: null, max: null, rank: 0, groups: [], exclude: [], sort: '', onlyImg: false };
 function resetFilters(redraw = true, keepCatalog = false) {
   const cat = F.catalog;
-  Object.assign(F, { onlySel: false, loose: false, catalog: keepCatalog ? cat : null, q: '', min: null, max: null, rank: 0, groups: [], exclude: [], sort: '', onlyImg: false }); F.brands.clear(); F.entities.clear();
+  Object.assign(F, { rankMin: 0, onlySel: false, loose: false, catalog: keepCatalog ? cat : null, q: '', min: null, max: null, rank: 0, groups: [], exclude: [], sort: '', onlyImg: false }); F.brands.clear(); F.entities.clear();
   $('q').value = ''; $('pmin').value = $('pmax').value = ''; $('frank').value = '0'; $('sort').value = ''; $('onlyImg').checked = false; $('onlySel').checked = false;
   if (redraw) refresh(false);
 }
@@ -363,7 +363,8 @@ function matches(r, skip, f = F) {
   if (skip !== 'brands' && f.brands.size && !f.brands.has(get(r, 'brand'))) return false;
   if (skip !== 'entities' && f.entities.size && !f.entities.has(get(r, 'entity'))) return false;
   if (f.rank && !(r._rank && r._rank <= f.rank)) return false;
-  if (f.min != null || f.max != null) { const p = finalOf(r); if (isNaN(p) || (f.min != null && p < f.min) || (f.max != null && p > f.max)) return false; }
+  if (f.rankMin && !(r._rank && r._rank >= f.rankMin)) return false;
+  if (f.min != null || f.max != null) { const p = f.basis === 'buying' ? usdOf(r) : finalOf(r); if (isNaN(p) || (f.min != null && p < f.min) || (f.max != null && p > f.max)) return false; }
   if (f.q && !r._text.includes(f.q)) return false;
   const t = f.loose ? r._text : r._core;
   for (const g of f.groups) if (!g.some(w => hit(t, w))) return false;
@@ -549,25 +550,30 @@ function describe(s) {
   if (s.entities?.length) p.push('entity: ' + s.entities.join(', '));
   if (s.keyword_groups?.length) p.push('palabras: ' + s.keyword_groups.map(g => g.slice(0, 2).join('/')).join(' + '));
   if (s.min_price != null || s.max_price != null) p.push(`precio ${s.min_price != null ? '$' + s.min_price : ''}–${s.max_price != null ? '$' + s.max_price : ''}`);
-  if (s.worst_rank_allowed) p.push(`estado ${RANKS.find(x => x[1] === s.worst_rank_allowed)?.[2]} o mejor`);
+  if (s.worst_rank_allowed) p.push(s.best_rank_allowed ? `estado ${RANKS.find(x => x[1] === s.best_rank_allowed)?.[2]} a ${RANKS.find(x => x[1] === s.worst_rank_allowed)?.[2]}` : `estado ${RANKS.find(x => x[1] === s.worst_rank_allowed)?.[2]} o mejor`);
   if (s.select_count) p.push(`seleccionar ${s.select_count}${s.diversify_brands ? ' variando marcas' : ''}`);
   return p.length ? p.join(' · ') : 'no he entendido ningún filtro';
 }
-const BRAND_SYN = [['ysl', 'saint laurent', 'yves saint laurent'], ['bottega', 'bottega veneta'], ['celine', 'celine paris'], ['lv', 'louis vuitton'], ['hermes', 'hermes paris'], ['the row', 'therow'], ['dg', 'dolce & gabbana', 'dolce gabbana']];
+const BRAND_SYN = [['ysl', 'saint laurent', 'yves saint laurent'], ['dior', 'christian dior'], ['bottega', 'bottega veneta'], ['celine', 'celine paris'], ['lv', 'louis vuitton'], ['hermes', 'hermes paris'], ['the row', 'therow'], ['dg', 'dolce & gabbana', 'dolce gabbana']];
 function canonList(list, key) {
   const idx = new Map(rows.map(r => [strip(get(r, key)), get(r, key)]));
   return (list || []).map(x => { const k = strip(x); if (idx.has(k)) return idx.get(k); const g = BRAND_SYN.find(g => g.includes(k)); return g && g.map(z => idx.get(z)).find(Boolean); }).filter(Boolean);
 }
+const curRate = c => { c = String(c || 'USD').toUpperCase(); return c === 'USD' ? 1 : (rates && rates[c]) || 0; };
+const toUSD = (v, cur) => v == null ? null : v / (curRate(cur) || 1); // rates = unidades de cada moneda por 1 USD
 async function runSearches(list, said) {
   rows.forEach(r => { delete r._tag; delete r._ord; });
   resetFilters(false);
-  const rep = $('reply'); rep.style.display = ''; rep.textContent = 'Preparando búsquedas…';
+  const rep = $('reply'), report0 = []; rep.style.display = ''; rep.textContent = 'Preparando búsquedas…';
   const plan = list.map((s, si) => {
     const f = { loose: false, catalog: null, q: '', brands: new Set(canonList(s.brands, 'brand')), entities: new Set(canonList(s.entities, 'entity')),
       groups: (s.keyword_groups || []).map(g => g.map(strip).filter(Boolean)).filter(g => g.length), exclude: (s.exclude_keywords || []).map(strip).filter(Boolean),
-      min: s.min_price ?? null, max: s.max_price ?? null, rank: s.worst_rank_allowed || 0 };
+      min: toUSD(s.min_price, s.price_currency), max: toUSD(s.max_price, s.price_currency), rank: s.worst_rank_allowed || 0, rankMin: s.best_rank_allowed || 0, basis: s.price_basis === 'buying' ? 'buying' : 'shown' };
+    if ((s.min_price != null || s.max_price != null) && s.price_currency && !curRate(s.price_currency)) report0.push(`⚠ ${s.label || 'búsqueda ' + (si + 1)}: no conozco la moneda ${s.price_currency}; tomo los precios como USD`);
+    const price = r => f.basis === 'buying' ? usdOf(r) : finalOf(r);
     const pref = (s.prefer_keywords || []).map(strip).filter(Boolean), sc = r => pref.reduce((n, w) => n + (hit(r._text, w) ? 1 : 0), 0);
-    const cmp = (a, b) => sc(b) - sc(a) || (a._rank || 99) - (b._rank || 99);
+    const cmp0 = (a, b) => sc(b) - sc(a) || (a._rank || 99) - (b._rank || 99);
+    const cmp = s.sort === 'price_asc' ? (a, b) => (price(a) || 1e12) - (price(b) || 1e12) || cmp0(a, b) : s.sort === 'price_desc' ? (a, b) => (price(b) || 0) - (price(a) || 0) || cmp0(a, b) : cmp0;
     const strict = rows.filter(r => code(r) && matches(r, null, f)).sort(cmp), want = s.count || 6;
     let loose = [];
     if (strict.length < want && f.groups.length) { const ss = new Set(strict); loose = rows.filter(r => code(r) && !ss.has(r) && matches(r, null, { ...f, loose: true })).sort(cmp); }
@@ -577,7 +583,7 @@ async function runSearches(list, said) {
   const ids = [...new Set(plan.flatMap(p => [...p.strict.slice(0, p.want * 2), ...p.loose.slice(0, p.want * 2)]).map(code))];
   let done = 0; const t0 = Date.now();
   await Promise.all(ids.map(async id => { await findImages(id); if (++done % 25 === 0) rep.textContent = `Comprobando fotos… ${done}/${ids.length}`; }));
-  const picked = [], seen = new Set(), report = [];
+  const picked = [], seen = new Set(), report = [...report0];
   for (const p of plan) {
     let got = 0, viaLoose = 0;
     for (const [pool_, isLoose] of [[p.strict, false], [p.loose, true]]) {
@@ -599,7 +605,7 @@ async function applySpec(s, said) {
   canonList(s.brands, 'brand').forEach(b => F.brands.add(b)); canonList(s.entities, 'entity').forEach(b => F.entities.add(b));
   F.groups = (s.keyword_groups || []).map(g => g.map(strip).filter(Boolean)).filter(g => g.length);
   F.exclude = (s.exclude_keywords || []).map(strip).filter(Boolean);
-  F.min = s.min_price ?? null; F.max = s.max_price ?? null; F.rank = s.worst_rank_allowed || 0;
+  F.min = toUSD(s.min_price, s.price_currency); F.max = toUSD(s.max_price, s.price_currency); F.rank = s.worst_rank_allowed || 0; F.rankMin = s.best_rank_allowed || 0;
   F.sort = { price_asc: 'pa', price_desc: 'pd', brand: 'brand' }[s.sort] || ''; $('sort').value = F.sort;
   refresh(false);
   const rep = $('reply'); rep.style.display = ''; rep.textContent = (said ? said + ' — ' : '') + `${describe(s)} → ${view.length} resultados`;

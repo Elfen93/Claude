@@ -20,6 +20,7 @@ Si pegas una lista con varias peticiones, la IA las ejecuta una por una (`search
 - Nombres de modelo = filtro duro; conceptos subjetivos (vintage, unique, colores) = preferencia que ordena primero lo que más coincide.
 - Los topes ("under $995") se comparan con el precio que ves: **activa el botón de margen antes de buscar** si el tope es el precio final del cliente.
 - Requiere IA (clave de API); el modo básico no sabe montar listas.
+- **Segunda plantilla**: `prompts/sourcing_ab_bminus.txt` (sourcing de LV, Dior, Gucci, Celine, YSL y Chanel en grados AB a B-, con rangos de precio en €). Cada línea puede llevar: moneda (`price_currency`, convierte con el cambio actual), **precio de compra** (`price_basis=buying`, ignora el margen), grado mínimo y máximo (`best_rank_allowed`/`worst_rank_allowed`) y orden por precio. Los números de talla se buscan como número completo (25 no coincide con 250).
 
 ## Descargar exactamente lo que quieres
 - **La selección no se pierde** al filtrar ni al quitar filtros (se guarda por CTag). La barra inferior dice cuántos seleccionados ves y cuántos quedan fuera de los filtros.

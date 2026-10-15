@@ -1,0 +1,37 @@
+Build a sourcing list for me. Run ONE search per line below (use "searches", one entry per line, label = "Brand - Model"). Pick 6 items per line (count=6), only items with photos, no repeats between lines.
+
+RULES FOR EVERY LINE
+- Grades: only AB, B+, B and B- (best_rank_allowed=5, worst_rank_allowed=8). Exclude A or better, and anything worse than B-.
+- Prices are my BUYING price, shipping not included: use price_basis=buying (original price converted to USD at today's rate, NO markup) and give the ranges in EUR (price_currency=EUR).
+- Model names and sizes are HARD filters (keyword_groups; include singular/plural, accents and spelling variants). Use my catalog's exact brand names (Louis Vuitton, Christian Dior, Celine, Yves Saint Laurent, Chanel, Gucci).
+
+LOUIS VUITTON
+1. Speedy 25/30/35/40 cm: hard "speedy" + size (25, 30, 35 or 40); exclude "neo"; 200-400 EUR.
+2. Alma: hard "alma"; 200-340 EUR.
+3. Keepall 40/45/50/55/60 cm: hard "keepall" + size (40, 45, 50, 55 or 60); NO price cap [WRITE MY MAXIMUM BUYING PRICE HERE].
+4. Neo Speedy: hard "neo speedy" or "neo-speedy"; 400-800 EUR.
+5. Pouches: hard any of "pouch", "pochette"; 200-350 EUR.
+6. Papillon: hard "papillon"; 200-300 EUR.
+7. Noe / bucket bags: hard any of "noe", "bucket"; 250-400 EUR.
+
+DIOR
+8. Monogram Boston bags: hard "boston"; prefer "monogram", "trotter", "oblique"; 230-280 EUR.
+9. Shoulder bags: hard "shoulder"; 300-400 EUR.
+
+GUCCI
+10. Jackie: hard "jackie"; 150-250 EUR.
+11. Abbey: hard "abbey"; 200-340 EUR.
+
+CELINE
+12. Noe / bucket bags: hard any of "noe", "bucket"; 200-300 EUR.
+13. Macadam Boston bags: hard "macadam" AND "boston"; 130-200 EUR.
+
+YVES SAINT LAURENT
+14. Sunset ("Suns", about 1k): hard "sunset"; 800-1200 EUR.
+15. Loulou (up to about 1k): hard "loulou"; max 1000 EUR.
+
+CHANEL
+16. Timeless (1k): hard any of "timeless", "classic flap", "double flap", "single flap", "2.55"; max 1000 EUR.
+
+LAST LINE (do it last so it does not take items from the lines above)
+17. Other models with good resale potential at an attractive buying price: brands Louis Vuitton, Chanel, Dior, Gucci, Celine, Yves Saint Laurent; no model filter; max 300 EUR; sort price_asc (cheapest first); count=10; prefer "monogram", "damier", "classic", "flap", "saddle", "boston", "bucket", "tote", "speedy", "neverfull", "pochette".
