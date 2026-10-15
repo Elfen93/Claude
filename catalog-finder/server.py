@@ -124,6 +124,10 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                 return self._json(block["input"])
         return self._err(502, "La IA no devolvio filtros")
 
+    def end_headers(self):
+        self.send_header("Cache-Control", "no-store")  # que el navegador nunca sirva una version vieja
+        super().end_headers()
+
     def do_GET(self):
         u = urllib.parse.urlparse(self.path)
         if u.path == "/ai-status":
@@ -185,7 +189,11 @@ class Handler(http.server.SimpleHTTPRequestHandler):
 
 
 if __name__ == "__main__":
-    srv = http.server.ThreadingHTTPServer(("127.0.0.1", PORT), Handler)
+    try:
+        srv = http.server.ThreadingHTTPServer(("127.0.0.1", PORT), Handler)
+    except OSError:
+        sys.exit(f"\nEl puerto {PORT} ya esta ocupado: seguramente hay otra copia de Catalog Finder abierta.\n"
+                 f"Cierrala (Ctrl+C en su terminal) y vuelve a ejecutar, o usa otro puerto: python server.py {PORT + 1}\n")
     url = f"http://127.0.0.1:{PORT}/"
     print(f"Catalog Finder en {url}  (Ctrl+C para salir)")
     try:
