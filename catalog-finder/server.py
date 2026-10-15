@@ -149,6 +149,7 @@ Reglas:
 - Estado: escala 1=SA con etiquetas, 2=SA, 3=S, 4=A, 5=AB, 6=B+, 7=B, 8=B-, 9=BC, 10=C. 'A o mejor' -> worst_rank_allowed=4. 'buen estado' -> 7. 'excelente/casi nuevo' -> 3 o 4.
 - select_count > 0 solo si el usuario pide ELEGIR/SELECCIONAR/ESCOGER una cantidad concreta; si pide variedad o mezcla de marcas, diversify_brands=true.
 - Si el usuario da una LISTA de peticiones distintas, rellena `searches` con una entrada por linea (y deja vacios los filtros de nivel superior). Respeta las instrucciones por linea que el usuario indique (filtro duro vs preferencia blanda, topes de precio, cantidad).
+- Monedas: '$' = USD, '€' = EUR, '£' = GBP; '¥' = JPY salvo que diga yuan/CNY. Si el usuario NO indica moneda, deja price_currency vacio (la app usa la moneda que el usuario esta viendo).
 - Si el usuario da rangos en una moneda (EUR...), rellena price_currency; si habla de 'precio de compra/buying price/sourcing', usa price_basis=buying. 'Del grado AB al B-' => best_rank_allowed=5, worst_rank_allowed=8.
 - reply: una frase corta en espanol diciendo que has entendido y aplicado. No inventes nada que el usuario no pidio."""
 _SEARCH_PROPS = {

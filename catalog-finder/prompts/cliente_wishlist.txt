@@ -1,6 +1,6 @@
 Monta un catálogo para mi cliente. Haz UNA búsqueda por cada línea de la lista (usa "searches", una entrada por línea, con "label" = "Marca - Búsqueda").
 - Elige 6 artículos por línea (count=6). Si una línea tiene menos candidatos con fotos, elige los que haya. No repitas artículos entre líneas.
-- Los precios son en USD, el precio final que ve el cliente. "Under $X" = max_price X.
+- Los precios son en USD (price_currency=USD), el precio final que ve el cliente (price_basis=shown). "Under $X" = max_price X.
 - Los nombres de modelo son FILTRO DURO (keyword_groups, con singular/plural y variantes de escritura). Los conceptos subjetivos (vintage, unique, colores, sporty...) son PREFERENCIA BLANDA (prefer_keywords): filtra solo por marca y ordena primero lo que más coincida.
 - Usa los nombres de marca exactos de mi catálogo (Hermes puede estar como "Hermès", YSL como "Saint Laurent", Bottega como "Bottega Veneta", Celine como "Céline").
 

@@ -18,7 +18,7 @@ App local para buscar artículos en tu hoja de Google Sheets, ver sus fotos y de
 Si pegas una lista con varias peticiones, la IA las ejecuta una por una (`searches`), elige N artículos con fotos por línea sin repetir, los **selecciona todos** y los agrupa por línea (etiqueta 🎯 en cada tarjeta). Al terminar muestra qué líneas se cumplieron (✓), quedaron cortas (⚠) o vacías (✗). El Excel respeta ese orden.
 - Plantilla lista para pegar: `prompts/cliente_wishlist.txt` (26 líneas de Hermès, Chanel, Gucci, Celine, Prada, YSL, Bottega, Loewe, Fendi, Dior, The Row). Edita el número de artículos por línea o los filtros en ese texto.
 - Nombres de modelo = filtro duro; conceptos subjetivos (vintage, unique, colores) = preferencia que ordena primero lo que más coincide.
-- Los topes ("under $995") se comparan con el precio que ves: **activa el botón de margen antes de buscar** si el tope es el precio final del cliente.
+- Los topes ("under $995") se comparan con el precio que ves: **elige antes al cliente y su moneda** si el tope es el precio final del cliente (o pon `price_currency` y `price_basis` en la línea).
 - Requiere IA (clave de API); el modo básico no sabe montar listas.
 - **Segunda plantilla**: `prompts/sourcing_ab_bminus.txt` (sourcing de LV, Dior, Gucci, Celine, YSL y Chanel en grados AB a B-, con rangos de precio en €). Cada línea puede llevar: moneda (`price_currency`, convierte con el cambio actual), **precio de compra** (`price_basis=buying`, ignora el margen), grado mínimo y máximo (`best_rank_allowed`/`worst_rank_allowed`) y orden por precio. Los números de talla se buscan como número completo (25 no coincide con 250).
 
@@ -34,12 +34,15 @@ Si pegas una lista con varias peticiones, la IA las ejecuta una por una (`search
 - **Plantilla guardada**: una petición que ya interpretó la IA se guarda en el navegador; repetirla (mismo texto) no llama a la IA ni cuesta nada. Botón *↻ Reinterpretar con IA* para rehacerla.
 - **Precisión**: las palabras de modelo (birkin, kelly, box…) se buscan solo en nombre/descripción y al inicio de palabra, no en las notas ni en el texto de grading. Si no hay suficientes resultados, amplía a todo el texto y lo avisa. YSL = Saint Laurent, Bottega = Bottega Veneta, etc.
 
-## Precios en USD
-Todo se convierte a USD con el tipo de cambio actual (open.er-api.com, respaldo frankfurter.dev, caché 1 h; sin conexión usa el último guardado). El botón **Aplicar 35% + ¥2.500** calcula `USD × 1,35 + 2.500 JPY en USD` (cambiable en Ajustes). Los filtros de precio y el orden usan el precio que ves.
+## Monedas y márgenes por cliente
+- **Moneda de origen**: cada fila puede venir en su moneda (CNY, JPY, EUR, GBP…); se convierte con el cambio actual (open.er-api.com, respaldo frankfurter.dev, caché 1 h; sin conexión usa el último guardado).
+- **Moneda de salida** (selector *Moneda* arriba): todo lo que ves y descargas (tarjetas, filtros de precio, rangos, ordenar, dividir por precio, *Buy Now Price*) va en esa moneda. Los filtros de precio se escriben en ella. En el Excel, la celda lleva el símbolo (`€`, `£`, `¥`…).
+- **Clientes**: el selector *Cliente* elige un perfil con su propio **margen %**, **tarifa fija** (en cualquier moneda), **moneda** y **redondeo** (a 1, 5, 10, 50, 100…). `✎ Margen` o *+ Nuevo cliente…* abre el editor; ahí ves un ejemplo en vivo. *Sin margen* muestra el precio de compra. Fórmula: `precio de compra × (1 + margen %) + tarifa fija`. Al elegir un cliente se activa su moneda (puedes cambiarla después). Se guardan en el navegador.
+- En las búsquedas, si no dices moneda, los números se entienden en la moneda que estás viendo; con `€`, `$`, `£` en la frase (o `price_currency` en una línea de prompt) se respeta lo que escribas.
 
 ## Excel customer
 Columnas: `BRAND, SKU, ITEM NAME, DETAILED GRADING, GRADING (RANK), Purchase?, Buy Now Price, Picture #1…#13, 1…13`.
-- `Buy Now Price`: precio USD actual, con o sin margen según el botón (la barra inferior lo indica).
+- `Buy Now Price`: precio en la moneda de salida, con el margen del cliente elegido (la barra inferior y el aviso al descargar lo indican).
 - `Picture #n` = `=image("…/photographs/{CTag}/n.jpg",4,100,100)` y `1…13` = `=iferror(HYPERLINK(…,"{CTag} - photon"))`, solo para fotos existentes. Son fórmulas de **Google Sheets**: sube el .xlsx a Drive y ábrelo con Sheets. En Excel esas fórmulas no se verán.
 - El rank sale del texto `GRADING: B (Good)` del detailed grading (en cualquier columna): 1=SA con etiquetas, 2=SA, 3=S, 4=A, 5=AB, 6=B+, 7=B, 8=B-, 9=BC, 10=C. Las etiquetas entre paréntesis se editan en Ajustes.
 - `Purchase?` sale vacía. También hay botón CSV.

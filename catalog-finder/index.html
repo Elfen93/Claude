@@ -74,7 +74,9 @@
 <div class="top">
   <h1>Catalog Finder</h1>
   <span id="fx" class="mute"></span>
-  <button id="markup" title="Suma el margen a todos los precios (ver Ajustes)"></button>
+  <label>Moneda <select id="outCurSel"></select></label>
+  <label>Cliente <select id="profSel" title="Cada cliente tiene su margen, tarifa fija y moneda"></select></label>
+  <button id="profEdit" title="Editar el cliente elegido o crear uno nuevo">✎ Margen</button>
 </div>
 
 <div class="wrap">
@@ -93,8 +95,6 @@
       <summary>Ajustes avanzados (columnas, margen, fotos)</summary>
       <div class="row" id="mapping"></div>
       <div class="row">
-        <label>Margen % <input id="pct" type="text" style="width:50px"></label>
-        <label>+ Yenes <input id="fee" type="text" style="width:70px"></label>
         <label>URL foto (pantalla) <input id="tpl" type="text" style="min-width:380px"></label>
         <label>Tamaño <input id="size" type="text" style="width:80px"></label>
         <label>Prefijo código <input id="prefix" type="text" style="width:60px" placeholder="ej. C"></label>
@@ -122,7 +122,7 @@
     <div id="reply" class="reply" style="display:none"></div>
 
     <div style="margin-top:14px">
-      <div class="row"><span class="lbl">Precio USD</span>
+      <div class="row"><span class="lbl" id="priceLbl">Precio</span>
         <input id="pmin" type="text" placeholder="mín" style="width:80px"> – <input id="pmax" type="text" placeholder="máx" style="width:80px">
         <span id="pchips"></span></div>
       <div class="row"><span class="lbl">Estado</span>
@@ -166,6 +166,16 @@
   <button id="exportCsv">CSV</button>
   <button id="exportX" class="primary">Descargar Excel (.xlsx)</button>
 </div>
+<div id="pdlg" class="overlay" style="display:none"><div class="box" style="min-width:340px">
+  <p><b id="pTitle">Cliente</b></p>
+  <div class="row"><label>Nombre <input id="pName" type="text" style="width:200px"></label></div>
+  <div class="row"><label>Margen % <input id="pPct" type="text" style="width:70px"></label>
+    <label>+ tarifa fija <input id="pFee" type="text" style="width:80px"></label><select id="pFeeCur"></select></div>
+  <div class="row"><label>Moneda del cliente <select id="pOut"></select></label>
+    <label>Redondear a <select id="pRound"><option value="0">no redondear</option><option value="1">1</option><option value="5">5</option><option value="10">10</option><option value="50">50</option><option value="100">100</option><option value="500">500</option><option value="1000">1000</option></select></label></div>
+  <p class="mute" style="margin-bottom:10px">Precio final = precio de compra × (1 + margen %) + tarifa fija. <span id="pPreview"></span></p>
+  <div class="row"><button class="primary" id="pSave">Guardar</button><button id="pDel">Eliminar</button><button id="pCancel">Cancelar</button></div>
+</div></div>
 <div id="dlg" class="overlay" style="display:none"><div class="box"><p id="dlgMsg"></p><div class="row" id="dlgBtns"></div></div></div>
 <div id="lb"><div class="cap"></div><img><div class="thumbs"></div></div>
 
@@ -240,7 +250,23 @@ const labels = () => { const o = {}; $('labels').value.split(/\n/).forEach(l => 
 const rankText = r => r._rank ? `${r._rank} - ${r._letter} RANK` + (labels()[r._rank] ? ` (${labels()[r._rank]})` : '') : '';
 
 /* ============ divisas → USD ============ */
-let rates = null, ratesDate = '', markupOn = store.get('markupOn', '0') === '1';
+let rates = null, ratesDate = '';
+let profiles = JSON.parse(store.get('profiles', 'null') || 'null') || [{ name: 'Estándar', pct: parseFloat(store.get('pct', '35')) || 0, fee: parseFloat(store.get('fee', '2500')) || 0, feeCur: 'JPY', round: 0, outCur: 'USD' }];
+let activeProf = store.get('profile', store.get('markupOn', '0') === '1' ? profiles[0].name : ''); // '' = sin margen
+let outCur = store.get('outCur', 'USD');
+const prof = () => profiles.find(p => p.name === activeProf) || null;
+const rate = c => { c = String(c || 'USD').toUpperCase(); return c === 'USD' ? 1 : (rates && rates[c]) || 0; }; // unidades de cada moneda por 1 USD
+const fromUSD = v => { const r = rate(outCur); return r ? v * r : NaN; };
+const roundTo = (v, step) => step > 0 ? Math.round(v / step) * step : v;
+const outVal = usd => { const p = prof(), v = fromUSD(usd); return roundTo(v, p ? +p.round || 0 : 0); };
+const nice = v => { if (!isFinite(v) || v <= 0) return 0; const q = 10 ** (Math.floor(Math.log10(v)) - 1); return Math.round(v / q) * q; }; // 2 cifras significativas
+const NODEC = ['JPY', 'KRW', 'VND', 'IDR', 'CLP', 'HUF'];
+function fmtMoney(v, cur = outCur) {
+  if (v == null || isNaN(v)) return '';
+  try { return new Intl.NumberFormat('en-US', { style: 'currency', currency: cur, currencyDisplay: 'narrowSymbol', maximumFractionDigits: NODEC.includes(cur) || Math.abs(v) >= 100 ? 0 : 2 }).format(v); }
+  catch { return v.toLocaleString('en-US', { maximumFractionDigits: 0 }) + ' ' + cur; }
+}
+const profLabel = () => { const p = prof(); return p ? `${p.name} (+${p.pct}%${p.fee ? ' + ' + p.fee.toLocaleString('en-US') + ' ' + p.feeCur : ''})` : 'sin margen'; };
 const CUR_ALIAS = { '$': 'USD', 'US$': 'USD', '€': 'EUR', '£': 'GBP', '¥': 'JPY', '円': 'JPY', 'YEN': 'JPY', 'RMB': 'CNY', '元': 'CNY', 'CN¥': 'CNY', 'HK$': 'HKD' };
 const curOf = r => { const c = get(r, 'cur').toUpperCase().replace(/\s/g, ''); return CUR_ALIAS[c] || c; };
 const priceNum = s => {
@@ -255,8 +281,7 @@ function usdOf(r) {
   if (c === 'USD') return a;
   return rates[c] ? a / rates[c] : NaN;
 }
-const finalOf = r => { const u = usdOf(r); return (isNaN(u) || !markupOn) ? u : u * (1 + num('pct', 35) / 100) + num('fee', 2500) / rates.JPY; };
-const fmtUSD = v => isNaN(v) ? '' : '$' + v.toLocaleString('en-US', { maximumFractionDigits: v < 100 ? 2 : 0 });
+const finalOf = r => { const u = usdOf(r), p = prof(); return (isNaN(u) || !p) ? u : u * (1 + (+p.pct || 0) / 100) + (+p.fee || 0) / (rate(p.feeCur) || 1); }; // precio de venta en USD (interno)
 async function loadRates() {
   try {
     const r = await fetch('/rates'); if (!r.ok) throw new Error(await r.text());
@@ -266,14 +291,49 @@ async function loadRates() {
     if (old) { rates = old.rates; ratesDate = old.date + ' (guardado, sin conexión)'; }
     else { $('fx').textContent = '⚠ sin tipos de cambio'; $('fx').className = 'err'; return; }
   }
-  $('fx').textContent = `1 USD = ${(rates.JPY || 0).toFixed(2)} JPY · ${(rates.CNY || 0).toFixed(3)} CNY · ${ratesDate}`;
-  if (rows.length) refresh(false);
+  $('fx').textContent = `1 USD = ${(rates.JPY || 0).toFixed(2)} JPY · ${(rates.CNY || 0).toFixed(3)} CNY${outCur !== 'USD' && outCur !== 'JPY' && outCur !== 'CNY' ? ' · ' + rate(outCur).toFixed(3) + ' ' + outCur : ''} · ${ratesDate}`;
+  buildCurSelects(); if (rows.length) refresh(false);
 }
-function setMarkupBtn() {
-  const b = $('markup'); b.classList.toggle('primary', markupOn);
-  b.textContent = (markupOn ? '✓ ' : '') + `Aplicar ${num('pct', 35)}% + ¥${num('fee', 2500).toLocaleString('en-US')}`;
-  $('bnMode').textContent = markupOn ? 'CON margen' : 'SIN margen';
+const COMMON = ['USD', 'EUR', 'GBP', 'JPY', 'CNY', 'HKD', 'CHF', 'CAD', 'AUD', 'SGD', 'KRW', 'AED'];
+function curOptions(sel, cur) { // monedas disponibles (las habituales primero)
+  const all = Object.keys(rates || { USD: 1 }), list = [...COMMON.filter(c => all.includes(c)), ...all.filter(c => !COMMON.includes(c)).sort()];
+  sel.innerHTML = list.map(c => `<option>${c}</option>`).join(''); sel.value = list.includes(cur) ? cur : 'USD';
 }
+function buildCurSelects() { if (rates && !rate(outCur)) outCur = 'USD'; curOptions($('outCurSel'), outCur); buildProfSel(); }
+function buildProfSel() {
+  $('profSel').innerHTML = '<option value="">Sin margen</option>' + profiles.map(p => `<option value="${esc(p.name)}">${esc(p.name)} (+${p.pct}%${p.fee ? ' + ' + p.fee + ' ' + p.feeCur : ''})</option>`).join('') + '<option value="__new">+ Nuevo cliente…</option>';
+  $('profSel').value = prof() ? activeProf : '';
+  $('bnMode').textContent = prof() ? 'con margen: ' + profLabel() + ' · ' + outCur : 'sin margen · ' + outCur;
+}
+function applyProfile() { store.set('profile', activeProf); store.set('outCur', outCur); store.set('profiles', JSON.stringify(profiles)); buildCurSelects(); if (rows.length) refresh(false); }
+$('outCurSel').onchange = () => { outCur = $('outCurSel').value; applyProfile(); };
+$('profSel').onchange = () => {
+  const v = $('profSel').value;
+  if (v === '__new') { editProfile(true); return; }
+  activeProf = v; const p = prof(); if (p && p.outCur) outCur = p.outCur; applyProfile();
+};
+$('profEdit').onclick = () => editProfile(!prof());
+function editProfile(isNew) {
+  const p = isNew ? { name: '', pct: 35, fee: 0, feeCur: outCur, round: 0, outCur } : prof(); editing = isNew ? null : p.name;
+  $('pTitle').textContent = isNew ? 'Nuevo cliente' : 'Editar cliente'; $('pName').value = p.name; $('pPct').value = p.pct; $('pFee').value = p.fee;
+  curOptions($('pFeeCur'), p.feeCur); curOptions($('pOut'), p.outCur); $('pRound').value = String(p.round || 0);
+  $('pDel').style.display = isNew ? 'none' : ''; $('pdlg').style.display = ''; pPreview();
+}
+let editing = null;
+function pPreview() { // ejemplo con lo que se está escribiendo
+  const pct = parseFloat($('pPct').value.replace(',', '.')) || 0, fee = parseFloat($('pFee').value.replace(',', '.')) || 0, o = $('pOut').value;
+  const usd = 100 * (1 + pct / 100) + fee / (rate($('pFeeCur').value) || 1), v = roundTo(usd * (rate(o) || 1), +$('pRound').value);
+  $('pPreview').textContent = `Ejemplo: una compra de 100 USD sale a ${fmtMoney(v, o)}.`;
+}
+['pName', 'pPct', 'pFee'].forEach(id => $(id).addEventListener('input', pPreview)); ['pFeeCur', 'pOut', 'pRound'].forEach(id => $(id).addEventListener('change', pPreview));
+$('pCancel').onclick = () => { $('pdlg').style.display = 'none'; buildProfSel(); };
+$('pSave').onclick = () => {
+  const name = $('pName').value.trim(); if (!name) { $('pName').focus(); return; }
+  const np = { name, pct: parseFloat($('pPct').value.replace(',', '.')) || 0, fee: parseFloat($('pFee').value.replace(',', '.')) || 0, feeCur: $('pFeeCur').value, round: +$('pRound').value, outCur: $('pOut').value };
+  const i = profiles.findIndex(p => p.name === (editing ?? name)); if (i >= 0) profiles[i] = np; else profiles.push(np);
+  activeProf = name; outCur = np.outCur; $('pdlg').style.display = 'none'; applyProfile();
+};
+$('pDel').onclick = () => { profiles = profiles.filter(p => p.name !== editing); activeProf = ''; $('pdlg').style.display = 'none'; applyProfile(); };
 
 /* ============ fotos ============ */
 const probe = url => new Promise(res => { const im = new Image(); im.onload = () => res(true); im.onerror = () => res(false); im.src = url; });
@@ -387,17 +447,19 @@ function facets() {
   $('eRow').style.display = fe.size || F.entities.size ? '' : 'none';
   $('bList').innerHTML = [...fb.keys()].sort().map(b => `<option value="${esc(b)}">`).join('');
 }
+const bandEdges = () => [200, 500, 1000, 2500].map(u => nice(fromUSD(u))); // límites en la moneda de salida
 function priceChips() {
-  const el = $('pchips'); el.innerHTML = '';
-  [[null, 200], [200, 500], [500, 1000], [1000, 2500], [2500, null]].forEach(([a, b]) => {
-    const t = a == null ? `< $${b}` : b == null ? `> $${a}` : `$${a}–${b}`, c = document.createElement('button');
-    c.className = 'chip' + (F.min === a && F.max === b ? ' on' : ''); c.textContent = t;
-    c.onclick = () => { const same = F.min === a && F.max === b; F.min = same ? null : a; F.max = same ? null : b; refresh(false); }; el.append(c);
+  const el = $('pchips'), e = bandEdges(); el.innerHTML = '';
+  [[null, e[0]], [e[0], e[1]], [e[1], e[2]], [e[2], e[3]], [e[3], null]].forEach(([a, b]) => {
+    const lo = a == null ? null : toUSD(a, outCur), hi = b == null ? null : toUSD(b, outCur), c = document.createElement('button');
+    const same = (x, y) => (x == null && y == null) || (x != null && y != null && Math.abs(x - y) < 1e-6), isOn = same(F.min, lo) && same(F.max, hi);
+    c.className = 'chip' + (isOn ? ' on' : ''); c.textContent = a == null ? `< ${fmtMoney(b)}` : b == null ? `> ${fmtMoney(a)}` : `${fmtMoney(a)}–${fmtMoney(b).replace(/^\D+/, '')}`;
+    c.onclick = () => { F.min = isOn ? null : lo; F.max = isOn ? null : hi; refresh(false); }; el.append(c);
   });
 }
 function refresh(rebuild) {
   runId++;
-  $('pmin').value = F.min ?? ''; $('pmax').value = F.max ?? ''; $('frank').value = String(F.rank);
+  const sh = v => v == null ? '' : Math.round(fromUSD(v) * 100) / 100; $('pmin').value = sh(F.min); $('pmax').value = sh(F.max); $('priceLbl').textContent = 'Precio ' + outCur; $('frank').value = String(F.rank);
   facets(); priceChips();
   view = rows.filter(r => matches(r));
   if (!view.length && F.groups.length && !F.loose) { F.loose = true; view = rows.filter(r => matches(r)); if (!view.length) F.loose = false; }
@@ -413,7 +475,7 @@ function stats() {
   const ps = view.map(finalOf).filter(v => !isNaN(v)), sum = ps.reduce((a, b) => a + b, 0);
   const nograde = view.filter(r => !r._rank).length;
   $('stats').innerHTML = `<span><b>${view.length.toLocaleString('en-US')}</b> resultados de ${rows.length.toLocaleString('en-US')}</span>` +
-    (ps.length ? `<span class="mute">precio medio <b style="font-size:inherit">${fmtUSD(sum / ps.length)}</b> · de ${fmtUSD(Math.min(...ps))} a ${fmtUSD(Math.max(...ps))}</span>` : '') +
+    (ps.length ? `<span class="mute">precio medio <b style="font-size:inherit">${fmtMoney(outVal(sum / ps.length))}</b> · de ${fmtMoney(outVal(Math.min(...ps)))} a ${fmtMoney(outVal(Math.max(...ps)))}</span>` : '') +
     (F.loose ? '<span class="mute">palabras buscadas también en notas (no había coincidencias en el nombre)</span>' : '');
   if (F.catalog || lastCatalog) {
     const on = !!F.catalog, c = document.createElement('button'); c.className = 'chip' + (on ? ' on' : '');
@@ -435,7 +497,7 @@ bind('q', 'input', debounce(() => { F.q = strip($('q').value); refresh(false); }
 bind('sort', 'change', () => { F.sort = $('sort').value; refresh(false); });
 bind('onlyImg', 'change', () => { F.onlyImg = $('onlyImg').checked; refresh(false); });
 bind('frank', 'change', () => { F.rank = +$('frank').value; refresh(false); });
-['pmin', 'pmax'].forEach(id => bind(id, 'change', () => { const v = k => { const n = parseFloat($(k).value.replace(',', '.')); return isNaN(n) ? null : n; }; F.min = v('pmin'); F.max = v('pmax'); refresh(false); }));
+['pmin', 'pmax'].forEach(id => bind(id, 'change', () => { const v = k => { const n = parseFloat($(k).value.replace(',', '.')); return isNaN(n) ? null : n; }; F.min = toUSD(v('pmin'), outCur); F.max = toUSD(v('pmax'), outCur); refresh(false); }));
 bind('bAdd', 'change', () => { const v = strip($('bAdd').value), hit = rows.map(r => get(r, 'brand')).find(b => strip(b) === v); if (hit) { F.brands.add(hit); $('bAdd').value = ''; refresh(false); } });
 $('reset').onclick = () => resetFilters(true, true); // quita los filtros pero conserva el catálogo montado y la selección
 
@@ -444,8 +506,8 @@ const io = new IntersectionObserver(es => es.forEach(e => { if (e.isIntersecting
 function addCard(r) {
   const c = document.createElement('div'), on = selected.has(code(r)); c.className = 'card' + (on ? ' sel' : ''); c._r = r;
   const orig = [get(r, 'price'), get(r, 'cur')].filter(Boolean).join(' '), u = usdOf(r), f = finalOf(r);
-  const price = isNaN(u) ? (orig ? orig + (rates ? ' ⚠ moneda desconocida' : '') : '') : fmtUSD(f) + ' USD';
-  const sub = isNaN(u) ? '' : (markupOn ? `base ${fmtUSD(u)} · ` : '') + 'orig. ' + orig;
+  const price = isNaN(u) ? (orig ? orig + (rates ? ' ⚠ moneda desconocida' : '') : '') : fmtMoney(outVal(f)) + ' ' + outCur;
+  const sub = isNaN(u) ? '' : (prof() ? `base ${fmtMoney(fromUSD(u))} · ` : '') + 'orig. ' + orig;
   c.innerHTML = `<input type="checkbox" class="pick" ${on ? 'checked' : ''}>${r._rank ? `<span class="rank">${esc(r._letter)}</span>` : ''}<div class="photo"><span class="none">cargando…</span></div>
     <div class="info"><div class="brand">${esc(get(r, 'brand') || '—')}</div><div class="code">${esc(code(r))}${get(r, 'entity') ? ' · ' + esc(get(r, 'entity')) : ''}</div>
     <div class="desc">${esc(nameOf(r))}</div>
@@ -528,6 +590,7 @@ function basicParse(text) {
     if ((m = t.match(/(?:menos de|menor (?:a|que|de)|bajo|hasta|maximo|max|under|below|less than|<)\s*\$?\s*(\d[\d.,]*\s*(?:k|mil)?)/))) { spec.max_price = money(m[1]); used.push(m[0]); }
     if ((m = t.match(/(?:mas de|mayor (?:a|que|de)|desde|minimo|min|over|above|more than|>)\s*\$?\s*(\d[\d.,]*\s*(?:k|mil)?)/))) { spec.min_price = money(m[1]); used.push(m[0]); }
   }
+  { const cm = text.match(/€|eur(?:os?)?\b|£|gbp|libras?|¥|yen|jpy|\$|usd|d[oó]lares?|cny|rmb|yuan/i); if (cm) { const x = cm[0].toLowerCase(); spec.price_currency = /€|eur/.test(x) ? 'EUR' : /£|gbp|libra/.test(x) ? 'GBP' : /¥|yen|jpy/.test(x) ? 'JPY' : /cny|rmb|yuan/.test(x) ? 'CNY' : 'USD'; } }
   if ((m = t.match(/(?:elige|elegir|selecciona|seleccionar|escoge|escoger|dame|pick|choose|select|top|primeros)\s+(?:los\s+)?(\d+)/))) { spec.select_count = +m[1]; used.push(m[0]); }
   else if (/\b(elige|selecciona|escoge|pick|choose|select)\b/.test(t)) spec.select_count = 30;
   if (/variad|mezcla|diversif|mix|distint/.test(t)) spec.diversify_brands = true;
@@ -559,8 +622,8 @@ function canonList(list, key) {
   const idx = new Map(rows.map(r => [strip(get(r, key)), get(r, key)]));
   return (list || []).map(x => { const k = strip(x); if (idx.has(k)) return idx.get(k); const g = BRAND_SYN.find(g => g.includes(k)); return g && g.map(z => idx.get(z)).find(Boolean); }).filter(Boolean);
 }
-const curRate = c => { c = String(c || 'USD').toUpperCase(); return c === 'USD' ? 1 : (rates && rates[c]) || 0; };
-const toUSD = (v, cur) => v == null ? null : v / (curRate(cur) || 1); // rates = unidades de cada moneda por 1 USD
+const curRate = c => rate(c || outCur);
+const toUSD = (v, cur) => v == null ? null : v / (curRate(cur) || 1); // sin moneda indicada = la moneda que se está viendo
 async function runSearches(list, said) {
   rows.forEach(r => { delete r._tag; delete r._ord; });
   resetFilters(false);
@@ -569,7 +632,7 @@ async function runSearches(list, said) {
     const f = { loose: false, catalog: null, q: '', brands: new Set(canonList(s.brands, 'brand')), entities: new Set(canonList(s.entities, 'entity')),
       groups: (s.keyword_groups || []).map(g => g.map(strip).filter(Boolean)).filter(g => g.length), exclude: (s.exclude_keywords || []).map(strip).filter(Boolean),
       min: toUSD(s.min_price, s.price_currency), max: toUSD(s.max_price, s.price_currency), rank: s.worst_rank_allowed || 0, rankMin: s.best_rank_allowed || 0, basis: s.price_basis === 'buying' ? 'buying' : 'shown' };
-    if ((s.min_price != null || s.max_price != null) && s.price_currency && !curRate(s.price_currency)) report0.push(`⚠ ${s.label || 'búsqueda ' + (si + 1)}: no conozco la moneda ${s.price_currency}; tomo los precios como USD`);
+    if ((s.min_price != null || s.max_price != null) && s.price_currency && !curRate(s.price_currency)) report0.push(`⚠ ${s.label || 'búsqueda ' + (si + 1)}: no conozco la moneda ${s.price_currency}; uso ${outCur}`);
     const price = r => f.basis === 'buying' ? usdOf(r) : finalOf(r);
     const pref = (s.prefer_keywords || []).map(strip).filter(Boolean), sc = r => pref.reduce((n, w) => n + (hit(r._text, w) ? 1 : 0), 0);
     const cmp0 = (a, b) => sc(b) - sc(a) || (a._rank || 99) - (b._rank || 99);
@@ -734,7 +797,7 @@ async function chooseScope() { // qué artículos se descargan: lo dejo siempre 
 }
 async function buildCustomer(scope = 'all') {
   if (scope !== 'viewAll' && !selected.size) throw new Error('Selecciona artículos primero');
-  if (!rates) throw new Error('No hay tipos de cambio; no se puede calcular el precio USD');
+  if (!rates) throw new Error('No hay tipos de cambio; no se pueden calcular los precios');
   let sel; const urls = []; let done = 0;
   if (scope === 'viewAll') sel = view.filter(r => code(r));
   else { sel = rows.filter(r => selected.has(code(r))); if (scope === 'view') { const vs = new Set(view); sel = sel.filter(r => vs.has(r)); } sel.sort((a, b) => (a._ord ?? 1e9) - (b._ord ?? 1e9)); }
@@ -748,7 +811,7 @@ async function buildCustomer(scope = 'all') {
     const id = code(r), have = Math.min(urls[i].length, NPIC), price = finalOf(r);
     if (!id) noid++; else if (!have) nopic++; if (isNaN(price)) noprice++;
     const pic = n => n <= have ? { f: `image("${photoUrl(id, n)}",4,100,100)` } : {};
-    const row = [{ v: get(r, 'brand') }, { v: id }, { v: nameOf(r) }, (nat && D.photo.has(r)) ? { v: D.photo.get(r), photo: 1 } : { v: nat && r._detail ? D.text.get(r._detail) : r._detail }, { v: rankText(r) }, {}, isNaN(price) ? {} : { v: Math.round(price * 100) / 100, money: 1 }, pic(1)];
+    const row = [{ v: get(r, 'brand') }, { v: id }, { v: nameOf(r) }, (nat && D.photo.has(r)) ? { v: D.photo.get(r), photo: 1 } : { v: nat && r._detail ? D.text.get(r._detail) : r._detail }, { v: rankText(r) }, {}, isNaN(price) ? {} : { v: Math.round(outVal(price) * 100) / 100, money: 1 }, pic(1)];
     for (let n = 2; n <= NPIC; n++) row.push(pic(n));
     for (let n = 1; n <= NPIC; n++) row.push(n <= have ? { f: `iferror(HYPERLINK("${photoUrl(id, n)}","${id} - photo${n}"))` } : {});
     return row;
@@ -767,13 +830,15 @@ async function exportCsv() {
     done(body.length, warn);
   } catch (e) { setStatus(e.message, true); }
 }
-const PRICE_BANDS = [[0, 200, 'Under 200'], [200, 500, '200-500'], [500, 1000, '500-1000'], [1000, 2500, '1000-2500'], [2500, Infinity, 'Over 2500']];
+const priceBands = () => { const e = bandEdges(), L = [[0, e[0], `Under ${e[0]}`], [e[0], e[1], `${e[0]}-${e[1]}`], [e[1], e[2], `${e[1]}-${e[2]}`], [e[2], e[3], `${e[2]}-${e[3]}`], [e[3], Infinity, `Over ${e[3]}`]]; return L.map(x => [x[0], x[1], x[2] + ' ' + outCur]); };
 const SPLITS = { // → [etiqueta, orden]
   entity: r => [get(r, 'entity') || '(no entity)', get(r, 'entity') || '~'],
   brand: r => [get(r, 'brand') || '(no brand)', strip(get(r, 'brand')) || '~'],
   grade: r => [r._rank ? `Grade ${r._letter}` : '(no grade)', String(r._rank || 99).padStart(2, '0')],
-  price: r => { const p = finalOf(r), i = PRICE_BANDS.findIndex(([lo, hi]) => p >= lo && p < hi); return i < 0 ? ['(no price)', '9'] : [PRICE_BANDS[i][2], String(i)]; },
+  price: r => { const B = priceBands(), p = fromUSD(finalOf(r)), i = B.findIndex(([lo, hi]) => p >= lo && p < hi); return i < 0 ? ['(no price)', '9'] : [B[i][2], String(i)]; },
 };
+const SYMS = { USD: '$', EUR: '€', GBP: '£', JPY: '¥', CNY: 'CN¥', HKD: 'HK$', CAD: 'C$', AUD: 'A$', SGD: 'S$', KRW: '₩', CHF: 'CHF ' };
+const moneyFmt = () => SYMS[outCur] ? `"${SYMS[outCur]}"#,##0` : `#,##0 "${outCur}"`;
 function buildSheet(head, body) {
   const ws = {}, thin = { style: 'thin', color: { rgb: 'BFBFBF' } }, border = { top: thin, bottom: thin, left: thin, right: thin };
   const H = rgb => ({ font: { bold: true, sz: 10 }, fill: { patternType: 'solid', fgColor: { rgb } }, alignment: { horizontal: 'center', vertical: 'center', wrapText: true }, border });
@@ -782,7 +847,7 @@ function buildSheet(head, body) {
   body.forEach((row, i) => row.forEach((cell, c) => {
     const a = XLSX.utils.encode_cell({ r: i + 1, c });
     if (cell.f) ws[a] = { t: 's', v: '', f: cell.f, s: B };
-    else if (cell.money) ws[a] = { t: 'n', v: cell.v, z: '$#,##0', s: { ...B, font: { sz: 12 } } };
+    else if (cell.money) ws[a] = { t: 'n', v: cell.v, z: moneyFmt(), s: { ...B, font: { sz: 12 } } };
     else if (cell.v !== undefined && cell.v !== '') ws[a] = { t: 's', v: String(cell.v), s: cell.photo ? { ...BL, fill: { patternType: 'solid', fgColor: { rgb: 'FFE699' } } } : c === 3 ? BL : B };
     else ws[a] = { t: 's', v: '', s: B };
   }));
@@ -811,13 +876,11 @@ async function exportXlsx() {
     done(body.length, warn, ` · ${list.length} grupos (${list.map(([l, g]) => `${l}: ${g.idx.length}`).join(', ')})`);
   } catch (e) { setStatus(e.message, true); }
 }
-function done(n, warn, extra = '') { setStatus(`Descargados ${n} artículos · Buy Now ${markupOn ? 'CON' : 'SIN'} margen${extra}` + (warn ? ' · ⚠ ' + warn : ''), !!warn); }
+function done(n, warn, extra = '') { setStatus(`Descargados ${n} artículos · Buy Now en ${outCur} · ${prof() ? 'margen ' + profLabel() : 'sin margen'}${extra}` + (warn ? ' · ⚠ ' + warn : ''), !!warn); }
 $('splitBy').onchange = () => { $('splitOutL').style.display = $('splitBy').value ? '' : 'none'; };
 $('exportX').onclick = exportXlsx; $('exportCsv').onclick = exportCsv;
 
 /* ============ ajustes / init ============ */
-$('markup').onclick = () => { markupOn = !markupOn; store.set('markupOn', markupOn ? '1' : '0'); setMarkupBtn(); if (rows.length) refresh(false); };
-['pct', 'fee'].forEach(id => bind(id, 'change', () => { store.set(id, $(id).value); setMarkupBtn(); if (rows.length) refresh(false); }));
 ['labels', 'exp'].forEach(id => bind(id, 'change', () => store.set(id, $(id).value)));
 bind('natural', 'change', () => store.set('natural', $('natural').checked ? '1' : '0'));
 ['tpl', 'size', 'prefix', 'maxn'].forEach(id => bind(id, 'change', () => { store.set(id, $(id).value); imgCache.clear(); photoPending.clear(); if (rows.length) { prep(); refresh(false); } }));
@@ -826,8 +889,8 @@ $('size').value = store.get('size', 'medium'); $('prefix').value = store.get('pr
 $('exp').value = store.get('exp', 'https://s3.amazonaws.com/storage.j-ports/photographs/{id}/{n}.jpg');
 $('labels').value = store.get('labels', '1=With Tags\n4=Superb Condition\n7=Good Condition');
 $('natural').checked = store.get('natural', '1') === '1';
-$('url').value = store.get('url', ''); $('pct').value = store.get('pct', '35'); $('fee').value = store.get('fee', '2500');
-saveSel(); setMarkupBtn(); loadRates(); aiStatus();
+$('url').value = store.get('url', '');
+saveSel(); buildCurSelects(); loadRates(); aiStatus();
 </script>
 </body>
 </html>
