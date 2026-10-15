@@ -74,6 +74,7 @@
 <div class="top">
   <h1>Catalog Finder</h1>
   <span id="fx" class="mute"></span>
+  <label title="Idioma / Language / Langue">🌐 <select id="langSel"></select></label>
   <label>Moneda <select id="outCurSel"></select></label>
   <label>Cliente <select id="profSel" title="Cada cliente tiene su margen, tarifa fija y moneda"></select></label>
   <button id="profEdit" title="Editar el cliente elegido o crear uno nuevo">✎ Margen</button>
@@ -179,24 +180,42 @@
 <div id="lb"><div class="cap"></div><img><div class="thumbs"></div></div>
 
 <script src="vendor/xlsx.bundle.js"></script>
+<script src="i18n.js"></script>
 <script>
 /* ============ campos y utilidades ============ */
 const FIELDS = {
-  id:     { label:'Código (CTag)', alias:['ctag','c tag','code','codigo','código','id','sku','item id','ref'] },
-  brand:  { label:'Marca',         alias:['brand name','brand','marca'] },
-  name:   { label:'Nombre',        alias:['item name','name','nombre'] },
+  id:     { label:'Código (CTag)', alias:['ctag','c tag','c-tag','code','codigo','código','id','sku','item id','ref','reference'] },
+  brand:  { label:'Marca',         alias:['brand name','brand','marca','marque'] },
+  name:   { label:'Nombre',        alias:['item name','name','nombre','nom','designation'] },
   desc:   { label:'Descripción',   alias:['item description','description','descripcion','descripción'] },
-  notes:  { label:'Notas',         alias:['public notes','notes','notas'] },
+  notes:  { label:'Notas',         alias:['public notes','notes','notas','remarques','notes publiques'] },
   grade:  { label:'Grading (si hay)', alias:['grading','grade','condition','estado','condicion','condición'] },
-  price:  { label:'Precio',        alias:['price after tax','original price','price','precio'] },
-  cur:    { label:'Moneda',        alias:['currency','moneda','curr'] },
-  entity: { label:'Entity',        alias:['entity','entidad','owner','seller','vendor','company'] },
+  price:  { label:'Precio',        alias:['price after tax','original price','price','precio','prix'] },
+  cur:    { label:'Moneda',        alias:['currency','moneda','curr','devise'] },
+  entity: { label:'Entity',        alias:['entity','entidad','entite','owner','seller','vendor','company'] },
 };
 const $ = id => document.getElementById(id);
 const store = {
   get(k, d) { try { return localStorage.getItem(k) ?? d; } catch { return d; } },
   set(k, v) { try { localStorage.setItem(k, v); } catch {} },
 };
+let lang = store.get('lang', 'es'); if (!window.LANGS[lang]) lang = 'es';
+const LOC = () => ({ es: 'en-US', en: 'en-US', fr: 'fr-FR' }[lang]); // el español conserva el formato de siempre ($1,234)
+const tl = (k, v) => { const s = lang === 'es' ? k : (window.I18N[k]?.[lang] ?? k); return v ? s.replace(/\{(\w+)\}/g, (m, x) => x in v ? v[x] : m) : s; };
+const _fetch = window.fetch.bind(window); window.fetch = (u, o = {}) => _fetch(u, { ...o, headers: { ...(o.headers || {}), 'X-Lang': lang } });
+const _tn = []; // textos y atributos estáticos del HTML, capturados al arrancar para poder retraducirlos
+function captureI18n() {
+  const w = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT, { acceptNode: n => /\S/.test(n.nodeValue) && !['SCRIPT', 'STYLE'].includes(n.parentNode.nodeName) ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_REJECT });
+  while (w.nextNode()) _tn.push({ n: w.currentNode, es: w.currentNode.nodeValue });
+  document.querySelectorAll('[placeholder],[title]').forEach(el => ['placeholder', 'title'].forEach(a => { if (el.hasAttribute(a)) _tn.push({ el, a, es: el.getAttribute(a) }); }));
+}
+function applyI18n() {
+  for (const x of _tn) {
+    if (x.n) { if (!x.n.isConnected) continue; const m = x.es.match(/^(\s*)([\s\S]*?)(\s*)$/); x.n.nodeValue = m[1] + tl(m[2]) + m[3]; }
+    else if (x.el.isConnected) x.el.setAttribute(x.a, tl(x.es));
+  }
+  document.documentElement.lang = lang;
+}
 const strip = s => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/\s+/g, ' ').trim();
 const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const debounce = (f, ms) => { let t; return (...a) => { clearTimeout(t); t = setTimeout(() => f(...a), ms); }; };
@@ -262,10 +281,10 @@ const nice = v => { if (!isFinite(v) || v <= 0) return 0; const q = 10 ** (Math.
 const NODEC = ['JPY', 'KRW', 'VND', 'IDR', 'CLP', 'HUF'];
 function fmtMoney(v, cur = outCur) {
   if (v == null || isNaN(v)) return '';
-  try { return new Intl.NumberFormat('en-US', { style: 'currency', currency: cur, currencyDisplay: 'narrowSymbol', maximumFractionDigits: NODEC.includes(cur) || Math.abs(v) >= 100 ? 0 : 2 }).format(v); }
-  catch { return v.toLocaleString('en-US', { maximumFractionDigits: 0 }) + ' ' + cur; }
+  try { return new Intl.NumberFormat(LOC(), { style: 'currency', currency: cur, currencyDisplay: 'narrowSymbol', maximumFractionDigits: NODEC.includes(cur) || Math.abs(v) >= 100 ? 0 : 2 }).format(v); }
+  catch { return v.toLocaleString(LOC(), { maximumFractionDigits: 0 }) + ' ' + cur; }
 }
-const profLabel = () => { const p = prof(); return p ? `${p.name} (+${p.pct}%${p.fee ? ' + ' + p.fee.toLocaleString('en-US') + ' ' + p.feeCur : ''})` : 'sin margen'; };
+const profLabel = () => { const p = prof(); return p ? `${p.name} (+${p.pct}%${p.fee ? ' + ' + p.fee.toLocaleString(LOC()) + ' ' + p.feeCur : ''})` : tl('sin margen'); };
 const CUR_ALIAS = { '$': 'USD', 'US$': 'USD', '€': 'EUR', '£': 'GBP', '¥': 'JPY', '円': 'JPY', 'YEN': 'JPY', 'RMB': 'CNY', '元': 'CNY', 'CN¥': 'CNY', 'HK$': 'HKD' };
 const curOf = r => { const c = get(r, 'cur').toUpperCase().replace(/\s/g, ''); return CUR_ALIAS[c] || c; };
 const priceNum = s => {
@@ -287,8 +306,8 @@ async function loadRates() {
     const d = await r.json(); rates = d.rates; ratesDate = d.date; store.set('rates', JSON.stringify(d));
   } catch (e) {
     const old = JSON.parse(store.get('rates', 'null'));
-    if (old) { rates = old.rates; ratesDate = old.date + ' (guardado, sin conexión)'; }
-    else { $('fx').textContent = '⚠ sin tipos de cambio'; $('fx').className = 'err'; return; }
+    if (old) { rates = old.rates; ratesDate = old.date + ' ' + tl('(guardado, sin conexión)'); }
+    else { $('fx').textContent = tl('⚠ sin tipos de cambio'); $('fx').className = 'err'; return; }
   }
   $('fx').textContent = `1 USD = ${(rates.JPY || 0).toFixed(2)} JPY · ${(rates.CNY || 0).toFixed(3)} CNY${outCur !== 'USD' && outCur !== 'JPY' && outCur !== 'CNY' ? ' · ' + rate(outCur).toFixed(3) + ' ' + outCur : ''} · ${ratesDate}`;
   buildCurSelects(); if (rows.length) refresh(false);
@@ -300,9 +319,9 @@ function curOptions(sel, cur) { // monedas disponibles (las habituales primero)
 }
 function buildCurSelects() { if (rates && !rate(outCur)) outCur = 'USD'; curOptions($('outCurSel'), outCur); buildProfSel(); }
 function buildProfSel() {
-  $('profSel').innerHTML = '<option value="">Sin margen</option>' + profiles.map(p => `<option value="${esc(p.name)}">${esc(p.name)} (+${p.pct}%${p.fee ? ' + ' + p.fee + ' ' + p.feeCur : ''})</option>`).join('') + '<option value="__new">+ Nuevo cliente…</option>';
+  $('profSel').innerHTML = '<option value="">' + esc(tl('Sin margen')) + '</option>' + profiles.map(p => `<option value="${esc(p.name)}">${esc(p.name)} (+${p.pct}%${p.fee ? ' + ' + p.fee + ' ' + p.feeCur : ''})</option>`).join('') + '<option value="__new">' + esc(tl('+ Nuevo cliente…')) + '</option>';
   $('profSel').value = prof() ? activeProf : '';
-  $('bnMode').textContent = prof() ? 'con margen: ' + profLabel() + ' · ' + outCur : 'sin margen · ' + outCur;
+  $('bnMode').textContent = prof() ? tl('con margen: {p} · {c}', { p: profLabel(), c: outCur }) : tl('sin margen · {c}', { c: outCur });
 }
 function applyProfile() { store.set('profile', activeProf); store.set('outCur', outCur); store.set('profiles', JSON.stringify(profiles)); buildCurSelects(); if (rows.length) refresh(false); }
 $('outCurSel').onchange = () => { outCur = $('outCurSel').value; applyProfile(); };
@@ -314,7 +333,7 @@ $('profSel').onchange = () => {
 $('profEdit').onclick = () => editProfile(!prof());
 function editProfile(isNew) {
   const p = isNew ? { name: '', pct: 35, fee: 0, feeCur: outCur, round: 0, outCur } : prof(); editing = isNew ? null : p.name;
-  $('pTitle').textContent = isNew ? 'Nuevo cliente' : 'Editar cliente'; $('pName').value = p.name; $('pPct').value = p.pct; $('pFee').value = p.fee;
+  $('pTitle').textContent = isNew ? tl('Nuevo cliente') : tl('Editar cliente'); $('pName').value = p.name; $('pPct').value = p.pct; $('pFee').value = p.fee;
   curOptions($('pFeeCur'), p.feeCur); curOptions($('pOut'), p.outCur); $('pRound').value = String(p.round || 0);
   $('pDel').style.display = isNew ? 'none' : ''; $('pdlg').style.display = ''; pPreview();
 }
@@ -322,7 +341,7 @@ let editing = null;
 function pPreview() { // ejemplo con lo que se está escribiendo
   const pct = parseFloat($('pPct').value.replace(',', '.')) || 0, fee = parseFloat($('pFee').value.replace(',', '.')) || 0, o = $('pOut').value;
   const usd = 100 * (1 + pct / 100) + fee / (rate($('pFeeCur').value) || 1), v = roundTo(usd * (rate(o) || 1), +$('pRound').value);
-  $('pPreview').textContent = `Ejemplo: una compra de 100 USD sale a ${fmtMoney(v, o)}.`;
+  $('pPreview').textContent = tl('Ejemplo: una compra de 100 USD sale a {v}.', { v: fmtMoney(v, o) });
 }
 ['pName', 'pPct', 'pFee'].forEach(id => $(id).addEventListener('input', pPreview)); ['pFeeCur', 'pOut', 'pRound'].forEach(id => $(id).addEventListener('change', pPreview));
 $('pCancel').onclick = () => { $('pdlg').style.display = 'none'; buildProfSel(); };
@@ -369,27 +388,35 @@ function findImages(id) {
 async function pool(items, fn, n = 8) { const q = [...items.keys()]; await Promise.all(Array.from({ length: n }, async () => { while (q.length) { const i = q.shift(); await fn(items[i], i); } })); }
 
 /* ============ carga ============ */
+let loadedN = 0;
+function setLoaded() { if (loadedN) $('loaded').textContent = tl('✓ {n} artículos cargados', { n: loadedN.toLocaleString(LOC()) }); }
 function ingest(text) {
-  const t = parseCSV(text);
-  if (t.length < 2) throw new Error('El CSV está vacío');
-  headers = t[0].map(h => h.trim());
-  rows = t.slice(1).map((r, i) => { const o = { _i: i }; headers.forEach((h, j) => o[h] = (r[j] || '').trim()); return o; });
+  const tbl = parseCSV(text);
+  if (tbl.length < 2) throw new Error(tl('El CSV está vacío'));
+  let hi = 0, best = 0; // la fila de cabeceras puede no ser la primera (hojas con títulos encima)
+  for (let i = 0; i < Math.min(12, tbl.length - 1); i++) {
+    const sc = tbl[i].filter(c => { const k = strip(c); return k && Object.values(FIELDS).some(d => d.alias.includes(k) || /^c-?tag\b/.test(k)); }).length;
+    if (sc > best) { best = sc; hi = i; }
+  }
+  if (best < 2) hi = 0;
+  headers = tbl[hi].map(h => h.trim());
+  rows = tbl.slice(hi + 1).map((r, i) => { const o = { _i: i }; headers.forEach((h, j) => o[h] = (r[j] || '').trim()); return o; });
   const saved = JSON.parse(store.get('map', '{}')); map = {};
   for (const [k, def] of Object.entries(FIELDS)) {
-    const byAlias = headers.find(h => def.alias.includes(strip(h)));
+    const byAlias = headers.find(h => def.alias.includes(strip(h)) || (k === 'id' && /^c-?tag\b/.test(strip(h))));
     map[k] = (saved[k] && headers.includes(saved[k])) ? saved[k] : (byAlias || '');
   }
   lastCatalog = null; buildMapping(); prep();
   { const have = new Set(rows.map(code)); [...selected].forEach(c => { if (!have.has(c)) selected.delete(c); }); }
   $('s2').style.display = $('s3').style.display = $('bar').style.display = '';
-  $('loaded').textContent = `✓ ${rows.length.toLocaleString('en-US')} artículos cargados`;
+  loadedN = rows.length; setLoaded();
   $('loadBox').style.display = 'none'; resetFilters(false); refresh(true);
-  if (!map.id) setStatus('⚠ No encuentro la columna del código (CTag). Elígela en Ajustes avanzados.', true);
+  if (!map.id) setStatus(tl('⚠ No encuentro la columna del código (CTag). Elígela en Ajustes avanzados.'), true);
 }
 function buildMapping() {
   $('mapping').innerHTML = '';
   for (const [k, def] of Object.entries(FIELDS)) {
-    const l = document.createElement('label'); l.textContent = def.label + ' ';
+    const l = document.createElement('label'); l.textContent = tl(def.label) + ' ';
     const s = document.createElement('select');
     s.innerHTML = '<option value="">—</option>' + headers.map(h => `<option>${esc(h)}</option>`).join(''); s.value = map[k] || '';
     s.onchange = () => { map[k] = s.value; store.set('map', JSON.stringify(map)); prep(); refresh(true); };
@@ -398,15 +425,15 @@ function buildMapping() {
 }
 async function loadURL() {
   const u = $('url').value.trim(); if (!u) return;
-  store.set('url', u); $('loaded').textContent = 'Descargando…';
+  store.set('url', u); $('loaded').textContent = tl('Descargando…');
   try { const r = await fetch('/fetch?url=' + encodeURIComponent(u)); if (!r.ok) throw new Error(await r.text()); ingest(await r.text()); }
-  catch (e) { $('loaded').innerHTML = `<span class="err">Error: ${esc(e.message)}${location.protocol === 'file:' ? ' (abre la app con: python server.py)' : ''}</span>`; }
+  catch (e) { $('loaded').innerHTML = `<span class="err">${esc(tl('Error: {m}', { m: e.message }))}${location.protocol === 'file:' ? esc(tl(' (abre la app con: python server.py)')) : ''}</span>`; }
 }
 $('load').onclick = loadURL;
 $('url').onkeydown = e => { if (e.key === 'Enter') loadURL(); };
 $('file').onchange = async e => { const f = e.target.files[0]; if (!f) return; try { ingest(await f.text()); } catch (err) { $('loaded').innerHTML = `<span class="err">${esc(err.message)}</span>`; } };
 $('loaded').onclick = () => { if (rows.length) $('loadBox').style.display = $('loadBox').style.display === 'none' ? '' : 'none'; };
-$('loaded').style.cursor = 'pointer'; $('loaded').title = 'Clic para cambiar de hoja';
+$('loaded').style.cursor = 'pointer'; $('loaded').title = tl('Clic para cambiar de hoja');
 
 /* ============ filtros ============ */
 const F = { grades: new Set(), rankMin: 0, onlySel: false, loose: false, catalog: null, q: '', brands: new Set(), entities: new Set(), min: null, max: null, rank: 0, groups: [], exclude: [], sort: '', onlyImg: false };
@@ -438,6 +465,7 @@ function chips(el, facet, set, max) {
   el.innerHTML = '';
   shownL.forEach(([name, n]) => { const b = document.createElement('button'); b.className = 'chip' + (set.has(name) ? ' on' : ''); b.innerHTML = `${esc(name)} <small>${n}</small>`; b.onclick = () => { set.has(name) ? set.delete(name) : set.add(name); refresh(false); }; el.append(b); });
 }
+const gradeLbl = k => (k === 1 || k === 0) ? tl(GRADE_LABEL[k]) : GRADE_LABEL[k];
 const GRADE_LABEL = { 1: 'SA c/etiq.', 2: 'SA', 3: 'S', 4: 'A', 5: 'AB', 6: 'B+', 7: 'B', 8: 'B-', 9: 'BC', 10: 'C', 0: 'sin grado' };
 function gradeSet(sp) { // grados aceptados por una petición: lista exacta o rango mejor..peor
   const set = new Set();
@@ -458,7 +486,7 @@ function facets() {
   const gl = $('gchips'); gl.innerHTML = '';
   [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 0].filter(k => fg.get(k) || F.grades.has(k)).forEach(k => {
     const b = document.createElement('button'); b.className = 'chip' + (F.grades.has(k) ? ' on' : '');
-    b.innerHTML = `${esc(GRADE_LABEL[k])} <small>${fg.get(k) || 0}</small>`; b.title = k ? 'Grado exacto (puedes marcar varios)' : 'Artículos cuyo grading no se pudo leer';
+    b.innerHTML = `${esc(gradeLbl(k))} <small>${fg.get(k) || 0}</small>`; b.title = k ? tl('Grado exacto (puedes marcar varios)') : tl('Artículos cuyo grading no se pudo leer');
     b.onclick = () => { F.grades.has(k) ? F.grades.delete(k) : F.grades.add(k); refresh(false); }; gl.append(b);
   });
 }
@@ -474,7 +502,7 @@ function priceChips() {
 }
 function refresh(rebuild) {
   runId++;
-  const sh = v => v == null ? '' : Math.round(fromUSD(v) * 100) / 100; $('pmin').value = sh(F.min); $('pmax').value = sh(F.max); $('priceLbl').textContent = 'Precio ' + outCur; $('frank').value = '0';
+  const sh = v => v == null ? '' : Math.round(fromUSD(v) * 100) / 100; $('pmin').value = sh(F.min); $('pmax').value = sh(F.max); $('priceLbl').textContent = tl('Precio') + ' ' + outCur; $('frank').value = '0';
   facets(); priceChips();
   view = rows.filter(r => matches(r));
   if (!view.length && F.groups.length && !F.loose) { F.loose = true; view = rows.filter(r => matches(r)); if (!view.length) F.loose = false; }
@@ -489,12 +517,12 @@ function draw() { shown = 0; $('grid').innerHTML = ''; more(); stats(); }
 function stats() {
   const ps = view.map(finalOf).filter(v => !isNaN(v)), sum = ps.reduce((a, b) => a + b, 0);
   const nograde = view.filter(r => !r._rank).length;
-  $('stats').innerHTML = `<span><b>${view.length.toLocaleString('en-US')}</b> resultados de ${rows.length.toLocaleString('en-US')}</span>` +
-    (ps.length ? `<span class="mute">precio medio <b style="font-size:inherit">${fmtMoney(outVal(sum / ps.length))}</b> · de ${fmtMoney(outVal(Math.min(...ps)))} a ${fmtMoney(outVal(Math.max(...ps)))}</span>` : '') +
-    (F.loose ? '<span class="mute">palabras buscadas también en notas (no había coincidencias en el nombre)</span>' : '');
+  $('stats').innerHTML = tl('<span><b>{n}</b> resultados de {m}</span>', { n: view.length.toLocaleString(LOC()), m: rows.length.toLocaleString(LOC()) }) +
+    (ps.length ? tl('<span class="mute">precio medio <b style="font-size:inherit">{avg}</b> · de {lo} a {hi}</span>', { avg: fmtMoney(outVal(sum / ps.length)), lo: fmtMoney(outVal(Math.min(...ps))), hi: fmtMoney(outVal(Math.max(...ps))) }) : '') +
+    (F.loose ? tl('<span class="mute">palabras buscadas también en notas (no había coincidencias en el nombre)</span>') : '');
   if (F.catalog || lastCatalog) {
     const on = !!F.catalog, c = document.createElement('button'); c.className = 'chip' + (on ? ' on' : '');
-    c.textContent = on ? `🎯 Dentro del catálogo montado (${F.catalog.size}) ✕ quitar` : `🎯 Volver al catálogo montado (${lastCatalog.size})`;
+    c.textContent = on ? tl('🎯 Dentro del catálogo montado ({n}) ✕ quitar', { n: F.catalog.size }) : tl('🎯 Volver al catálogo montado ({n})', { n: lastCatalog.size });
     c.onclick = () => { F.catalog = on ? null : lastCatalog; refresh(false); }; $('stats').append(c);
   }
   updateBar(); setStatus('');
@@ -502,7 +530,7 @@ function stats() {
 async function onlyWithPhotos() {
   const me = runId, items = [...view], keep = new Set(); let done = 0;
   $('grid').innerHTML = ''; shown = 0; stats();
-  await pool(items, async r => { if (me !== runId) return; const id = code(r); if (id && (await findImages(id)).length) keep.add(r); if (++done % 25 === 0) setStatus(`Comprobando fotos… ${done}/${items.length}`); });
+  await pool(items, async r => { if (me !== runId) return; const id = code(r); if (id && (await findImages(id)).length) keep.add(r); if (++done % 25 === 0) setStatus(tl('Comprobando fotos… {a}/{b}', { a: done, b: items.length })); });
   if (me !== runId) return; view = items.filter(r => keep.has(r)); draw();
 }
 function more() { const slice = view.slice(shown, shown + PAGE); shown += slice.length; slice.forEach(addCard); $('more').style.display = shown < view.length ? '' : 'none'; }
@@ -521,9 +549,9 @@ const io = new IntersectionObserver(es => es.forEach(e => { if (e.isIntersecting
 function addCard(r) {
   const c = document.createElement('div'), on = selected.has(code(r)); c.className = 'card' + (on ? ' sel' : ''); c._r = r;
   const orig = [get(r, 'price'), get(r, 'cur')].filter(Boolean).join(' '), u = usdOf(r), f = finalOf(r);
-  const price = isNaN(u) ? (orig ? orig + (rates ? ' ⚠ moneda desconocida' : '') : '') : fmtMoney(outVal(f)) + ' ' + outCur;
-  const sub = isNaN(u) ? '' : (prof() ? `base ${fmtMoney(fromUSD(u))} · ` : '') + 'orig. ' + orig;
-  c.innerHTML = `<input type="checkbox" class="pick" ${on ? 'checked' : ''}>${r._rank ? `<span class="rank">${esc(r._letter)}</span>` : ''}<div class="photo"><span class="none">cargando…</span></div>
+  const price = isNaN(u) ? (orig ? orig + (rates ? tl(' ⚠ moneda desconocida') : '') : '') : fmtMoney(outVal(f)) + ' ' + outCur;
+  const sub = isNaN(u) ? '' : (prof() ? tl('base {v} · ', { v: fmtMoney(fromUSD(u)) }) : '') + tl('orig. ') + orig;
+  c.innerHTML = `<input type="checkbox" class="pick" ${on ? 'checked' : ''}>${r._rank ? `<span class="rank">${esc(r._letter)}</span>` : ''}<div class="photo"><span class="none">${esc(tl('cargando…'))}</span></div>
     <div class="info"><div class="brand">${esc(get(r, 'brand') || '—')}</div><div class="code">${esc(code(r))}${get(r, 'entity') ? ' · ' + esc(get(r, 'entity')) : ''}</div>
     <div class="desc">${esc(nameOf(r))}</div>
     ${F.catalog && r._tag ? `<div class="notes">🎯 ${esc(r._tag)}</div>` : ''}${price ? `<div class="price">${esc(price)}</div>` : ''}${sub ? `<div class="mute notes">${esc(sub)}</div>` : ''}</div>`;
@@ -532,9 +560,9 @@ function addCard(r) {
 }
 async function loadCard(c) {
   const id = code(c._r), ph = c.querySelector('.photo');
-  if (!id) { ph.innerHTML = '<span class="none">sin código</span>'; return; }
+  if (!id) { ph.innerHTML = '<span class="none">' + esc(tl('sin código')) + '</span>'; return; }
   const urls = await findImages(id);
-  if (!urls.length) { ph.innerHTML = '<span class="none">sin imágenes</span>'; ph.style.cursor = 'default'; return; }
+  if (!urls.length) { ph.innerHTML = '<span class="none">' + esc(tl('sin imágenes')) + '</span>'; ph.style.cursor = 'default'; return; }
   ph.innerHTML = `<img src="${urls[0]}" loading="lazy"><span class="n">${urls.length}</span>`;
   ph.onclick = () => openLB(urls, `${get(c._r, 'brand')} · ${id}`);
 }
@@ -559,8 +587,8 @@ function selCounts() { const inView = view.filter(r => selected.has(code(r))).le
 function updateBar() {
   $('selN').textContent = selected.size;
   const { inView, hidden } = selCounts();
-  $('selView').textContent = selected.size && hidden ? ` (${inView} en esta vista · ${hidden} fuera de los filtros)` : '';
-  $('seeSel').textContent = F.onlySel ? 'ver todos los resultados' : 'ver solo seleccionados';
+  $('selView').textContent = selected.size && hidden ? tl(' ({a} en esta vista · {b} fuera de los filtros)', { a: inView, b: hidden }) : '';
+  $('seeSel').textContent = F.onlySel ? tl('ver todos los resultados') : tl('ver solo seleccionados');
 }
 function toggle(k, on) { if (!k) return; on ? selected.add(k) : selected.delete(k); saveSel(); }
 function syncChecks() { document.querySelectorAll('.card').forEach(c => { const on = selected.has(code(c._r)); c.classList.toggle('sel', on); c.querySelector('.pick').checked = on; }); }
@@ -570,16 +598,16 @@ function diversify(list) {
 }
 async function pickFirst(n, div, replace) {
   let list = div ? diversify(view) : [...view]; const got = [], me = ++runId;
-  setStatus('Eligiendo artículos con fotos…');
+  setStatus(tl('Eligiendo artículos con fotos…'));
   for (let i = 0; i < list.length && got.length < n; i += 16) {
     const batch = list.slice(i, i + 16).filter(r => code(r)), ok = await Promise.all(batch.map(async r => (await findImages(code(r))).length > 0));
     batch.forEach((r, j) => { if (ok[j] && got.length < n) got.push(r); });
   }
   if (replace) selected.clear(); got.forEach(r => selected.add(code(r))); saveSel(); syncChecks();
-  setStatus(`Seleccionados ${got.length}${got.length < n ? ` (solo había ${got.length} con fotos)` : ''}`);
+  setStatus(got.length < n ? tl('Seleccionados {n} (solo había {n} con fotos)', { n: got.length }) : tl('Seleccionados {n}', { n: got.length }));
   return got.length;
 }
-$('selAll').onclick = () => { view.forEach(r => code(r) && selected.add(code(r))); saveSel(); syncChecks(); setStatus(`Seleccionados ${view.length} resultados`); };
+$('selAll').onclick = () => { view.forEach(r => code(r) && selected.add(code(r))); saveSel(); syncChecks(); setStatus(tl('Seleccionados {n} resultados', { n: view.length })); };
 $('selFirst').onclick = () => pickFirst(Math.max(1, parseInt($('selN1').value) || 30), $('selDiv').checked, false);
 function setOnlySel(on) { F.onlySel = on; $('onlySel').checked = on; refresh(false); }
 $('onlySel').onchange = () => setOnlySel($('onlySel').checked);
@@ -596,29 +624,37 @@ const BRANDLESS_DICT = { // español → inglés (grupos de sinónimos)
   gris: ['gray', 'grey'], amarillo: ['yellow'], naranja: ['orange'], morado: ['purple'], burdeos: ['burgundy'], dorado: ['gold'], plateado: ['silver'],
   cuero: ['leather'], piel: ['leather'], lona: ['canvas'], canvas: ['canvas'], charol: ['patent'], avestruz: ['ostrich'], cocodrilo: ['croc', 'alligator'], lagarto: ['lizard'], serpiente: ['snake', 'python'],
 };
+Object.assign(BRANDLESS_DICT, { // francés e inglés
+  sac: ['bag', 'handbag', 'tote', 'shoulder'], portefeuille: ['wallet'], pochette: ['pouch', 'clutch'], ceinture: ['belt'], chaussure: ['shoe', 'sneaker', 'loafer', 'pump'], montre: ['watch'],
+  echarpe: ['scarf', 'stole'], foulard: ['scarf'], carre: ['carre', 'scarf'], lunettes: ['sunglasses', 'glasses'], bijou: ['jewelry', 'necklace', 'bracelet', 'ring', 'earring'], bague: ['ring'], boucles: ['earring'],
+  noir: ['black'], noire: ['black'], rouge: ['red'], bleu: ['blue', 'navy'], bleue: ['blue', 'navy'], blanc: ['white'], blanche: ['white'], vert: ['green'], verte: ['green'], jaune: ['yellow'], violet: ['purple'],
+  bordeaux: ['burgundy'], dore: ['gold'], doree: ['gold'], argente: ['silver'], cuir: ['leather'], toile: ['canvas'], vernis: ['patent'], autruche: ['ostrich'], lezard: ['lizard'], serpent: ['snake', 'python'], collier: ['necklace'],
+  bag: ['bag', 'handbag', 'tote', 'shoulder'], handbag: ['bag', 'handbag', 'tote', 'shoulder'], jewelry: ['jewelry', 'necklace', 'bracelet', 'ring', 'earring'], shoes: ['shoe', 'sneaker', 'loafer', 'pump'],
+});
+for (const w of ['wallet', 'pouch', 'backpack', 'belt', 'shoe', 'watch', 'scarf', 'sunglasses', 'necklace', 'bracelet', 'ring', 'earring', 'black', 'red', 'brown', 'blue', 'navy', 'white', 'green', 'pink', 'gray', 'grey', 'yellow', 'purple', 'burgundy', 'gold', 'silver', 'leather', 'canvas', 'patent', 'ostrich', 'croc', 'lizard', 'snake', 'python']) if (!BRANDLESS_DICT[w]) BRANDLESS_DICT[w] = [w];
 function basicParse(text) {
   const t = strip(text), spec = { brands: [], entities: [], keyword_groups: [], exclude_keywords: [], select_count: 0, diversify_brands: false, sort: '' }, used = [];
   const money = s => { const m = s.match(/(\d+(?:[.,]\d+)?)\s*(k|mil)?/); if (!m) return null; let v = parseFloat(m[1].replace(',', '.')); if (m[2]) v *= 1000; return v; };
   let m;
-  if ((m = t.match(/(?:entre|between|de|from)\s*\$?\s*(\d[\d.,]*\s*(?:k|mil)?)\s*(?:y|and|a|to|-)\s*\$?\s*(\d[\d.,]*\s*(?:k|mil)?)/))) { spec.min_price = money(m[1]); spec.max_price = money(m[2]); used.push(m[0]); }
+  if ((m = t.match(/(?:entre|between|de|from|du)\s*\$?\s*(\d[\d.,]*\s*(?:k|mil)?)\s*(?:y|and|a|to|-|et)\s*\$?\s*(\d[\d.,]*\s*(?:k|mil)?)/))) { spec.min_price = money(m[1]); spec.max_price = money(m[2]); used.push(m[0]); }
   else {
-    if ((m = t.match(/(?:menos de|menor (?:a|que|de)|bajo|hasta|maximo|max|under|below|less than|<)\s*\$?\s*(\d[\d.,]*\s*(?:k|mil)?)/))) { spec.max_price = money(m[1]); used.push(m[0]); }
-    if ((m = t.match(/(?:mas de|mayor (?:a|que|de)|desde|minimo|min|over|above|more than|>)\s*\$?\s*(\d[\d.,]*\s*(?:k|mil)?)/))) { spec.min_price = money(m[1]); used.push(m[0]); }
+    if ((m = t.match(/(?:menos de|menor (?:a|que|de)|bajo|hasta|maximo|max|under|below|less than|moins de|moins que|sous|jusqu.{0,2}a|maximum|budget|<)\s*\$?\s*(\d[\d.,]*\s*(?:k|mil)?)/))) { spec.max_price = money(m[1]); used.push(m[0]); }
+    if ((m = t.match(/(?:mas de|mayor (?:a|que|de)|desde|minimo|min|over|above|more than|plus de|au moins|a partir de|minimum|>)\s*\$?\s*(\d[\d.,]*\s*(?:k|mil)?)/))) { spec.min_price = money(m[1]); used.push(m[0]); }
   }
-  { const cm = text.match(/€|eur(?:os?)?\b|£|gbp|libras?|¥|yen|jpy|\$|usd|d[oó]lares?|cny|rmb|yuan/i); if (cm) { const x = cm[0].toLowerCase(); spec.price_currency = /€|eur/.test(x) ? 'EUR' : /£|gbp|libra/.test(x) ? 'GBP' : /¥|yen|jpy/.test(x) ? 'JPY' : /cny|rmb|yuan/.test(x) ? 'CNY' : 'USD'; } }
-  if ((m = t.match(/(?:elige|elegir|selecciona|seleccionar|escoge|escoger|dame|pick|choose|select|top|primeros)\s+(?:los\s+)?(\d+)/))) { spec.select_count = +m[1]; used.push(m[0]); }
-  else if (/\b(elige|selecciona|escoge|pick|choose|select)\b/.test(t)) spec.select_count = 30;
-  if (/variad|mezcla|diversif|mix|distint/.test(t)) spec.diversify_brands = true;
+  { const cm = text.match(/€|eur(?:os?)?\b|£|gbp|libras?|livres?|pounds?|¥|yen|jpy|\$|usd|d[oó]lares?|dollars?|cny|rmb|yuan/i); if (cm) { const x = cm[0].toLowerCase(); spec.price_currency = /€|eur/.test(x) ? 'EUR' : /£|gbp|libra|livre|pound/.test(x) ? 'GBP' : /¥|yen|jpy/.test(x) ? 'JPY' : /cny|rmb|yuan/.test(x) ? 'CNY' : 'USD'; } }
+  if ((m = t.match(/(?:elige|elegir|selecciona|seleccionar|escoge|escoger|dame|pick|choose|select|top|primeros|choisis|choisir|selectionne|selectionner|prends|prendre|donne-moi|donne moi|premiers)\s+(?:los\s+)?(\d+)/))) { spec.select_count = +m[1]; used.push(m[0]); }
+  else if (/\b(elige|selecciona|escoge|pick|choose|select|choisis|selectionne|prends)\b/.test(t)) spec.select_count = 30;
+  if (/variad|mezcla|diversif|mix|distint|varie|melange|assorti|different/.test(t)) spec.diversify_brands = true;
   const G = '(?:sa|s|ab|a|b\\+|b-|bc|b|c)';
-  if ((m = t.match(new RegExp('(?:solo|only|exactamente|unicamente|exclusivamente)\\s+(?:estado\\s+|grado\\s+|grade\\s+)?(' + G + '(?:\\s*(?:,|\\by\\b|\\band\\b|\\bo\\b|\\bor\\b|/)\\s*' + G + ')*)(?![a-z+-])')))) {
-    spec.grades = m[1].split(/\s*(?:,|\by\b|\band\b|\bo\b|\bor\b|\/)\s*/).map(x => x.trim().toUpperCase()).filter(x => rankEntry(x)); used.push(m[0]);
-  } else if ((m = t.match(new RegExp('(?:estado|grado|grade)s?\\s*(?:de|entre|from)?\\s*(' + G + ')\\s*(?:a|y|to|and|-)\\s*(' + G + ')(?![a-z+-])')))) {
+  if ((m = t.match(new RegExp('(?:solo|only|exactamente|unicamente|exclusivamente|seulement|uniquement|exclusivement)\\s+(?:estado\\s+|grado\\s+|grade\\s+|etat\\s+)?(' + G + '(?:\\s*(?:,|\\by\\b|\\band\\b|\\bo\\b|\\bor\\b|\\bou\\b|\\bet\\b|/)\\s*' + G + ')*)(?![a-z+-])')))) {
+    spec.grades = m[1].split(/\s*(?:,|\by\b|\band\b|\bo\b|\bor\b|\bou\b|\bet\b|\/)\s*/).map(x => x.trim().toUpperCase()).filter(x => rankEntry(x)); used.push(m[0]);
+  } else if ((m = t.match(new RegExp('(?:estado|grado|grade|etat)s?\\s*(?:de|entre|from|du)?\\s*(' + G + ')\\s*(?:a|y|to|and|-|et)\\s*(' + G + ')(?![a-z+-])')))) {
     const x = rankEntry(m[1].toUpperCase())[1], y = rankEntry(m[2].toUpperCase())[1]; spec.best_rank_allowed = Math.min(x, y); spec.worst_rank_allowed = Math.max(x, y); used.push(m[0]);
-  } else if ((m = t.match(/\b(sa|s|ab|a|b\+|b-|bc|b|c)\s*(?:o|or)\s*(?:mejor|better|superior)/))) { spec.worst_rank_allowed = rankEntry(m[1])[1]; used.push(m[0]); }
-  else if (/excelente|casi nuevo|perfecto|pristine|like new/.test(t)) spec.worst_rank_allowed = 4;
-  else if (/muy buen estado|muy bueno|superb/.test(t)) spec.worst_rank_allowed = 5;
-  else if (/buen estado|buena condicion|good condition/.test(t)) spec.worst_rank_allowed = 7;
-  if (/barat|cheap|econom|menor precio/.test(t)) spec.sort = 'price_asc'; if (/mas caro|caros|expensive|mayor precio/.test(t)) spec.sort = 'price_desc';
+  } else if ((m = t.match(/\b(sa|s|ab|a|b\+|b-|bc|b|c)\s*(?:o|or|ou)\s*(?:mejor|better|superior|mieux|meilleur)/))) { spec.worst_rank_allowed = rankEntry(m[1])[1]; used.push(m[0]); }
+  else if (/excelente|casi nuevo|perfecto|pristine|like new|excellent|comme neuf|parfait|etat neuf/.test(t)) spec.worst_rank_allowed = 4;
+  else if (/muy buen estado|muy bueno|superb|tres bon etat|tres bon/.test(t)) spec.worst_rank_allowed = 5;
+  else if (/buen estado|buena condicion|good condition|bon etat|bonne condition/.test(t)) spec.worst_rank_allowed = 7;
+  if (/barat|cheap|econom|menor precio|pas cher|bon marche|moins cher/.test(t)) spec.sort = 'price_asc'; else if (/mas caro|caros|expensive|mayor precio|plus cher|tres cher/.test(t)) spec.sort = 'price_desc';
   const nameIdx = new Map(); rows.forEach(r => { const b = get(r, 'brand'); if (b) nameIdx.set(strip(b), b); }); const eIdx = new Map(); rows.forEach(r => { const e = get(r, 'entity'); if (e) eIdx.set(strip(e), e); });
   const has = w => new RegExp('(^|[^a-z0-9])' + w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '([^a-z0-9]|$)').test(t);
   for (const [k, v] of nameIdx) if (k.length > 1 && has(k)) spec.brands.push(v);
@@ -629,14 +665,14 @@ function basicParse(text) {
 }
 function describe(s) {
   const p = [];
-  if (s.brands?.length) p.push('marcas: ' + s.brands.join(', '));
-  if (s.entities?.length) p.push('entity: ' + s.entities.join(', '));
-  if (s.keyword_groups?.length) p.push('palabras: ' + s.keyword_groups.map(g => g.slice(0, 2).join('/')).join(' + '));
-  if (s.min_price != null || s.max_price != null) p.push(`precio ${s.min_price != null ? '$' + s.min_price : ''}–${s.max_price != null ? '$' + s.max_price : ''}`);
-  if (s.grades?.length) p.push('estado solo ' + s.grades.join(', '));
-  else if (s.worst_rank_allowed) p.push(s.best_rank_allowed ? `estado ${RANKS.find(x => x[1] === s.best_rank_allowed)?.[2]} a ${RANKS.find(x => x[1] === s.worst_rank_allowed)?.[2]}` : `estado ${RANKS.find(x => x[1] === s.worst_rank_allowed)?.[2]} o mejor`);
-  if (s.select_count) p.push(`seleccionar ${s.select_count}${s.diversify_brands ? ' variando marcas' : ''}`);
-  return p.length ? p.join(' · ') : 'no he entendido ningún filtro';
+  if (s.brands?.length) p.push(tl('marcas: ') + s.brands.join(', '));
+  if (s.entities?.length) p.push(tl('entity: ') + s.entities.join(', '));
+  if (s.keyword_groups?.length) p.push(tl('palabras: ') + s.keyword_groups.map(g => g.slice(0, 2).join('/')).join(' + '));
+  if (s.min_price != null || s.max_price != null) { const cur = (s.price_currency || outCur).toUpperCase(); p.push(tl('precio {a}–{b}', { a: s.min_price != null ? fmtMoney(s.min_price, cur) : '', b: s.max_price != null ? fmtMoney(s.max_price, cur) : '' })); };
+  if (s.grades?.length) p.push(tl('estado solo {g}', { g: s.grades.join(', ') }));
+  else if (s.worst_rank_allowed) p.push(s.best_rank_allowed ? tl('estado {a} a {b}', { a: RANKS.find(x => x[1] === s.best_rank_allowed)?.[2], b: RANKS.find(x => x[1] === s.worst_rank_allowed)?.[2] }) : tl('estado {a} o mejor', { a: RANKS.find(x => x[1] === s.worst_rank_allowed)?.[2] }));
+  if (s.select_count) p.push(tl('seleccionar {n}', { n: s.select_count }) + (s.diversify_brands ? tl(' variando marcas') : ''));
+  return p.length ? p.join(' · ') : tl('no he entendido ningún filtro');
 }
 const BRAND_SYN = [['ysl', 'saint laurent', 'yves saint laurent'], ['dior', 'christian dior'], ['bottega', 'bottega veneta'], ['celine', 'celine paris'], ['lv', 'louis vuitton'], ['hermes', 'hermes paris'], ['the row', 'therow'], ['dg', 'dolce & gabbana', 'dolce gabbana']];
 function canonList(list, key) {
@@ -648,12 +684,12 @@ const toUSD = (v, cur) => v == null ? null : v / (curRate(cur) || 1); // sin mon
 async function runSearches(list, said) {
   rows.forEach(r => { delete r._tag; delete r._ord; });
   resetFilters(false);
-  const rep = $('reply'), report0 = []; rep.style.display = ''; rep.textContent = 'Preparando búsquedas…';
+  const rep = $('reply'), report0 = []; rep.style.display = ''; rep.textContent = tl('Preparando búsquedas…');
   const plan = list.map((s, si) => {
     const f = { loose: false, catalog: null, q: '', brands: new Set(canonList(s.brands, 'brand')), entities: new Set(canonList(s.entities, 'entity')),
       groups: (s.keyword_groups || []).map(g => g.map(strip).filter(Boolean)).filter(g => g.length), exclude: (s.exclude_keywords || []).map(strip).filter(Boolean),
       min: toUSD(s.min_price, s.price_currency), max: toUSD(s.max_price, s.price_currency), rank: 0, rankMin: 0, grades: gradeSet(s), basis: s.price_basis === 'buying' ? 'buying' : 'shown' };
-    if ((s.min_price != null || s.max_price != null) && s.price_currency && !curRate(s.price_currency)) report0.push(`⚠ ${s.label || 'búsqueda ' + (si + 1)}: no conozco la moneda ${s.price_currency}; uso ${outCur}`);
+    if ((s.min_price != null || s.max_price != null) && s.price_currency && !curRate(s.price_currency)) report0.push(tl('⚠ {l}: no conozco la moneda {c}; uso {o}', { l: s.label || tl('búsqueda {n}', { n: si + 1 }), c: s.price_currency, o: outCur }));
     const price = r => f.basis === 'buying' ? usdOf(r) : finalOf(r);
     const pref = (s.prefer_keywords || []).map(strip).filter(Boolean), sc = r => pref.reduce((n, w) => n + (hit(r._text, w) ? 1 : 0), 0);
     const cmp0 = (a, b) => sc(b) - sc(a) || (a._rank || 99) - (b._rank || 99);
@@ -661,12 +697,12 @@ async function runSearches(list, said) {
     const strict = rows.filter(r => code(r) && matches(r, null, f)).sort(cmp), want = s.count || 6;
     let loose = [];
     if (strict.length < want && f.groups.length) { const ss = new Set(strict); loose = rows.filter(r => code(r) && !ss.has(r) && matches(r, null, { ...f, loose: true })).sort(cmp); }
-    return { s, si, want, strict, loose, label: s.label || `búsqueda ${si + 1}` };
+    return { s, si, want, strict, loose, label: s.label || tl('búsqueda {n}', { n: si + 1 }) };
   });
   // comprobar fotos de los mejores candidatos de TODAS las líneas a la vez (el servidor lo hace en paralelo)
   const ids = [...new Set(plan.flatMap(p => [...p.strict.slice(0, p.want * 2), ...p.loose.slice(0, p.want * 2)]).map(code))];
   let done = 0; const t0 = Date.now();
-  await Promise.all(ids.map(async id => { await findImages(id); if (++done % 25 === 0) rep.textContent = `Comprobando fotos… ${done}/${ids.length}`; }));
+  await Promise.all(ids.map(async id => { await findImages(id); if (++done % 25 === 0) rep.textContent = tl('Comprobando fotos… {a}/{b}', { a: done, b: ids.length }); }));
   const picked = [], seen = new Set(), report = [...report0];
   for (const p of plan) {
     let got = 0, viaLoose = 0;
@@ -677,11 +713,11 @@ async function runSearches(list, said) {
       }
     }
     const cands = p.strict.length + p.loose.length;
-    report.push(`${got >= p.want ? '✓' : got ? '⚠' : '✗'} ${p.label}: ${got}/${p.want}${got < p.want ? ` (${cands} candidatos${cands > got ? ', el resto sin fotos o ya elegidos en otra línea' : ''})` : ''}${viaLoose ? ` · ${viaLoose} encontrados solo en notas` : ''}`);
+    report.push(`${got >= p.want ? '✓' : got ? '⚠' : '✗'} ${p.label}: ${got}/${p.want}${got < p.want ? tl(' ({c} candidatos', { c: cands }) + (cands > got ? tl(', el resto sin fotos o ya elegidos en otra línea') : '') + ')' : ''}${viaLoose ? tl(' · {n} encontrados solo en notas', { n: viaLoose }) : ''}`);
   }
   F.catalog = lastCatalog = new Set(picked); selected.clear(); picked.forEach(r => selected.add(code(r))); saveSel();
   refresh(false); syncChecks();
-  rep.textContent = (said ? said + '\n' : '') + `Catálogo montado en ${Math.round((Date.now() - t0) / 1000)} s: ${picked.length} artículos, todos seleccionados.\n` + report.join('\n');
+  rep.textContent = (said ? said + '\n' : '') + tl('Catálogo montado en {s} s: {n} artículos, todos seleccionados.', { s: Math.round((Date.now() - t0) / 1000), n: picked.length }) + '\n' + report.join('\n');
 }
 async function applySpec(s, said) {
   if (s.searches?.length) return runSearches(s.searches, said);
@@ -692,8 +728,8 @@ async function applySpec(s, said) {
   F.min = toUSD(s.min_price, s.price_currency); F.max = toUSD(s.max_price, s.price_currency); F.rank = 0; F.rankMin = 0; F.grades = gradeSet(s);
   F.sort = { price_asc: 'pa', price_desc: 'pd', brand: 'brand' }[s.sort] || ''; $('sort').value = F.sort;
   refresh(false);
-  const rep = $('reply'); rep.style.display = ''; rep.textContent = (said ? said + ' — ' : '') + `${describe(s)} → ${view.length} resultados`;
-  if (s.select_count > 0) { const n = await pickFirst(s.select_count, !!s.diversify_brands, true); rep.textContent += ` · ${n} seleccionados`; }
+  const rep = $('reply'); rep.style.display = ''; rep.textContent = (said ? said + ' — ' : '') + tl('{d} → {n} resultados', { d: describe(s), n: view.length });
+  if (s.select_count > 0) { const n = await pickFirst(s.select_count, !!s.diversify_brands, true); rep.textContent += tl(' · {n} seleccionados', { n }); }
 }
 let aiOn = false, lastPlan = '';
 const planKey = t => 'plan:' + [...strip(t)].reduce((h, c) => (Math.imul(h, 31) + c.charCodeAt(0)) | 0, 7);
@@ -701,37 +737,40 @@ const planKey = t => 'plan:' + [...strip(t)].reduce((h, c) => (Math.imul(h, 31) 
 async function askGo() {
   const text = $('ask').value.trim(); if (!text || !rows.length) return;
   const multi = text.split(/\n/).filter(l => l.trim()).length >= 3;
-  if (multi && !aiOn) { const r = $('reply'); r.style.display = ''; r.textContent = 'Esta petición tiene varias líneas y solo la IA sabe montarla. Pulsa "Activar IA…" y pega tu clave.'; return; }
-  $('askGo').disabled = true; $('askGo').textContent = 'Pensando…';
+  if (multi && !aiOn) { const r = $('reply'); r.style.display = ''; r.textContent = tl('Esta petición tiene varias líneas y solo la IA sabe montarla. Pulsa "Activar IA…" y pega tu clave.'); return; }
+  $('askGo').disabled = true; $('askGo').textContent = tl('Pensando…');
   try {
     const pk = planKey(text), saved = store.get(pk, '');
-    if (saved) { lastPlan = pk; $('redo').style.display = ''; const sp = JSON.parse(saved); return await applySpec(sp, (sp.reply || '') + ' (plantilla guardada, sin IA)'); }
+    if (saved) { lastPlan = pk; $('redo').style.display = ''; const sp = JSON.parse(saved); return await applySpec(sp, (sp.reply || '') + tl(' (plantilla guardada, sin IA)')); }
     $('redo').style.display = 'none'; lastPlan = '';
     if (aiOn) {
       try {
         const cnt = new Map(); rows.forEach(r => { const b = get(r, 'brand'); if (b) cnt.set(b, (cnt.get(b) || 0) + 1); });
         const ents = [...new Set(rows.map(r => get(r, 'entity')).filter(Boolean))];
         const r = await fetch('/ai', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Catalog-Finder': '1' },
-          body: JSON.stringify({ query: text, brands: [...cnt].sort((a, b) => b[1] - a[1]).slice(0, 400).map(([b, n]) => `${b} (${n})`), entities: ents, total: rows.length }) });
+          body: JSON.stringify({ lang, query: text, brands: [...cnt].sort((a, b) => b[1] - a[1]).slice(0, 400).map(([b, n]) => `${b} (${n})`), entities: ents, total: rows.length }) });
         if (!r.ok) throw new Error(await r.text());
         const s = await r.json(); store.set(pk, JSON.stringify(s)); return await applySpec(s, s.reply);
-      } catch (e) { setStatus('La IA falló (' + e.message.slice(0, 160) + ')' + (multi ? '' : '. Uso el modo básico.'), true); if (multi) return; }
+      } catch (e) { setStatus(tl('La IA falló ({e})', { e: e.message.slice(0, 160) }) + (multi ? '' : tl('. Uso el modo básico.')), true); if (multi) return; }
     }
     await applySpec(basicParse(text), '');
-  } finally { $('askGo').disabled = false; $('askGo').textContent = 'Buscar'; }
+  } finally { $('askGo').disabled = false; $('askGo').textContent = tl('Buscar'); }
 }
 $('askGo').onclick = askGo;
 $('redo').onclick = () => { if (lastPlan) store.set(lastPlan, ''); askGo(); };
 $('ask').onkeydown = e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); askGo(); } };
-async function aiStatus() {
-  try { aiOn = (await (await fetch('/ai-status')).json()).configured; } catch { aiOn = false; }
-  $('aiState').textContent = aiOn ? '🤖 IA activada' : 'Modo básico (sin IA)';
-  $('keyBox').innerHTML = aiOn ? '<button id="keyOff">Quitar clave</button>' : '<button id="keyOn">Activar IA…</button>';
+function renderAiState() {
+  $('aiState').textContent = aiOn ? tl('🤖 IA activada') : tl('Modo básico (sin IA)');
+  $('keyBox').innerHTML = aiOn ? `<button id="keyOff">${esc(tl('Quitar clave'))}</button>` : `<button id="keyOn">${esc(tl('Activar IA…'))}</button>`;
   if ($('keyOn')) $('keyOn').onclick = async () => {
-    const k = prompt('Pega tu clave de API de Anthropic (empieza por sk-ant-…). Se guarda solo en este ordenador, en el archivo .api_key.'); if (!k) return;
+    const k = prompt(tl('Pega tu clave de API de Anthropic (empieza por sk-ant-…). Se guarda solo en este ordenador, en el archivo .api_key.')); if (!k) return;
     await fetch('/ai-key', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Catalog-Finder': '1' }, body: JSON.stringify({ key: k }) }); aiStatus();
   };
   if ($('keyOff')) $('keyOff').onclick = async () => { await fetch('/ai-key', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Catalog-Finder': '1' }, body: JSON.stringify({ key: '' }) }); aiStatus(); };
+}
+async function aiStatus() {
+  try { aiOn = (await (await fetch('/ai-status')).json()).configured; } catch { aiOn = false; }
+  renderAiState();
 }
 
 /* ============ detailed grading en lenguaje natural ============ */
@@ -786,7 +825,7 @@ async function describeRows(sel, urls) { // → { text: Map(texto→descripción
         else { const { descs } = await post({ photoItems: j.p.map(({ r, i }, k) => ({ k, brand: get(r, 'brand'), name: nameOf(r), grade: r._letter, notes: get(r, 'notes'), photos: urls[i] })) });
           j.p.forEach(({ r }, k) => { if (descs[k] && !NON_EN.test(descs[k])) { photo.set(r, descs[k]); st.photo++; } }); }
       } catch (e) { /* esos artículos usarán el respaldo */ }
-      setStatus(`Redactando descripciones… ${++done}/${jobs.length}`);
+      setStatus(tl('Redactando descripciones… {a}/{b}', { a: ++done, b: jobs.length }));
     }, 3);
   }
   uniq.forEach(t => { if (!text.has(t)) { text.set(t, plainDescribe(t)); st.rules++; } });
@@ -808,21 +847,21 @@ async function chooseScope() { // qué artículos se descargan: lo dejo siempre 
   const { inView, hidden } = selCounts(), n = selected.size, nv = view.filter(r => code(r)).length;
   if (n && !hidden) return 'all';
   if (!n) {
-    if (!nv) { setStatus('No hay nada que descargar: ni seleccionados ni resultados', true); return null; }
-    return ask(`No has seleccionado nada.\n¿Descargo los ${nv.toLocaleString('en-US')} resultados que ves ahora?${nv > 300 ? '\n(Son muchos: tardará bastante en buscar fotos y redactar.)' : ''}`, [[`Sí, descargar los ${nv.toLocaleString('en-US')}`, 'viewAll', true], ['Cancelar', null]]);
+    if (!nv) { setStatus(tl('No hay nada que descargar: ni seleccionados ni resultados'), true); return null; }
+    return ask(tl('No has seleccionado nada.\n¿Descargo los {n} resultados que ves ahora?', { n: nv.toLocaleString(LOC()) }) + (nv > 300 ? tl('\n(Son muchos: tardará bastante en buscar fotos y redactar.)') : ''), [[tl('Sí, descargar los {n}', { n: nv.toLocaleString(LOC()) }), 'viewAll', true], [tl('Cancelar'), null]]);
   }
-  const opts = [[`Los ${n} seleccionados`, 'all', true]];
-  if (inView) opts.push([`Solo los ${inView} seleccionados que veo`, 'view']);
-  opts.push(['Cancelar', null]);
-  return ask(`Tienes ${n} artículos seleccionados, pero con los filtros actuales solo ves ${inView} de ellos (${hidden} quedan fuera de la vista).\n¿Qué descargo?`, opts);
+  const opts = [[tl('Los {n} seleccionados', { n }), 'all', true]];
+  if (inView) opts.push([tl('Solo los {n} seleccionados que veo', { n: inView }), 'view']);
+  opts.push([tl('Cancelar'), null]);
+  return ask(tl('Tienes {n} artículos seleccionados, pero con los filtros actuales solo ves {v} de ellos ({h} quedan fuera de la vista).\n¿Qué descargo?', { n, v: inView, h: hidden }), opts);
 }
 async function buildCustomer(scope = 'all') {
-  if (scope !== 'viewAll' && !selected.size) throw new Error('Selecciona artículos primero');
-  if (!rates) throw new Error('No hay tipos de cambio; no se pueden calcular los precios');
+  if (scope !== 'viewAll' && !selected.size) throw new Error(tl('Selecciona artículos primero'));
+  if (!rates) throw new Error(tl('No hay tipos de cambio; no se pueden calcular los precios'));
   let sel; const urls = []; let done = 0;
   if (scope === 'viewAll') sel = view.filter(r => code(r));
   else { sel = rows.filter(r => selected.has(code(r))); if (scope === 'view') { const vs = new Set(view); sel = sel.filter(r => vs.has(r)); } sel.sort((a, b) => (a._ord ?? 1e9) - (b._ord ?? 1e9)); }
-  await pool(sel, async (r, i) => { urls[i] = code(r) ? await findImages(code(r)) : []; if (++done % 10 === 0) setStatus(`Buscando fotos… ${done}/${sel.length}`); });
+  await pool(sel, async (r, i) => { urls[i] = code(r) ? await findImages(code(r)) : []; if (++done % 10 === 0) setStatus(tl('Buscando fotos… {a}/{b}', { a: done, b: sel.length })); });
   const nat = $('natural').checked, D = nat ? await describeRows(sel, urls) : null;
   const head = ['BRAND', 'SKU', 'ITEM NAME', 'DETAILED GRADING', 'GRADING (RANK)', 'Purchase?', 'Buy Now Price', 'Picture #1'];
   for (let n = 2; n <= NPIC; n++) head.push('Picture #' + n);
@@ -837,7 +876,7 @@ async function buildCustomer(scope = 'all') {
     for (let n = 1; n <= NPIC; n++) row.push(n <= have ? { f: `iferror(HYPERLINK("${photoUrl(id, n)}","${id} - photo${n}"))` } : {});
     return row;
   });
-  const w = [nat && D.st.rules && `${D.st.rules} descripciones con redacción básica (sin IA; el texto en otros idiomas se descarta)`, nat && D.st.photo && `${D.st.photo} descripciones hechas SOLO desde las fotos (celdas naranjas): revísalas`, nat && D.st.empty && `${D.st.empty} sin descripción (sin notas${aiOn ? ' ni fotos' : ' y sin IA para leer las fotos'})`, noid && `${noid} sin CTag`, nopic && `${nopic} sin fotos`, noprice && `${noprice} sin precio USD`].filter(Boolean);
+  const w = [nat && D.st.rules && tl('{n} descripciones con redacción básica (sin IA; el texto en otros idiomas se descarta)', { n: D.st.rules }), nat && D.st.photo && tl('{n} descripciones hechas SOLO desde las fotos (celdas naranjas): revísalas', { n: D.st.photo }), nat && D.st.empty && tl('{n} sin descripción (sin notas{x})', { n: D.st.empty, x: aiOn ? tl(' ni fotos') : tl(' y sin IA para leer las fotos') }), noid && tl('{n} sin CTag', { n: noid }), nopic && tl('{n} sin fotos', { n: nopic }), noprice && tl('{n} sin precio USD', { n: noprice })].filter(Boolean);
   return { head, body, sel, warn: w.join(', ') };
 }
 const stamp = () => new Date().toISOString().slice(0, 10);
@@ -879,7 +918,7 @@ function buildSheet(head, body) {
   return ws;
 }
 async function exportXlsx() {
-  if (typeof XLSX === 'undefined') return setStatus('No se cargó la librería xlsx (falta vendor/xlsx.bundle.js). Usa el botón CSV.', true);
+  if (typeof XLSX === 'undefined') return setStatus(tl('No se cargó la librería xlsx (falta vendor/xlsx.bundle.js). Usa el botón CSV.'), true);
   try {
     const scope = await chooseScope(); if (!scope) return;
     const { head, body, sel, warn } = await buildCustomer(scope), by = $('splitBy').value;
@@ -894,10 +933,10 @@ async function exportXlsx() {
       const wb = XLSX.utils.book_new(); for (const [label, g] of list) XLSX.utils.book_append_sheet(wb, buildSheet(head, g.idx.map(i => body[i])), nameOf_(label));
       XLSX.writeFile(wb, `customer_por_${by}_${stamp()}.xlsx`);
     }
-    done(body.length, warn, ` · ${list.length} grupos (${list.map(([l, g]) => `${l}: ${g.idx.length}`).join(', ')})`);
+    done(body.length, warn, tl(' · {n} grupos ({g})', { n: list.length, g: list.map(([l, g]) => `${l}: ${g.idx.length}`).join(', ') }));
   } catch (e) { setStatus(e.message, true); }
 }
-function done(n, warn, extra = '') { setStatus(`Descargados ${n} artículos · Buy Now en ${outCur} · ${prof() ? 'margen ' + profLabel() : 'sin margen'}${extra}` + (warn ? ' · ⚠ ' + warn : ''), !!warn); }
+function done(n, warn, extra = '') { setStatus(tl('Descargados {n} artículos · Buy Now en {c} · {m}{x}', { n, c: outCur, m: prof() ? tl('margen {p}', { p: profLabel() }) : tl('sin margen'), x: extra }) + (warn ? ' · ⚠ ' + warn : ''), !!warn); }
 $('splitBy').onchange = () => { $('splitOutL').style.display = $('splitBy').value ? '' : 'none'; };
 $('exportX').onclick = exportXlsx; $('exportCsv').onclick = exportCsv;
 
@@ -911,6 +950,15 @@ $('exp').value = store.get('exp', 'https://s3.amazonaws.com/storage.j-ports/phot
 $('labels').value = store.get('labels', '1=With Tags\n4=Superb Condition\n7=Good Condition');
 $('natural').checked = store.get('natural', '1') === '1';
 $('url').value = store.get('url', '');
+function relocalize() { // vuelve a pintar lo que se genera por código (lo estático lo hace applyI18n)
+  setLoaded(); $('loaded').title = tl('Clic para cambiar de hoja'); renderAiState(); buildCurSelects();
+  if (headers.length) buildMapping();
+  if (rows.length) refresh(true); else updateBar();
+  if (rates) loadRates();
+}
+$('langSel').innerHTML = Object.entries(window.LANGS).map(([k, v]) => `<option value="${k}">${v}</option>`).join(''); $('langSel').value = lang;
+$('langSel').onchange = () => { lang = $('langSel').value; store.set('lang', lang); applyI18n(); relocalize(); $('reply').style.display = 'none'; };
+captureI18n(); applyI18n();
 saveSel(); buildCurSelects(); loadRates(); aiStatus();
 </script>
 </body>

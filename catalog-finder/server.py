@@ -152,7 +152,7 @@ Reglas:
 - Monedas: '$' = USD, '€' = EUR, '£' = GBP; '¥' = JPY salvo que diga yuan/CNY. Si el usuario NO indica moneda, deja price_currency vacio (la app usa la moneda que el usuario esta viendo).
 - Estado: si pide grados concretos ('solo BC', 'solo B+ y B', 'unicamente AB') usa grades con esos grados exactos; 'X o mejor' o un rango ('de AB a B-') puede usar worst/best_rank_allowed o grades.
 - Si el usuario da rangos en una moneda (EUR...), rellena price_currency; si habla de 'precio de compra/buying price/sourcing', usa price_basis=buying. 'Del grado AB al B-' => best_rank_allowed=5, worst_rank_allowed=8.
-- reply: una frase corta en espanol diciendo que has entendido y aplicado. No inventes nada que el usuario no pidio."""
+- reply: una frase corta, en el idioma indicado al final, diciendo que has entendido y aplicado. No inventes nada que el usuario no pidio."""
 _SEARCH_PROPS = {
     "label": {"type": "string", "description": "Nombre corto de la linea, p.ej. 'Hermes - Kelly'"},
     "brands": {"type": "array", "items": {"type": "string"}},
@@ -191,6 +191,16 @@ TOOL = {
 }
 
 
+LANG_NAMES = {"es": "espanol", "en": "English", "fr": "francais"}
+
+
+def term_lang():
+    """Idioma de los mensajes de la terminal: CATALOG_LANG o el del sistema (es/en/fr), por defecto es."""
+    import locale
+    raw = (os.environ.get("CATALOG_LANG") or (locale.getlocale()[0] or "") or os.environ.get("LANG", "")).lower()[:2]
+    return raw if raw in LANG_NAMES else "es"
+
+
 def api_key():
     k = os.environ.get("ANTHROPIC_API_KEY", "").strip()
     if not k and os.path.exists(KEY_FILE):
@@ -219,11 +229,11 @@ class Handler(http.server.SimpleHTTPRequestHandler):
     def do_POST(self):
         path = urllib.parse.urlparse(self.path).path
         if path not in ("/ai", "/ai-key", "/describe") or not self._local_only():
-            return self._err(403, "Prohibido")
+            return self._err(403, self.m("Prohibido", "Forbidden", "Interdit"))
         try:
             data = json.loads(self.rfile.read(int(self.headers.get("Content-Length") or 0)) or b"{}")
         except ValueError:
-            return self._err(400, "JSON invalido")
+            return self._err(400, self.m("JSON invalido", "Invalid JSON", "JSON invalide"))
         if path == "/ai-key":
             key = str(data.get("key", "")).strip()
             if key:
@@ -253,7 +263,7 @@ class Handler(http.server.SimpleHTTPRequestHandler):
     def _describe(self, d):
         """Reescribe el grading en ingles natural; para articulos sin notas, describe lo visible en las fotos."""
         if not api_key():
-            return self._err(400, "Falta la clave de API")
+            return self._err(400, self.m("Falta la clave de API", "Missing API key", "Clé API manquante"))
         out, photo, todo = {}, [], []
         for it in [i for i in d.get("items", [])[:40] if isinstance(i, dict) and str(i.get("text", "")).strip()]:
             h = hashlib.sha1((DESC_VERSION + MODEL + it["text"]).encode()).hexdigest()
@@ -270,9 +280,9 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                     out[k] = txt
                     photo.append(k)
         except urllib.error.HTTPError as e:
-            return self._err(502, f"La API respondio {e.code}: {e.read().decode('utf-8', 'replace')[:300]}")
+            return self._err(502, self.m("La API respondio", "The API responded", "L’API a répondu") + f" {e.code}: {e.read().decode('utf-8', 'replace')[:300]}")
         except Exception as e:  # noqa: BLE001
-            return self._err(502, f"No se pudo contactar con la API: {e}")
+            return self._err(502, self.m("No se pudo contactar con la API", "Could not reach the API", "Impossible de joindre l’API") + f": {e}")
         with _cache_lock:
             tmp = DESC_CACHE_FILE + ".tmp"
             with open(tmp, "w") as f:
@@ -326,6 +336,25 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                 return k, txt
         return k, ""
 
+    def _photos(self, q):
+        """Cuantas fotos tiene cada codigo (HEAD en paralelo, con cache en disco)."""
+        if not self._local_only():
+            return self._err(403, self.m("Prohibido", "Forbidden", "Interdit"))
+        tpl = q.get("tpl", [""])[0]
+        size = re.sub(r"[^A-Za-z0-9_-]", "", q.get("size", ["medium"])[0]) or "medium"
+        maxn = max(1, min(30, int(q.get("maxn", ["13"])[0] or 13)))
+        host = urllib.parse.urlparse(tpl).hostname or ""
+        if host not in PHOTO_HOSTS or "{id}" not in tpl or "{n}" not in tpl:
+            return self._err(400, self.m("Plantilla de foto no permitida (solo ", "Photo template not allowed (only ", "Modèle de photo non autorisé (seulement ") + ", ".join(PHOTO_HOSTS) + ")")
+        ids = [i for i in q.get("ids", [""])[0].split(",") if re.fullmatch(r"[A-Za-z0-9_-]{1,40}", i)][:300]
+        counts = dict(zip(ids, _ids_pool.map(lambda i: count_photos(tpl, size, i, maxn), ids)))
+        save_cache()
+        return self._json({"counts": counts})
+
+    def m(self, es, en, fr):
+        """Mensaje en el idioma de la interfaz (cabecera X-Lang)."""
+        return {"es": es, "en": en, "fr": fr}.get((self.headers.get("X-Lang") or "es")[:2], es)
+
     def _json(self, obj, code=200):
         body = json.dumps(obj).encode()
         self.send_response(code)
@@ -337,9 +366,10 @@ class Handler(http.server.SimpleHTTPRequestHandler):
     def _ai(self, d):
         key = api_key()
         if not key:
-            return self._err(400, "Falta la clave de API")
+            return self._err(400, self.m("Falta la clave de API", "Missing API key", "Clé API manquante"))
         ctx = "Marcas (nombre (n.o de articulos)):\n" + "\n".join(d.get("brands", [])[:400]) \
-            + "\n\nEntities:\n" + "\n".join(d.get("entities", [])[:100]) + f"\n\nArticulos en el catalogo: {d.get('total', '?')}"
+            + "\n\nEntities:\n" + "\n".join(d.get("entities", [])[:100]) + f"\n\nArticulos en el catalogo: {d.get('total', '?')}" \
+            + f"\n\nIdioma: el usuario puede escribir en espanol, ingles o frances. Escribe el campo `reply` en {LANG_NAMES.get(str(d.get('lang', 'es'))[:2], 'espanol')}. Las palabras clave (keyword_groups) siempre en INGLES."
         payload = {
             "model": MODEL, "max_tokens": 6000, "system": SYSTEM + "\n\n" + ctx,
             "tools": [TOOL], "tool_choice": {"type": "tool", "name": "set_filters"},
@@ -353,13 +383,13 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                 resp = json.load(r)
         except urllib.error.HTTPError as e:
             detail = e.read().decode("utf-8", "replace")[:300]
-            return self._err(502, f"La API respondio {e.code}: {detail}")
+            return self._err(502, self.m("La API respondio", "The API responded", "L’API a répondu") + f" {e.code}: {detail}")
         except Exception as e:  # noqa: BLE001
-            return self._err(502, f"No se pudo contactar con la API: {e}")
+            return self._err(502, self.m("No se pudo contactar con la API", "Could not reach the API", "Impossible de joindre l’API") + f": {e}")
         for block in resp.get("content", []):
             if block.get("type") == "tool_use":
                 return self._json(block["input"])
-        return self._err(502, "La IA no devolvio filtros")
+        return self._err(502, self.m("La IA no devolvio filtros", "The AI returned no filters", "L’IA n’a renvoyé aucun filtre"))
 
     def end_headers(self):
         self.send_header("Cache-Control", "no-store")  # que el navegador nunca sirva una version vieja
@@ -378,7 +408,7 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         target = urllib.parse.parse_qs(u.query).get("url", [""])[0]
         host = urllib.parse.urlparse(target).hostname or ""
         if not any(host == h or host.endswith("." + h) for h in ALLOWED):
-            return self._err(400, "Solo se permiten URLs de Google Sheets/Drive")
+            return self._err(400, self.m("Solo se permiten URLs de Google Sheets/Drive", "Only Google Sheets/Drive URLs are allowed", "Seules les URL Google Sheets/Drive sont autorisées"))
         try:
             req = urllib.request.Request(target, headers={"User-Agent": "catalog-finder"})
             with urllib.request.urlopen(req, timeout=60, context=ssl.create_default_context()) as r:
@@ -389,7 +419,7 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(body)
         except Exception as e:  # noqa: BLE001
-            self._err(502, f"No se pudo descargar: {e}")
+            self._err(502, self.m("No se pudo descargar", "Download failed", "Téléchargement impossible") + f": {e}")
 
     def _rates(self):
         """Tipos de cambio actuales (unidades de cada moneda por 1 USD), cache 1h."""
@@ -407,7 +437,7 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                     errs.append(f"{url}: {e}")
             else:
                 if not _rates["body"]:
-                    return self._err(502, "No se pudieron obtener los tipos de cambio. " + " | ".join(errs))
+                    return self._err(502, self.m("No se pudieron obtener los tipos de cambio. ", "Could not get the exchange rates. ", "Impossible d’obtenir les taux de change. ") + " | ".join(errs))
         body = _rates["body"]
         self.send_response(200)
         self.send_header("Content-Type", "application/json")
@@ -431,10 +461,11 @@ if __name__ == "__main__":
     try:
         srv = http.server.ThreadingHTTPServer(("127.0.0.1", PORT), Handler)
     except OSError:
-        sys.exit(f"\nEl puerto {PORT} ya esta ocupado: seguramente hay otra copia de Catalog Finder abierta.\n"
-                 f"Cierrala (Ctrl+C en su terminal) y vuelve a ejecutar, o usa otro puerto: python server.py {PORT + 1}\n")
+        sys.exit({"es": f"\nEl puerto {PORT} ya esta ocupado: seguramente hay otra copia de Catalog Finder abierta.\nCierrala (Ctrl+C en su terminal) y vuelve a ejecutar, o usa otro puerto: python server.py {PORT + 1}\n",
+                  "en": f"\nPort {PORT} is already in use: another copy of Catalog Finder is probably open.\nClose it (Ctrl+C in its terminal) and run again, or use another port: python server.py {PORT + 1}\n",
+                  "fr": f"\nLe port {PORT} est déjà utilisé : une autre copie de Catalog Finder est probablement ouverte.\nFermez-la (Ctrl+C dans son terminal) et relancez, ou utilisez un autre port : python server.py {PORT + 1}\n"}[term_lang()])
     url = f"http://127.0.0.1:{PORT}/"
-    print(f"Catalog Finder en {url}  (Ctrl+C para salir)")
+    print({"es": f"Catalog Finder en {url}  (Ctrl+C para salir)", "en": f"Catalog Finder at {url}  (Ctrl+C to quit)", "fr": f"Catalog Finder sur {url}  (Ctrl+C pour quitter)"}[term_lang()])
     try:
         webbrowser.open(url)
     except Exception:  # noqa: BLE001

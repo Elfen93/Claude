@@ -1,0 +1,32 @@
+# Catalog Finder (English guide)
+
+Local app to search your items in a Google Sheets/CSV, see their photos and download the "customer" Excel. Full documentation (Spanish): [README.md](README.md). Version française : [README.fr.md](README.fr.md).
+
+## Run
+`python server.py` (Windows) or `python3 server.py`. Python 3 only, nothing to install. Opens at http://127.0.0.1:8765. Pick the language (Español / English / Français) with the 🌐 selector at the top; it is remembered. Terminal messages follow `CATALOG_LANG=en|fr|es` (or your system language).
+
+## The 3 steps
+1. **Load your sheet**: paste the published CSV link of Google Sheets, or upload the `.csv`. The header row is detected even if the sheet has title rows above it; English, Spanish and French column names are recognised (`MARQUE`, `PRIX`, `C-tag`…).
+2. **What are you looking for?** Type it like you would tell a person (English, French or Spanish): *"black wallets under 300 euros, pick 5 varied"*. Or filter by hand: price range, grade, brands, entity, text, order, only with photos.
+3. **Choose**: tick cards, *Select all results*, or *the first N*. Then **Download Excel (.xlsx)**.
+
+## Assistant
+- **With AI**: *Activate AI…* and paste an Anthropic API key (stored only in the `.api_key` file on your computer; or use the `ANTHROPIC_API_KEY` variable). It understands free sentences and long multi-line requests (ready-made templates in `prompts/`), and answers in your language.
+- **Basic mode (no key)**: understands price ranges, brands, grades (`only BC`, `AB to B-`, `A or better`), quantity (`pick 30`), `varied`, `cheap`, and common words in the three languages.
+
+## Grade filter
+One button per grade in your sheet, with counts. Pick one or several for exact grades (only BC, or AB + B+ + B). The *shortcut "or better"* selector ticks everything from SA down to the grade you choose.
+
+## Currencies and margins per client
+Every row can be in its own currency (CNY, JPY, EUR, GBP…) and is converted with today's rate. The **Currency** selector sets the display/export currency. Each **Client** has its own margin %, fixed fee (any currency), currency and rounding: final price = purchase price × (1 + margin %) + fixed fee.
+
+## Download exactly what you want
+- Your selection is kept while you filter. The bottom bar shows how many selected items are in the current view.
+- On download, if some selected items are outside your view, it asks: *all N selected* or *only the M I can see*.
+- **Split by** entity, brand, grade or price range: one tab per group in a single file, or one file per group.
+- The customer Excel is always in English: `BRAND, SKU, ITEM NAME, DETAILED GRADING, GRADING (RANK), Purchase?, Buy Now Price, Picture #1…#13, 1…13`.
+
+## Notes
+- Photos are checked in parallel by the local server and cached in `.photo_cache.json`.
+- Descriptions in the Excel are always written in English (the AI translates other languages).
+- The server only listens on 127.0.0.1; the AI/key endpoints reject other websites.

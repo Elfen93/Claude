@@ -1,5 +1,7 @@
 # Catalog Finder
 
+> 🌐 Idioma de la app: selector arriba (Español / English / Français). Guías: [English](README.en.md) · [Français](README.fr.md).
+
 App local para buscar artículos en tu hoja de Google Sheets, ver sus fotos y descargar el Excel en formato customer.
 
 ## Arrancar
@@ -25,6 +27,13 @@ Si pegas una lista con varias peticiones, la IA las ejecuta una por una (`search
 - **Tercera plantilla**: `prompts/cliente_suivi_mensual.txt`, el catálogo mensual de una clienta recurrente, derivado de su historial real (160 artículos en 6 pestañas): Hermès ~58 % (pañuelos carré 90, plissé, twilly, anillos), Dior ~21 % (bisutería), Chanel, Céline y LV. Los topes son **precio que paga la clienta en EUR** (ya con su margen del 25 % + ¥2.000): elige antes un cliente con ese margen y moneda EUR. Con los datos reales, sus 20 líneas encajan con el 98 % de lo que ya compró; la plantilla pide ~32 artículos (ajusta los `count`).
 
 - **Cuarta plantilla**: `prompts/top10_resale_buys.txt`, sourcing para reventa basado en el informe *Top 10 Buys* (25 sep): bolsos Céline Box/Luggage, Bottega, Dior Montaigne, Hermès Dogon, LV Capucines y Fendi Peekaboo, grados A–B+, precio de compra (`price_basis=buying`) en USD y colores vivos como preferencia. Los 10 bolsos del informe pasan sus filtros. La app no calcula márgenes de reventa (el catálogo no trae precio retail ni de reventa): sirve para generar candidatos y tú estimas el margen.
+
+## Idioma (español, inglés, francés)
+- Selector **🌐** arriba a la derecha: cambia **toda** la interfaz (pantalla, diálogos, avisos, filtros) al instante y se recuerda. La terminal usa `CATALOG_LANG=es|en|fr` (o el idioma del sistema). Los errores del servidor salen en el idioma elegido.
+- El **asistente** entiende peticiones en los tres idiomas (modo básico: precios, marcas, estados, cantidades y palabras comunes; con IA: frases libres) y responde en el idioma elegido.
+- El Excel *customer* y las descripciones se mantienen **siempre en inglés** (es el formato del cliente). Los números en español conservan el formato `$1,234`; en francés usan el suyo.
+- Las columnas de la hoja se reconocen también en francés (`MARQUE`, `PRIX`, `C-tag`…) y la **fila de cabeceras se detecta sola** aunque haya títulos encima.
+- Textos en `i18n.js` (clave = texto en español): para añadir otro idioma, añade su traducción a cada entrada y su nombre en `LANGS`.
 
 ## Filtro de estado (grado)
 - Fila **Estado**: un botón por cada grado que existe en tu hoja (SA c/etiq., SA, S, A, AB, B+, B, B-, BC, C y *sin grado*), con el número de artículos. Marca **uno o varios** para ver solo esos grados exactos (p. ej. solo BC, o AB + B+ + B). Los contadores se ajustan a los demás filtros.
