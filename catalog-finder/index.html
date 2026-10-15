@@ -667,7 +667,7 @@ async function describeRows(sel, urls) { // → { text: Map(texto→descripción
     await pool(jobs, async j => {
       try {
         if (j.t) { const { descs } = await post({ items: j.t.map((t, k) => ({ k, text: t })) }); j.t.forEach((t, k) => { if (descs[k] && !NON_EN.test(descs[k])) { text.set(t, descs[k]); st.ai++; } }); }
-        else { const { descs } = await post({ photoItems: j.p.map(({ r, i }, k) => ({ k, brand: get(r, 'brand'), name: nameOf(r), grade: r._letter, notes: get(r, 'notes'), photos: urls[i].slice(0, 4) })) });
+        else { const { descs } = await post({ photoItems: j.p.map(({ r, i }, k) => ({ k, brand: get(r, 'brand'), name: nameOf(r), grade: r._letter, notes: get(r, 'notes'), photos: urls[i] })) });
           j.p.forEach(({ r }, k) => { if (descs[k] && !NON_EN.test(descs[k])) { photo.set(r, descs[k]); st.photo++; } }); }
       } catch (e) { /* esos artículos usarán el respaldo */ }
       setStatus(`Redactando descripciones… ${++done}/${jobs.length}`);

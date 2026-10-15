@@ -14,12 +14,14 @@ KEY_FILE = os.path.join(ROOT, ".api_key")
 CACHE_FILE = os.path.join(ROOT, ".photo_cache.json")
 DESC_CACHE_FILE = os.path.join(ROOT, ".desc_cache.json")
 DESC_VERSION = "v2"
+MAX_PHOTOS = 20  # todas las fotos del articulo (el interior suele salir en las ultimas)
 VISION_MODEL = os.environ.get("CATALOG_VISION_MODEL", "claude-sonnet-5-5")
 NON_ENGLISH = re.compile("[^\\x00-\\x7F\u00C0-\u017F\u2018-\u201D\u2013\u2014\u00B0\u00BD]")  # cualquier otro alfabeto (japones, chino...)
 VISION_SYSTEM = """You write the 'detailed grading' blurb of a luxury resale listing for an item that has NO written condition notes, using ONLY what is clearly visible in the photos.
 Rules:
 - 100% English. Never output characters from any other language.
 - Style: "This {color} item ..." then what is visible: wear on corners/edges/handles, hardware tarnish or scratches, interior marks or staining, shape/structure, stitching. 1-3 short sentences.
+- You receive ALL the photos of the item, in order. Examine every one before writing: interior shots, labels and close-ups are often among the last photos. Base each statement on the best view of that area.
 - Mention only what the photos clearly show. If an area is not shown (e.g. no interior photo), do not mention it and never claim it is clean. Do not guess flaws you cannot see and do not hide visible ones.
 - Use "Grade X" only if a grade is provided; never invent a grade.
 - If the photos do not allow judging condition, write exactly: "Please refer to the photos for condition details."
@@ -294,7 +296,7 @@ class Handler(http.server.SimpleHTTPRequestHandler):
 
     def _describe_photo(self, it):
         k = str(it.get("k"))
-        urls = [u for u in it.get("photos", [])[:4]
+        urls = [u for u in it.get("photos", [])[:MAX_PHOTOS]
                 if isinstance(u, str) and urllib.parse.urlparse(u).scheme in ("http", "https") and urllib.parse.urlparse(u).hostname in PHOTO_HOSTS]
         if not urls:
             return k, ""
@@ -306,7 +308,7 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         content.append({"type": "text", "text": "Item details (context only; may contain non-English text, translate if relevant): " + json.dumps(ctx, ensure_ascii=False)})
         for attempt in (0, 1):
             extra = "" if attempt == 0 else "\n\nIMPORTANT: your previous answer contained non-English characters. Write ONLY in English."
-            resp = self._post_api({"model": VISION_MODEL, "max_tokens": 600, "temperature": 0, "system": VISION_SYSTEM + extra,
+            resp = self._post_api({"model": VISION_MODEL, "max_tokens": 800, "temperature": 0, "system": VISION_SYSTEM + extra,
                                    "tools": [VISION_TOOL], "tool_choice": {"type": "tool", "name": "write_description"},
                                    "messages": [{"role": "user", "content": content}]})
             txt = str(self._tool_input(resp).get("text", "")).strip()
