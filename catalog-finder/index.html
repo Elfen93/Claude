@@ -66,6 +66,8 @@
       <label>URL de imagen <input id="tpl" type="text" style="min-width:420px"></label>
       <label>Tamaño <input id="size" type="text" style="min-width:70px;width:80px"></label>
       <label>Prefijo código <input id="prefix" type="text" style="min-width:50px;width:60px" placeholder="ej. C"></label>
+      <label>Margen % <input id="pct" type="text" style="min-width:40px;width:50px"></label>
+      <label>+ Yenes <input id="fee" type="text" style="min-width:60px;width:70px"></label>
       <label>Máx. fotos <input id="maxn" type="text" style="min-width:40px;width:50px"></label>
     </div>
   </details>
@@ -74,9 +76,11 @@
     <select id="fBrand"></select><select id="fType"></select><select id="fGrade"></select><select id="fEntity"></select>
     <select id="sort">
       <option value="">Orden original</option><option value="brand">Marca</option>
-      <option value="pa">Precio ↑</option><option value="pd">Precio ↓</option>
+      <option value="pa">Precio USD ↑</option><option value="pd">Precio USD ↓</option>
     </select>
     <label><input type="checkbox" id="onlyImg"> solo con fotos</label>
+    <button id="markup" title="Aplica margen % + tarifa fija en yenes (ver Ajustes)"></button>
+    <span id="fx" class="mute"></span>
     <button id="export">Exportar CSV filtrado</button>
   </div>
 </header>
@@ -162,6 +166,41 @@ const code = r => { const v = (r[map.id] || '').trim(); const p = cfg().prefix; 
 const get = (r, k) => map[k] ? (r[map[k]] || '') : '';
 const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
+
+/* ---------- divisas → USD ---------- */
+let rates = null, ratesDate = '', markupOn = store.get('markupOn', '0') === '1';
+const CUR_ALIAS = { '$': 'USD', 'US$': 'USD', '€': 'EUR', '£': 'GBP', '¥': 'JPY', '円': 'JPY', 'YEN': 'JPY', 'RMB': 'CNY', '元': 'CNY', 'CN¥': 'CNY', 'HK$': 'HKD' };
+const curOf = r => { const c = get(r, 'cur').toUpperCase().replace(/\s/g, ''); return CUR_ALIAS[c] || c; };
+const num = (k, d) => { const v = parseFloat(String($(k).value).replace(',', '.')); return isNaN(v) ? d : v; };
+function usdOf(r) {
+  const a = priceNum(get(r, 'price')), c = curOf(r);
+  if (isNaN(a) || !rates) return NaN;
+  if (c === 'USD') return a;
+  return rates[c] ? a / rates[c] : NaN;
+}
+function finalOf(r) {
+  const u = usdOf(r); if (isNaN(u) || !markupOn) return u;
+  return u * (1 + num('pct', 35) / 100) + num('fee', 2500) / rates.JPY;
+}
+const fmtUSD = v => isNaN(v) ? '' : '$' + v.toLocaleString('en-US', { maximumFractionDigits: v < 100 ? 2 : 0 });
+async function loadRates() {
+  try {
+    const r = await fetch('/rates'); if (!r.ok) throw new Error(await r.text());
+    const d = await r.json(); rates = d.rates; ratesDate = d.date;
+    store.set('rates', JSON.stringify(d));
+  } catch (e) {
+    const old = JSON.parse(store.get('rates', 'null'));
+    if (old) { rates = old.rates; ratesDate = old.date + ' (guardado, sin conexión)'; }
+    else { $('fx').textContent = '⚠ sin tipos de cambio: ' + e.message; return; }
+  }
+  $('fx').textContent = `1 USD = ${rates.JPY.toFixed(2)} JPY · ${rates.CNY.toFixed(3)} CNY · ${rates.EUR ? rates.EUR.toFixed(3) + ' EUR · ' : ''}${ratesDate}`;
+  if (rows.length) refresh(false);
+}
+function setMarkupBtn() {
+  const b = $('markup'); b.classList.toggle('primary', markupOn);
+  b.textContent = (markupOn ? '✓ ' : '') + `Aplicar ${num('pct', 35)}% + ¥${num('fee', 2500).toLocaleString('en-US')}`;
+}
+
 /* ---------- imágenes: 1.jpg, 2.jpg… hasta que falle ---------- */
 function probe(url) {
   return new Promise(res => { const im = new Image(); im.onload = () => res(true); im.onerror = () => res(false); im.src = url; });
@@ -208,7 +247,7 @@ function refresh(rebuild) {
     (!q || norm(code(r) + ' ' + Object.values(r).join(' ')).includes(q)));
   const s = $('sort').value;
   if (s === 'brand') view.sort((a, b) => get(a, 'brand').localeCompare(get(b, 'brand')));
-  if (s === 'pa' || s === 'pd') view.sort((a, b) => ((priceNum(get(a, 'price')) || 0) - (priceNum(get(b, 'price')) || 0)) * (s === 'pa' ? 1 : -1));
+  if (s === 'pa' || s === 'pd') view.sort((a, b) => ((finalOf(a) || 0) - (finalOf(b) || 0)) * (s === 'pa' ? 1 : -1));
   if ($('onlyImg').checked) return onlyWithPhotos();
   shown = 0; $('grid').innerHTML = ''; more();
   setStatus(`${view.length} de ${rows.length} artículos` + (map.id ? '' : ' — ⚠ elige la columna de código en Ajustes para ver fotos'));
@@ -239,13 +278,16 @@ const io = new IntersectionObserver(es => es.forEach(e => {
 
 function addCard(r) {
   const c = document.createElement('div'); c.className = 'card'; c._r = r;
-  const price = [get(r, 'price'), get(r, 'cur')].filter(Boolean).join(' ');
+  const orig = [get(r, 'price'), get(r, 'cur')].filter(Boolean).join(' '), u = usdOf(r), f = finalOf(r);
+  const price = isNaN(u) ? (orig ? orig + (rates ? ' ⚠ moneda desconocida' : '') : '')
+    : fmtUSD(f) + ' USD';
+  const sub = isNaN(u) ? '' : (markupOn ? `base ${fmtUSD(u)} · ` : '') + 'orig. ' + orig;
   c.innerHTML = `<div class="photo"><span class="none">cargando…</span></div>
     <div class="info"><div class="brand">${esc(get(r, 'brand') || '—')}</div>
     <div class="code">${esc(code(r))}</div>
     ${get(r, 'desc') ? `<div class="desc">${esc(get(r, 'desc'))}</div>` : ''}
     <div class="meta">${['type', 'grade', 'entity'].map(k => get(r, k) ? `<span class="tag">${esc(get(r, k))}</span>` : '').join('')}</div>
-    ${price ? `<div class="price">${esc(price)}</div>` : ''}
+    ${price ? `<div class="price">${esc(price)}</div>` : ''}${sub ? `<div class="mute notes">${esc(sub)}</div>` : ''}
     ${get(r, 'notes') ? `<div class="mute notes">${esc(get(r, 'notes'))}</div>` : ''}</div>`;
   $('grid').append(c); io.observe(c);
 }
@@ -295,14 +337,17 @@ $('file').onchange = async e => {
 $('more').onclick = more;
 ['q', 'fBrand', 'fType', 'fGrade', 'fEntity', 'sort', 'onlyImg'].forEach(id => $(id).addEventListener(id === 'q' ? 'input' : 'change', debounce(() => refresh(false), 150)));
 function debounce(f, ms) { let t; return (...a) => { clearTimeout(t); t = setTimeout(() => f(...a), ms); }; }
+$('markup').onclick = () => { markupOn = !markupOn; store.set('markupOn', markupOn ? '1' : '0'); setMarkupBtn(); if (rows.length) refresh(false); };
+['pct', 'fee'].forEach(id => $(id).addEventListener('change', () => { store.set(id, $(id).value); setMarkupBtn(); if (rows.length) refresh(false); }));
 ['tpl', 'size', 'prefix', 'maxn'].forEach(id => $(id).addEventListener('change', () => {
   store.set(id, $(id).value); imgCache.clear(); if (rows.length) refresh(false);
 }));
 $('export').onclick = () => {
   const q = v => '"' + String(v).replace(/"/g, '""') + '"';
-  const csv = [headers.concat('image_1').map(q).join(',')].concat(view.map(r => {
+  const csv = [headers.concat('price_usd', 'price_usd_markup', 'image_1').map(q).join(',')].concat(view.map(r => {
     const id = code(r), { tpl, size } = cfg();
-    return headers.map(h => q(r[h])).concat(q(id ? tpl.replace('{id}', id).replace('{size}', size).replace('{n}', 1) : '')).join(',');
+    const u = usdOf(r), m = u * (1 + num('pct', 35) / 100) + num('fee', 2500) / (rates ? rates.JPY : NaN), d2 = v => isNaN(v) ? '' : v.toFixed(2);
+    return headers.map(h => q(r[h])).concat(q(d2(u)), q(d2(m)), q(id ? tpl.replace('{id}', id).replace('{size}', size).replace('{n}', 1) : '')).join(',');
   })).join('\n');
   const a = document.createElement('a');
   a.href = URL.createObjectURL(new Blob(['﻿' + csv], { type: 'text/csv' })); a.download = 'catalogo_filtrado.csv'; a.click();
@@ -312,6 +357,7 @@ $('export').onclick = () => {
 $('tpl').value = store.get('tpl', 'https://s3.amazonaws.com/storage.j-ports/photographs/{id}/{size}/{n}.jpg');
 $('size').value = store.get('size', 'medium'); $('prefix').value = store.get('prefix', ''); $('maxn').value = store.get('maxn', '12');
 $('url').value = store.get('url', '');
+$('pct').value = store.get('pct', '35'); $('fee').value = store.get('fee', '2500'); setMarkupBtn(); loadRates();
 </script>
 </body>
 </html>
