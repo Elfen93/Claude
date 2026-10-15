@@ -32,7 +32,7 @@
   @media (prefers-color-scheme: dark) { .chip.on { color:#111; } }
   .chip small { opacity:.7; }
   .lbl { color:var(--mute); font-size:12px; min-width:70px; }
-  .reply { background:var(--accsoft); border-radius:8px; padding:8px 12px; margin-top:8px; }
+  .reply { white-space:pre-line; background:var(--accsoft); border-radius:8px; padding:8px 12px; margin-top:8px; }
   details { margin-top:6px; } summary { cursor:pointer; color:var(--mute); }
   details .row { margin-top:8px; }
   label { display:flex; gap:6px; align-items:center; color:var(--mute); }
@@ -318,20 +318,21 @@ $('loaded').onclick = () => { if (rows.length) $('loadBox').style.display = $('l
 $('loaded').style.cursor = 'pointer'; $('loaded').title = 'Clic para cambiar de hoja';
 
 /* ============ filtros ============ */
-const F = { q: '', brands: new Set(), entities: new Set(), min: null, max: null, rank: 0, groups: [], exclude: [], sort: '', onlyImg: false };
+const F = { catalog: null, q: '', brands: new Set(), entities: new Set(), min: null, max: null, rank: 0, groups: [], exclude: [], sort: '', onlyImg: false };
 function resetFilters(redraw = true) {
-  Object.assign(F, { q: '', min: null, max: null, rank: 0, groups: [], exclude: [], sort: '', onlyImg: false }); F.brands.clear(); F.entities.clear();
+  Object.assign(F, { catalog: null, q: '', min: null, max: null, rank: 0, groups: [], exclude: [], sort: '', onlyImg: false }); F.brands.clear(); F.entities.clear();
   $('q').value = ''; $('pmin').value = $('pmax').value = ''; $('frank').value = '0'; $('sort').value = ''; $('onlyImg').checked = false;
   if (redraw) refresh(false);
 }
-function matches(r, skip) {
-  if (skip !== 'brands' && F.brands.size && !F.brands.has(get(r, 'brand'))) return false;
-  if (skip !== 'entities' && F.entities.size && !F.entities.has(get(r, 'entity'))) return false;
-  if (F.rank && !(r._rank && r._rank <= F.rank)) return false;
-  if (F.min != null || F.max != null) { const p = finalOf(r); if (isNaN(p) || (F.min != null && p < F.min) || (F.max != null && p > F.max)) return false; }
-  if (F.q && !r._text.includes(F.q)) return false;
-  for (const g of F.groups) if (!g.some(w => r._text.includes(w))) return false;
-  for (const w of F.exclude) if (r._text.includes(w)) return false;
+function matches(r, skip, f = F) {
+  if (f.catalog && !f.catalog.has(r)) return false;
+  if (skip !== 'brands' && f.brands.size && !f.brands.has(get(r, 'brand'))) return false;
+  if (skip !== 'entities' && f.entities.size && !f.entities.has(get(r, 'entity'))) return false;
+  if (f.rank && !(r._rank && r._rank <= f.rank)) return false;
+  if (f.min != null || f.max != null) { const p = finalOf(r); if (isNaN(p) || (f.min != null && p < f.min) || (f.max != null && p > f.max)) return false; }
+  if (f.q && !r._text.includes(f.q)) return false;
+  for (const g of f.groups) if (!g.some(w => r._text.includes(w))) return false;
+  for (const w of f.exclude) if (r._text.includes(w)) return false;
   return true;
 }
 function chips(el, facet, set, max) {
@@ -366,6 +367,7 @@ function refresh(rebuild) {
   const s = F.sort;
   if (s === 'brand') view.sort((a, b) => get(a, 'brand').localeCompare(get(b, 'brand')));
   if (s === 'pa' || s === 'pd') view.sort((a, b) => ((finalOf(a) || 0) - (finalOf(b) || 0)) * (s === 'pa' ? 1 : -1));
+  if (F.catalog && !s) view.sort((a, b) => a._ord - b._ord);
   if (F.onlyImg) return onlyWithPhotos();
   draw();
 }
@@ -405,7 +407,7 @@ function addCard(r) {
   c.innerHTML = `<input type="checkbox" class="pick" ${on ? 'checked' : ''}>${r._rank ? `<span class="rank">${esc(r._letter)}</span>` : ''}<div class="photo"><span class="none">cargando…</span></div>
     <div class="info"><div class="brand">${esc(get(r, 'brand') || '—')}</div><div class="code">${esc(code(r))}${get(r, 'entity') ? ' · ' + esc(get(r, 'entity')) : ''}</div>
     <div class="desc">${esc(nameOf(r))}</div>
-    ${price ? `<div class="price">${esc(price)}</div>` : ''}${sub ? `<div class="mute notes">${esc(sub)}</div>` : ''}</div>`;
+    ${F.catalog && r._tag ? `<div class="notes">🎯 ${esc(r._tag)}</div>` : ''}${price ? `<div class="price">${esc(price)}</div>` : ''}${sub ? `<div class="mute notes">${esc(sub)}</div>` : ''}</div>`;
   c.querySelector('.pick').onchange = e => { toggle(code(r), e.target.checked); c.classList.toggle('sel', e.target.checked); };
   $('grid').append(c); io.observe(c);
 }
@@ -500,7 +502,32 @@ function describe(s) {
   if (s.select_count) p.push(`seleccionar ${s.select_count}${s.diversify_brands ? ' variando marcas' : ''}`);
   return p.length ? p.join(' · ') : 'no he entendido ningún filtro';
 }
+async function runSearches(list, said) {
+  const canon = (l, key) => { const idx = new Map(rows.map(r => [strip(get(r, key)), get(r, key)])); return (l || []).map(x => idx.get(strip(x))).filter(Boolean); };
+  rows.forEach(r => { delete r._tag; delete r._ord; });
+  resetFilters(false);
+  const picked = [], seen = new Set(), report = [], rep = $('reply'); rep.style.display = '';
+  for (const [si, s] of list.entries()) {
+    rep.textContent = `Buscando ${si + 1}/${list.length}: ${s.label || ''}…`;
+    const f = { catalog: null, q: '', brands: new Set(canon(s.brands, 'brand')), entities: new Set(canon(s.entities, 'entity')),
+      groups: (s.keyword_groups || []).map(g => g.map(strip).filter(Boolean)).filter(g => g.length), exclude: (s.exclude_keywords || []).map(strip).filter(Boolean),
+      min: s.min_price ?? null, max: s.max_price ?? null, rank: s.worst_rank_allowed || 0 };
+    const pref = (s.prefer_keywords || []).map(strip).filter(Boolean), sc = r => pref.reduce((n, w) => n + (r._text.includes(w) ? 1 : 0), 0);
+    const cand = rows.filter(r => code(r) && !seen.has(code(r)) && matches(r, null, f))
+      .sort((a, b) => sc(b) - sc(a) || (a._rank || 99) - (b._rank || 99));
+    const want = s.count || 6; let got = 0;
+    for (let i = 0; i < cand.length && got < want; i += 16) {
+      const batch = cand.slice(i, i + 16), ok = await Promise.all(batch.map(async r => (await findImages(code(r))).length > 0));
+      batch.forEach((r, j) => { if (ok[j] && got < want) { got++; seen.add(code(r)); r._tag = s.label || `búsqueda ${si + 1}`; r._ord = picked.length; picked.push(r); } });
+    }
+    report.push(`${got >= want ? '✓' : got ? '⚠' : '✗'} ${s.label || 'búsqueda ' + (si + 1)}: ${got}/${want}${cand.length < want ? ` (solo ${cand.length} candidatos)` : ''}`);
+  }
+  F.catalog = new Set(picked); selected.clear(); picked.forEach(r => selected.add(code(r))); saveSel();
+  refresh(false); syncChecks();
+  rep.textContent = (said ? said + '\n' : '') + `Catálogo montado: ${picked.length} artículos, todos seleccionados.\n` + report.join('\n');
+}
 async function applySpec(s, said) {
+  if (s.searches?.length) return runSearches(s.searches, said);
   const canon = (list, key) => { const idx = new Map(rows.map(r => [strip(get(r, key)), get(r, key)])); return (list || []).map(x => idx.get(strip(x))).filter(Boolean); };
   resetFilters(false);
   canon(s.brands, 'brand').forEach(b => F.brands.add(b)); canon(s.entities, 'entity').forEach(b => F.entities.add(b));
@@ -515,6 +542,8 @@ async function applySpec(s, said) {
 let aiOn = false;
 async function askGo() {
   const text = $('ask').value.trim(); if (!text || !rows.length) return;
+  const multi = text.split(/\n/).filter(l => l.trim()).length >= 3;
+  if (multi && !aiOn) { const r = $('reply'); r.style.display = ''; r.textContent = 'Esta petición tiene varias líneas y solo la IA sabe montarla. Pulsa "Activar IA…" y pega tu clave.'; return; }
   $('askGo').disabled = true; $('askGo').textContent = 'Pensando…';
   try {
     if (aiOn) {
@@ -525,7 +554,7 @@ async function askGo() {
           body: JSON.stringify({ query: text, brands: [...cnt].sort((a, b) => b[1] - a[1]).slice(0, 400).map(([b, n]) => `${b} (${n})`), entities: ents, total: rows.length }) });
         if (!r.ok) throw new Error(await r.text());
         const s = await r.json(); return await applySpec(s, s.reply);
-      } catch (e) { setStatus('La IA falló (' + e.message.slice(0, 120) + '). Uso el modo básico.', true); }
+      } catch (e) { setStatus('La IA falló (' + e.message.slice(0, 160) + ')' + (multi ? '' : '. Uso el modo básico.'), true); if (multi) return; }
     }
     await applySpec(basicParse(text), '');
   } finally { $('askGo').disabled = false; $('askGo').textContent = 'Buscar'; }
@@ -549,7 +578,7 @@ const photoUrl = (id, n) => $('exp').value.trim().replace('{id}', id).replace('{
 async function buildCustomer() {
   if (!selected.size) throw new Error('Selecciona artículos primero');
   if (!rates) throw new Error('No hay tipos de cambio; no se puede calcular el precio USD');
-  const sel = rows.filter(r => selected.has(code(r))), urls = []; let done = 0;
+  const sel = rows.filter(r => selected.has(code(r))).sort((a, b) => (a._ord ?? 1e9) - (b._ord ?? 1e9)), urls = []; let done = 0;
   await pool(sel, async (r, i) => { urls[i] = code(r) ? await findImages(code(r)) : []; if (++done % 10 === 0) setStatus(`Buscando fotos… ${done}/${sel.length}`); });
   const head = ['BRAND', 'SKU', 'ITEM NAME', 'DETAILED GRADING', 'GRADING (RANK)', 'Purchase?', 'Buy Now Price', 'Picture #1', 'Star Rating'];
   for (let n = 2; n <= NPIC; n++) head.push('Picture #' + n);

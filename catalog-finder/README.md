@@ -14,6 +14,13 @@ App local para buscar artículos en tu hoja de Google Sheets, ver sus fotos y de
 - **Con IA**: pulsa *Activar IA…* y pega una clave de API de Anthropic (console.anthropic.com; se paga aparte de la suscripción a Claude, fracciones de céntimo por búsqueda). La clave se guarda solo en tu ordenador, en `.api_key` (no se sube a git). También vale la variable `ANTHROPIC_API_KEY`. Modelo por defecto `claude-haiku-5-5`, cambiable con `CATALOG_MODEL`.
 - **Modo básico (sin clave)**: entiende rangos de precio (`menos de 500`, `entre 200 y 800`, `más de 1k`), marcas y entities que existan en tu hoja, estado (`A o mejor`, `buen estado`), cantidad (`elige 30`), `variadas`, `baratos`, y palabras comunes (cartera, bolso, negro, cuero…). Si la IA falla, cae a este modo.
 
+## Catálogo para un cliente (varias búsquedas a la vez)
+Si pegas una lista con varias peticiones, la IA las ejecuta una por una (`searches`), elige N artículos con fotos por línea sin repetir, los **selecciona todos** y los agrupa por línea (etiqueta 🎯 en cada tarjeta). Al terminar muestra qué líneas se cumplieron (✓), quedaron cortas (⚠) o vacías (✗). El Excel respeta ese orden.
+- Plantilla lista para pegar: `prompts/cliente_wishlist.txt` (26 líneas de Hermès, Chanel, Gucci, Celine, Prada, YSL, Bottega, Loewe, Fendi, Dior, The Row). Edita el número de artículos por línea o los filtros en ese texto.
+- Nombres de modelo = filtro duro; conceptos subjetivos (vintage, unique, colores) = preferencia que ordena primero lo que más coincide.
+- Los topes ("under $995") se comparan con el precio que ves: **activa el botón de margen antes de buscar** si el tope es el precio final del cliente.
+- Requiere IA (clave de API); el modo básico no sabe montar listas.
+
 ## Precios en USD
 Todo se convierte a USD con el tipo de cambio actual (open.er-api.com, respaldo frankfurter.dev, caché 1 h; sin conexión usa el último guardado). El botón **Aplicar 35% + ¥2.500** calcula `USD × 1,35 + 2.500 JPY en USD` (cambiable en Ajustes). Los filtros de precio y el orden usan el precio que ves.
 

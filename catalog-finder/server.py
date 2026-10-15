@@ -21,25 +21,36 @@ Reglas:
 - Precios en USD, tal y como el usuario los ve. 'barato' sin cifra: no pongas limites, usa sort=price_asc.
 - Estado: escala 1=SA con etiquetas, 2=SA, 3=S, 4=A, 5=AB, 6=B+, 7=B, 8=B-, 9=BC, 10=C. 'A o mejor' -> worst_rank_allowed=4. 'buen estado' -> 7. 'excelente/casi nuevo' -> 3 o 4.
 - select_count > 0 solo si el usuario pide ELEGIR/SELECCIONAR/ESCOGER una cantidad concreta; si pide variedad o mezcla de marcas, diversify_brands=true.
+- Si el usuario da una LISTA de peticiones distintas, rellena `searches` con una entrada por linea (y deja vacios los filtros de nivel superior). Respeta las instrucciones por linea que el usuario indique (filtro duro vs preferencia blanda, topes de precio, cantidad).
 - reply: una frase corta en espanol diciendo que has entendido y aplicado. No inventes nada que el usuario no pidio."""
+_SEARCH_PROPS = {
+    "label": {"type": "string", "description": "Nombre corto de la linea, p.ej. 'Hermes - Kelly'"},
+    "brands": {"type": "array", "items": {"type": "string"}},
+    "entities": {"type": "array", "items": {"type": "string"}},
+    "keyword_groups": {"type": "array", "items": {"type": "array", "items": {"type": "string"}}, "description": "FILTRO DURO: cada grupo = sinonimos (basta uno); se deben cumplir todos los grupos"},
+    "prefer_keywords": {"type": "array", "items": {"type": "string"}, "description": "PREFERENCIA BLANDA: no excluye, solo ordena primero los articulos que contienen mas de estas palabras"},
+    "exclude_keywords": {"type": "array", "items": {"type": "string"}},
+    "min_price": {"type": "number"},
+    "max_price": {"type": "number"},
+    "worst_rank_allowed": {"type": "integer", "minimum": 1, "maximum": 10},
+}
 TOOL = {
     "name": "set_filters",
-    "description": "Aplica filtros al catalogo",
+    "description": "Aplica filtros al catalogo (una busqueda) o varias busquedas a la vez (searches)",
     "input_schema": {
         "type": "object",
-        "properties": {
-            "brands": {"type": "array", "items": {"type": "string"}},
-            "entities": {"type": "array", "items": {"type": "string"}},
-            "keyword_groups": {"type": "array", "items": {"type": "array", "items": {"type": "string"}}},
-            "exclude_keywords": {"type": "array", "items": {"type": "string"}},
-            "min_price": {"type": "number"},
-            "max_price": {"type": "number"},
-            "worst_rank_allowed": {"type": "integer", "minimum": 1, "maximum": 10},
-            "sort": {"type": "string", "enum": ["", "price_asc", "price_desc", "brand"]},
-            "select_count": {"type": "integer", "minimum": 0},
-            "diversify_brands": {"type": "boolean"},
-            "reply": {"type": "string"},
-        },
+        "properties": dict(
+            _SEARCH_PROPS,
+            sort={"type": "string", "enum": ["", "price_asc", "price_desc", "brand"]},
+            select_count={"type": "integer", "minimum": 0},
+            diversify_brands={"type": "boolean"},
+            searches={
+                "type": "array",
+                "description": "Usar cuando el usuario pide VARIAS busquedas distintas (una por linea). Cada una se ejecuta por separado y se unen los resultados sin repetir.",
+                "items": {"type": "object", "properties": dict(_SEARCH_PROPS, count={"type": "integer", "minimum": 1, "description": "Cuantos articulos elegir en esta busqueda"})},
+            },
+            reply={"type": "string"},
+        ),
         "required": ["reply"],
     },
 }
@@ -104,9 +115,9 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         ctx = "Marcas (nombre (n.o de articulos)):\n" + "\n".join(d.get("brands", [])[:400]) \
             + "\n\nEntities:\n" + "\n".join(d.get("entities", [])[:100]) + f"\n\nArticulos en el catalogo: {d.get('total', '?')}"
         payload = {
-            "model": MODEL, "max_tokens": 1024, "system": SYSTEM + "\n\n" + ctx,
+            "model": MODEL, "max_tokens": 6000, "system": SYSTEM + "\n\n" + ctx,
             "tools": [TOOL], "tool_choice": {"type": "tool", "name": "set_filters"},
-            "messages": [{"role": "user", "content": str(d.get("query", ""))[:2000]}],
+            "messages": [{"role": "user", "content": str(d.get("query", ""))[:12000]}],
         }
         req = urllib.request.Request(
             API_BASE + "/v1/messages", data=json.dumps(payload).encode(),
