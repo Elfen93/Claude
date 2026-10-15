@@ -1,0 +1,20 @@
+Build a sourcing shortlist for resale, modeled on my "Top 10 Buys" of 25 Sep (10 designer bags bought at 317-1,684 USD, grades A / AB / B+, mostly bright colours). Run ONE search per line below (use "searches", one entry per line, label = "Brand - Model"), only items with photos, no repeats between lines.
+
+RULES FOR EVERY LINE
+- Prices are my BUYING price (the asking price in the catalog, in USD): price_currency=USD, price_basis=buying (ignore any client margin).
+- Grades: only A, AB and B+ (best_rank_allowed=4, worst_rank_allowed=6). Nothing better than A and nothing worse than B+.
+- Model names are HARD filters (keyword_groups; include accents and spelling variants). Colours are only a PREFERENCE (prefer_keywords: "orange", "red", "yellow", "green", "blue", "pink"; also accept "brown" and "black", just show the bright colours first).
+- Optional safety filter (my addition, delete if you do not want it): exclude_keywords "major", "heavy", "torn", "peeling", "mold", "strong odor".
+- Use the exact brand names of my catalog (Celine, Bottega Veneta, Christian Dior, Hermes, Louis Vuitton, Fendi).
+
+LINES
+1. Celine - Box bags (Classic Box, Box Crossbody): brand Celine; hard "box"; max 700 USD; count 3.
+2. Celine - Luggage: brand Celine; hard "luggage"; max 400 USD; count 2.
+3. Bottega Veneta - Mount line: brand Bottega Veneta; hard "mount"; max 600 USD; count 2.
+4. Christian Dior - 30 Montaigne flap: brand Christian Dior; hard "montaigne"; max 1000 USD; count 2.
+5. Hermes - Dogon Duo wallet: brand Hermes; hard "dogon"; max 400 USD; count 1.
+6. Louis Vuitton - Capucines: brand Louis Vuitton; hard "capucines"; max 1850 USD; count 2.
+7. Fendi - Peekaboo (Mini and Regular): brand Fendi; hard "peekaboo"; max 1000 USD; count 3.
+
+LAST LINE (do it last so it does not take items from the lines above)
+8. Other icon bags with the same profile: brands Celine, Bottega Veneta, Christian Dior, Hermes, Louis Vuitton, Fendi; no model filter; hard any of "bag", "handbag", "crossbody", "flap", "tote", "shoulder"; max 900 USD; sort price_asc (cheapest first); count 8.

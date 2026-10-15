@@ -24,6 +24,8 @@ Si pegas una lista con varias peticiones, la IA las ejecuta una por una (`search
 
 - **Tercera plantilla**: `prompts/cliente_suivi_mensual.txt`, el catálogo mensual de una clienta recurrente, derivado de su historial real (160 artículos en 6 pestañas): Hermès ~58 % (pañuelos carré 90, plissé, twilly, anillos), Dior ~21 % (bisutería), Chanel, Céline y LV. Los topes son **precio que paga la clienta en EUR** (ya con su margen del 25 % + ¥2.000): elige antes un cliente con ese margen y moneda EUR. Con los datos reales, sus 20 líneas encajan con el 98 % de lo que ya compró; la plantilla pide ~32 artículos (ajusta los `count`).
 
+- **Cuarta plantilla**: `prompts/top10_resale_buys.txt`, sourcing para reventa basado en el informe *Top 10 Buys* (25 sep): bolsos Céline Box/Luggage, Bottega, Dior Montaigne, Hermès Dogon, LV Capucines y Fendi Peekaboo, grados A–B+, precio de compra (`price_basis=buying`) en USD y colores vivos como preferencia. Los 10 bolsos del informe pasan sus filtros. La app no calcula márgenes de reventa (el catálogo no trae precio retail ni de reventa): sirve para generar candidatos y tú estimas el margen.
+
 ## Descargar exactamente lo que quieres
 - **La selección no se pierde** al filtrar ni al quitar filtros (se guarda por CTag). La barra inferior dice cuántos seleccionados ves y cuántos quedan fuera de los filtros.
 - **Catálogo montado**: tras una búsqueda múltiple, el botón 🎯 *Dentro del catálogo montado (N)* mantiene la vista limitada a esos N; *Quitar filtros* no lo tira. Con él activo puedes filtrar **dentro** del catálogo por entity, marca, precio o estado. Pulsa el botón para salir de él y de nuevo para volver.
