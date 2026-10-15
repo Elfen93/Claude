@@ -22,6 +22,8 @@ Si pegas una lista con varias peticiones, la IA las ejecuta una por una (`search
 - Requiere IA (clave de API); el modo básico no sabe montar listas.
 - **Segunda plantilla**: `prompts/sourcing_ab_bminus.txt` (sourcing de LV, Dior, Gucci, Celine, YSL y Chanel en grados AB a B-, con rangos de precio en €). Cada línea puede llevar: moneda (`price_currency`, convierte con el cambio actual), **precio de compra** (`price_basis=buying`, ignora el margen), grado mínimo y máximo (`best_rank_allowed`/`worst_rank_allowed`) y orden por precio. Los números de talla se buscan como número completo (25 no coincide con 250).
 
+- **Tercera plantilla**: `prompts/cliente_suivi_mensual.txt`, el catálogo mensual de una clienta recurrente, derivado de su historial real (160 artículos en 6 pestañas): Hermès ~58 % (pañuelos carré 90, plissé, twilly, anillos), Dior ~21 % (bisutería), Chanel, Céline y LV. Los topes son **precio que paga la clienta en EUR** (ya con su margen del 25 % + ¥2.000): elige antes un cliente con ese margen y moneda EUR. Con los datos reales, sus 20 líneas encajan con el 98 % de lo que ya compró; la plantilla pide ~32 artículos (ajusta los `count`).
+
 ## Descargar exactamente lo que quieres
 - **La selección no se pierde** al filtrar ni al quitar filtros (se guarda por CTag). La barra inferior dice cuántos seleccionados ves y cuántos quedan fuera de los filtros.
 - **Catálogo montado**: tras una búsqueda múltiple, el botón 🎯 *Dentro del catálogo montado (N)* mantiene la vista limitada a esos N; *Quitar filtros* no lo tira. Con él activo puedes filtrar **dentro** del catálogo por entity, marca, precio o estado. Pulsa el botón para salir de él y de nuevo para volver.

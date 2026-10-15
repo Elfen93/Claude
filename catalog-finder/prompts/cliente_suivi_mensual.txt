@@ -1,0 +1,40 @@
+Build this month's catalog for my regular client (she mostly buys Hermes silk scarves and small luxury accessories; typical month = about 30 items, mostly under 150 EUR). Run ONE search per line below (use "searches", one entry per line, label = "Brand - Item"), IN THIS ORDER (specific lines first, the generic Hermes carre line later so it does not take items from the specific ones). Pick the count shown on each line, only items with photos, no repeats between lines.
+
+RULES FOR EVERY LINE
+- Prices are the price the CLIENT pays in EUR (it already includes my 25% + 2000 JPY margin): price_currency=EUR, price_basis=shown.
+- Grade: no restriction.
+- "hard" = keyword_groups filter (include singular/plural, accents, French/English variants). "prefer" = prefer_keywords only (orders first, does not exclude). "exclude" = exclude_keywords.
+- Use the exact brand names of my catalog (Hermes, Christian Dior, Chanel, Celine, Louis Vuitton, Cartier, Givenchy, Miu Miu, Yves Saint Laurent).
+
+HERMES
+1. Scarf rings: hard "ring"/"anneau"/"buckle" AND "scarf"/"foulard"; 65-115 EUR; count 2.
+2. Twilly: hard any of "twilly", "bandana"; 70-100 EUR; count 1.
+3. Plisse / pleated scarves: hard any of "plisse", "pleated", "plie"; 85-145 EUR; count 3.
+4. Petit carre 40 / triangle / neckerchief: hard any of "petit carre", "carre 40", "triangle", "neckerchief"; 95-135 EUR; count 1.
+5. Small leather and other accessories (gloves, coin case, flat pouch, bracelets): hard any of "glove", "coin case", "pouch", "bracelet", "collier de chien", "wallet", "card case"; max 170 EUR; count 1.
+6. Premium carre 90 (rare / in-demand designs): hard any of "carre", "scarf", "silk"; exclude "ring", "twilly", "plisse", "pleated"; prefer "jungle", "rare", "limited"; 145-200 EUR; count 1.
+7. Carre 90 / silk scarves (generic, do it AFTER the lines above): hard any of "carre", "silk", "scarf"; exclude "ring", "buckle", "anneau", "twilly", "bandana", "petit carre", "plisse", "pleated", "plie", "triangle", "neckerchief", "glove", "pouch", "coin", "collier", "bracelet", "garden", "jungle"; 70-145 EUR; count 9.
+
+CHRISTIAN DIOR
+8. Earrings (clip-ons, logo, gold plated): hard any of "earring", "boucle"; 50-120 EUR; count 3.
+9. Necklaces (logo, rhinestone): hard any of "necklace", "collier"; 40-120 EUR; count 1.
+10. Brooches / bracelets / rings: hard any of "brooch", "bracelet", "bangle", "ring"; 65-120 EUR; count 1.
+11. Silk scarves: hard any of "scarf", "carre"; 55-90 EUR; count 1.
+12. Wallets and small crossbody: hard any of "wallet", "crossbody", "card", "pouch"; 95-125 EUR; count 1.
+
+CHANEL
+13. Earrings, affordable: hard any of "earring", "boucle"; 65-190 EUR; count 1.
+14. Earrings, statement / clip-on: hard any of "earring", "boucle"; 190-330 EUR; count 1.
+15. Necklaces / brooches / scarves / other: hard any of "necklace", "brooch", "pendant", "barrette", "scarf"; max 410 EUR; count 1.
+
+CELINE
+16. Macadam pouches and small items: hard "macadam" AND any of "pouch", "clutch", "pochette", "coin"; 30-130 EUR; count 1.
+17. Bags (Boston, handbags): hard any of "boston", "handbag", "bag"; 115-205 EUR; count 1.
+
+LOUIS VUITTON
+18. Silk scarves and small leather goods: hard any of "scarf", "card case", "pouch", "wallet", "portefeuille"; 55-155 EUR; count 1.
+
+OTHER BRANDS
+19. Accessories from Cartier, Givenchy, Miu Miu, Yves Saint Laurent: no model filter; max 145 EUR; count 1.
+
+OPTIONAL (only if I keep this line): 20. One big-ticket bag: brands Christian Dior, Hermes, Chanel; hard any of "handbag", "bag"; max 480 EUR; count 1.
