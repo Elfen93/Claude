@@ -619,12 +619,14 @@ async function aiStatus() {
 }
 
 /* ============ detailed grading en lenguaje natural ============ */
+const NON_EN = /[^\x00-\x7F\u00C0-\u017F\u2018-\u201D\u2013\u2014\u00B0\u00BD]/;
 function plainDescribe(text) { // respaldo sin IA: reglas simples sobre el texto estructurado
   const L = text.split(/\n/).map(l => l.trim()).filter(Boolean);
   let grade = '', size = '', cur = '', odor = ''; const ext = [], int = [], add = [], col = [];
   const put = (list, v) => v && list.push(v.replace(/\s+/g, ' ').trim());
   for (const l of L) {
     let m;
+    if (NON_EN.test(l)) continue; // el respaldo no puede traducir: descarta cualquier línea en otro alfabeto
     if ((m = l.match(/^(?:item\s+)?grading\s*:\s*(.*)$/i))) { grade = (m[1].match(/^(SA\s+with\s+tags|SA|S|AB|A|BC|B\+|B-|B|C)(?![A-Za-z])/i) || [''])[0].toUpperCase(); cur = ''; }
     else if ((m = l.match(/^exterior(?:\s+(?:quality|condition))?\s*[:\-]\s*(.*)$/i))) { cur = 'e'; put(ext, m[1]); }
     else if ((m = l.match(/^interior(?:\s+(?:quality|condition))?\s*[:\-]\s*(.*)$/i))) { cur = 'i'; put(int, m[1]); }
@@ -632,8 +634,9 @@ function plainDescribe(text) { // respaldo sin IA: reglas simples sobre el texto
     else if ((m = l.match(/^colou?rs?(?:\(s\))?\s*[:\-]\s*(.*)$/i))) { cur = 'c'; put(col, m[1]); }
     else if ((m = l.match(/^odou?r\s*[:\-]\s*(.*)$/i))) { cur = 'o'; odor = m[1].trim(); }
     else if (/^item\s+quality\s*[:\-]?\s*$/i.test(l)) cur = '';
+    else if (/^[A-Za-z][A-Za-z0-9 ()\/&'.-]{1,40}:/.test(l)) cur = 'x'; // cualquier otro apartado (additional info, notes...): se ignora
     else if ((m = l.match(/^(\d+(?:\.\d+)?)\s*(?:"|”|''|in\b|inch)/i))) size = m[1];
-    else if (cur === 'e') put(ext, l); else if (cur === 'i') put(int, l); else if (cur === 'a') put(add, l); else if (cur === 'c') put(col, l);
+    else if (cur === 'e') put(ext, l); else if (cur === 'i') put(int, l); else if (cur === 'a') put(add, l); else if (cur === 'c' && /^[A-Za-z][A-Za-z\/ &-]{1,24}$/.test(l)) put(col, l);
     else if (cur === 'o' && !col.length && /^[A-Za-z][A-Za-z\/ &-]{1,30}$/.test(l)) put(col, l);
   }
   const lc = a => a.map(x => x.toLowerCase());
@@ -652,21 +655,27 @@ function plainDescribe(text) { // respaldo sin IA: reglas simples sobre el texto
   if (items.length) out += ` It comes complete with its ${items.length > 1 && !items.includes('lock and key') ? join(items) : join(items)}.`;
   return out;
 }
-async function describeAll(texts) { // → Map(texto → descripción) y nº de descripciones por IA
-  const map = new Map(), uniq = [...new Set(texts.filter(Boolean))]; let viaAI = 0;
-  if (aiOn && uniq.length) {
-    const chunks = []; for (let i = 0; i < uniq.length; i += 20) chunks.push(uniq.slice(i, i + 20)); let done = 0;
-    await pool(chunks, async ch => {
+async function describeRows(sel, urls) { // → { text: Map(texto→descripción), photo: Map(fila→descripción), st }
+  const st = { ai: 0, rules: 0, photo: 0, empty: 0 }, text = new Map(), photo = new Map();
+  const uniq = [...new Set(sel.map(r => r._detail).filter(Boolean))];
+  const prow = []; sel.forEach((r, i) => { if (!r._detail && urls[i].length) prow.push({ r, i }); });
+  const post = async body => { const r = await fetch('/describe', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Catalog-Finder': '1' }, body: JSON.stringify(body) }); if (!r.ok) throw new Error(await r.text()); return r.json(); };
+  if (aiOn) {
+    const jobs = []; for (let i = 0; i < uniq.length; i += 20) jobs.push({ t: uniq.slice(i, i + 20) });
+    for (let i = 0; i < prow.length; i += 4) jobs.push({ p: prow.slice(i, i + 4) });
+    let done = 0;
+    await pool(jobs, async j => {
       try {
-        const r = await fetch('/describe', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Catalog-Finder': '1' }, body: JSON.stringify({ items: ch.map((text, k) => ({ k, text })) }) });
-        if (!r.ok) throw new Error(await r.text());
-        const { descs } = await r.json(); ch.forEach((t, k) => { if (descs[k]) { map.set(t, descs[k]); viaAI++; } });
+        if (j.t) { const { descs } = await post({ items: j.t.map((t, k) => ({ k, text: t })) }); j.t.forEach((t, k) => { if (descs[k] && !NON_EN.test(descs[k])) { text.set(t, descs[k]); st.ai++; } }); }
+        else { const { descs } = await post({ photoItems: j.p.map(({ r, i }, k) => ({ k, brand: get(r, 'brand'), name: nameOf(r), grade: r._letter, notes: get(r, 'notes'), photos: urls[i].slice(0, 4) })) });
+          j.p.forEach(({ r }, k) => { if (descs[k] && !NON_EN.test(descs[k])) { photo.set(r, descs[k]); st.photo++; } }); }
       } catch (e) { /* esos artículos usarán el respaldo */ }
-      setStatus(`Redactando descripciones… ${Math.min(uniq.length, (++done) * 20)}/${uniq.length}`);
+      setStatus(`Redactando descripciones… ${++done}/${jobs.length}`);
     }, 3);
   }
-  uniq.forEach(t => { if (!map.has(t)) map.set(t, plainDescribe(t)); });
-  return { map, viaAI, total: uniq.length };
+  uniq.forEach(t => { if (!text.has(t)) { text.set(t, plainDescribe(t)); st.rules++; } });
+  st.empty = sel.filter(r => !r._detail && !photo.has(r)).length;
+  return { text, photo, st };
 }
 
 /* ============ export customer ============ */
@@ -677,7 +686,7 @@ async function buildCustomer() {
   if (!rates) throw new Error('No hay tipos de cambio; no se puede calcular el precio USD');
   const sel = rows.filter(r => selected.has(code(r))).sort((a, b) => (a._ord ?? 1e9) - (b._ord ?? 1e9)), urls = []; let done = 0;
   await pool(sel, async (r, i) => { urls[i] = code(r) ? await findImages(code(r)) : []; if (++done % 10 === 0) setStatus(`Buscando fotos… ${done}/${sel.length}`); });
-  const nat = $('natural').checked, D = nat ? await describeAll(sel.map(r => r._detail)) : null;
+  const nat = $('natural').checked, D = nat ? await describeRows(sel, urls) : null;
   const head = ['BRAND', 'SKU', 'ITEM NAME', 'DETAILED GRADING', 'GRADING (RANK)', 'Purchase?', 'Buy Now Price', 'Picture #1'];
   for (let n = 2; n <= NPIC; n++) head.push('Picture #' + n);
   for (let n = 1; n <= NPIC; n++) head.push(String(n));
@@ -686,12 +695,12 @@ async function buildCustomer() {
     const id = code(r), have = Math.min(urls[i].length, NPIC), price = finalOf(r);
     if (!id) noid++; else if (!have) nopic++; if (isNaN(price)) noprice++;
     const pic = n => n <= have ? { f: `image("${photoUrl(id, n)}",4,100,100)` } : {};
-    const row = [{ v: get(r, 'brand') }, { v: id }, { v: nameOf(r) }, { v: nat && r._detail ? D.map.get(r._detail) : r._detail }, { v: rankText(r) }, {}, isNaN(price) ? {} : { v: Math.round(price * 100) / 100, money: 1 }, pic(1)];
+    const row = [{ v: get(r, 'brand') }, { v: id }, { v: nameOf(r) }, (nat && D.photo.has(r)) ? { v: D.photo.get(r), photo: 1 } : { v: nat && r._detail ? D.text.get(r._detail) : r._detail }, { v: rankText(r) }, {}, isNaN(price) ? {} : { v: Math.round(price * 100) / 100, money: 1 }, pic(1)];
     for (let n = 2; n <= NPIC; n++) row.push(pic(n));
     for (let n = 1; n <= NPIC; n++) row.push(n <= have ? { f: `iferror(HYPERLINK("${photoUrl(id, n)}","${id} - photo${n}"))` } : {});
     return row;
   });
-  const w = [nat && D.total > D.viaAI && `${D.total - D.viaAI} descripciones con redacción básica (sin IA)`, noid && `${noid} sin CTag`, nopic && `${nopic} sin fotos`, noprice && `${noprice} sin precio USD`].filter(Boolean);
+  const w = [nat && D.st.rules && `${D.st.rules} descripciones con redacción básica (sin IA; el texto en otros idiomas se descarta)`, nat && D.st.photo && `${D.st.photo} descripciones hechas SOLO desde las fotos (celdas naranjas): revísalas`, nat && D.st.empty && `${D.st.empty} sin descripción (sin notas${aiOn ? ' ni fotos' : ' y sin IA para leer las fotos'})`, noid && `${noid} sin CTag`, nopic && `${nopic} sin fotos`, noprice && `${noprice} sin precio USD`].filter(Boolean);
   return { head, body, warn: w.join(', ') };
 }
 const stamp = () => new Date().toISOString().slice(0, 10);
@@ -716,7 +725,7 @@ async function exportXlsx() {
       const a = XLSX.utils.encode_cell({ r: i + 1, c });
       if (cell.f) ws[a] = { t: 's', v: '', f: cell.f, s: B };
       else if (cell.money) ws[a] = { t: 'n', v: cell.v, z: '$#,##0', s: { ...B, font: { sz: 12 } } };
-      else if (cell.v !== undefined && cell.v !== '') ws[a] = { t: 's', v: String(cell.v), s: c === 3 ? BL : B };
+      else if (cell.v !== undefined && cell.v !== '') ws[a] = { t: 's', v: String(cell.v), s: cell.photo ? { ...BL, fill: { patternType: 'solid', fgColor: { rgb: 'FFE699' } } } : c === 3 ? BL : B };
       else ws[a] = { t: 's', v: '', s: B };
     }));
     ws['!ref'] = XLSX.utils.encode_range({ s: { r: 0, c: 0 }, e: { r: body.length, c: head.length - 1 } });

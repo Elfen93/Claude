@@ -13,7 +13,20 @@ ROOT = os.path.dirname(os.path.abspath(__file__))
 KEY_FILE = os.path.join(ROOT, ".api_key")
 CACHE_FILE = os.path.join(ROOT, ".photo_cache.json")
 DESC_CACHE_FILE = os.path.join(ROOT, ".desc_cache.json")
-DESC_VERSION = "v1"
+DESC_VERSION = "v2"
+VISION_MODEL = os.environ.get("CATALOG_VISION_MODEL", "claude-sonnet-5-5")
+NON_ENGLISH = re.compile("[^\\x00-\\x7F\u00C0-\u017F\u2018-\u201D\u2013\u2014\u00B0\u00BD]")  # cualquier otro alfabeto (japones, chino...)
+VISION_SYSTEM = """You write the 'detailed grading' blurb of a luxury resale listing for an item that has NO written condition notes, using ONLY what is clearly visible in the photos.
+Rules:
+- 100% English. Never output characters from any other language.
+- Style: "This {color} item ..." then what is visible: wear on corners/edges/handles, hardware tarnish or scratches, interior marks or staining, shape/structure, stitching. 1-3 short sentences.
+- Mention only what the photos clearly show. If an area is not shown (e.g. no interior photo), do not mention it and never claim it is clean. Do not guess flaws you cannot see and do not hide visible ones.
+- Use "Grade X" only if a grade is provided; never invent a grade.
+- If the photos do not allow judging condition, write exactly: "Please refer to the photos for condition details."
+- Do not mention the photos, brand speculation, prices or marketing language."""
+VISION_TOOL = {"name": "write_description", "description": "Devuelve la descripcion",
+               "input_schema": {"type": "object", "properties": {"text": {"type": "string"}}, "required": ["text"]}}
+_ai_pool = concurrent.futures.ThreadPoolExecutor(4)
 DESC_SYSTEM = """You write the 'detailed grading' blurb of a luxury resale listing from structured condition notes. For EACH item return ONE short paragraph (1-3 sentences) of natural, polished English.
 Rules:
 - Be faithful: use only facts present in the notes. Never invent, soften or drop a defect/flaw/odor/alteration (re-painted/re-dyed, tarnish, stains, scratches, cracks, etc.).
@@ -21,6 +34,7 @@ Rules:
 - Then summarise wear with "showing ...". If exterior and interior notes are the same say "both the interior and exterior"; if they differ, describe each. "No visible signs of wear" -> "showing no visible signs of wear".
 - Alterations such as Re-Painted/Re-Dyed: "and has been repainted or re-dyed".
 - Add-ons (key, lock, dust bag, strap, box, clochette...): final sentence "It comes complete with its lock and key." (say "lock and key" when both exist).
+- The output must be 100% English. Translate any Japanese, Chinese, Korean or other-language notes into English; drop remarks that are not about condition, accessories, size or color (seller chatter, model-year remarks). Never output characters from another language.
 - Mention odor only if the notes do (e.g. "No odor present" -> "It has no noticeable odor.").
 - No marketing fluff or adjectives that are not in the notes.
 Example input: ITEM GRADING: AB / EXTERIOR QUALITY: Minor Wear Throughout, Re-Painted/Re-Dyed / INTERIOR QUALITY: Minor Wear Throughout / ADDON(s): Key, Lock / COLOR(s): Red / 30"
@@ -213,47 +227,94 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             return self._describe(data)
         return self._ai(data)
 
+    def _post_api(self, payload, timeout=120):
+        req = urllib.request.Request(API_BASE + "/v1/messages", data=json.dumps(payload).encode(),
+                                     headers={"x-api-key": api_key(), "anthropic-version": "2023-06-01", "content-type": "application/json"})
+        with urllib.request.urlopen(req, timeout=timeout, context=_ssl_ctx) as r:
+            return json.load(r)
+
+    @staticmethod
+    def _tool_input(resp):
+        for block in resp.get("content", []):
+            if block.get("type") == "tool_use":
+                return block["input"]
+        return {}
+
     def _describe(self, d):
-        """Reescribe el 'detailed grading' estructurado como texto natural (con cache en disco)."""
-        key = api_key()
-        if not key:
+        """Reescribe el grading en ingles natural; para articulos sin notas, describe lo visible en las fotos."""
+        if not api_key():
             return self._err(400, "Falta la clave de API")
-        items = [i for i in d.get("items", [])[:40] if isinstance(i, dict) and str(i.get("text", "")).strip()]
-        out, todo = {}, []
-        for it in items:
+        out, photo, todo = {}, [], []
+        for it in [i for i in d.get("items", [])[:40] if isinstance(i, dict) and str(i.get("text", "")).strip()]:
             h = hashlib.sha1((DESC_VERSION + MODEL + it["text"]).encode()).hexdigest()
             if h in _desc_cache:
                 out[str(it["k"])] = _desc_cache[h]
             else:
                 todo.append((str(it["k"]), h, it["text"]))
-        if todo:
-            payload = {
-                "model": MODEL, "max_tokens": 4000, "temperature": 0, "system": DESC_SYSTEM,
+        try:
+            if todo:
+                self._describe_text(todo, out)
+            pitems = [i for i in d.get("photoItems", [])[:8] if isinstance(i, dict)]
+            for k, txt in _ai_pool.map(self._describe_photo, pitems):
+                if txt:
+                    out[k] = txt
+                    photo.append(k)
+        except urllib.error.HTTPError as e:
+            return self._err(502, f"La API respondio {e.code}: {e.read().decode('utf-8', 'replace')[:300]}")
+        except Exception as e:  # noqa: BLE001
+            return self._err(502, f"No se pudo contactar con la API: {e}")
+        with _cache_lock:
+            tmp = DESC_CACHE_FILE + ".tmp"
+            with open(tmp, "w") as f:
+                json.dump(_desc_cache, f)
+            os.replace(tmp, DESC_CACHE_FILE)
+        return self._json({"descs": out, "photo": photo})
+
+    def _describe_text(self, todo, out):
+        by_id = {k: h for k, h, _ in todo}
+        notes = [{"id": k, "notes": t[:3000]} for k, _, t in todo]
+        for attempt in (0, 1):
+            extra = "" if attempt == 0 else "\n\nIMPORTANT: your previous answer contained non-English characters. Write ONLY in English."
+            resp = self._post_api({
+                "model": MODEL, "max_tokens": 4000, "temperature": 0, "system": DESC_SYSTEM + extra,
                 "tools": [DESC_TOOL], "tool_choice": {"type": "tool", "name": "write_descriptions"},
-                "messages": [{"role": "user", "content": json.dumps([{"id": k, "notes": t[:3000]} for k, _, t in todo], ensure_ascii=False)}],
-            }
-            req = urllib.request.Request(API_BASE + "/v1/messages", data=json.dumps(payload).encode(),
-                                         headers={"x-api-key": key, "anthropic-version": "2023-06-01", "content-type": "application/json"})
-            try:
-                with urllib.request.urlopen(req, timeout=120, context=_ssl_ctx) as r:
-                    resp = json.load(r)
-            except urllib.error.HTTPError as e:
-                return self._err(502, f"La API respondio {e.code}: {e.read().decode('utf-8', 'replace')[:300]}")
-            except Exception as e:  # noqa: BLE001
-                return self._err(502, f"No se pudo contactar con la API: {e}")
-            by_id = {k: h for k, h, _ in todo}
-            for block in resp.get("content", []):
-                if block.get("type") == "tool_use":
-                    for e in block["input"].get("descriptions", []):
-                        k, txt = str(e.get("id")), str(e.get("text", "")).strip()
-                        if k in by_id and txt:
-                            out[k] = _desc_cache[by_id[k]] = txt
-            with _cache_lock:
-                tmp = DESC_CACHE_FILE + ".tmp"
-                with open(tmp, "w") as f:
-                    json.dump(_desc_cache, f)
-                os.replace(tmp, DESC_CACHE_FILE)
-        return self._json({"descs": out})
+                "messages": [{"role": "user", "content": json.dumps(notes, ensure_ascii=False)}]})
+            bad = []
+            for e in self._tool_input(resp).get("descriptions", []):
+                k, txt = str(e.get("id")), str(e.get("text", "")).strip()
+                if k not in by_id or not txt:
+                    continue
+                if NON_ENGLISH.search(txt):
+                    bad.append(k)
+                else:
+                    out[k] = _desc_cache[by_id[k]] = txt
+            notes = [n for n in notes if n["id"] in bad]
+            if not notes:
+                break
+
+    def _describe_photo(self, it):
+        k = str(it.get("k"))
+        urls = [u for u in it.get("photos", [])[:4]
+                if isinstance(u, str) and urllib.parse.urlparse(u).scheme in ("http", "https") and urllib.parse.urlparse(u).hostname in PHOTO_HOSTS]
+        if not urls:
+            return k, ""
+        ctx = {x: str(it.get(x, ""))[:600] for x in ("brand", "name", "grade", "notes") if it.get(x)}
+        h = hashlib.sha1((DESC_VERSION + VISION_MODEL + json.dumps([urls, ctx], sort_keys=True)).encode()).hexdigest()
+        if h in _desc_cache:
+            return k, _desc_cache[h]
+        content = [{"type": "image", "source": {"type": "url", "url": u}} for u in urls]
+        content.append({"type": "text", "text": "Item details (context only; may contain non-English text, translate if relevant): " + json.dumps(ctx, ensure_ascii=False)})
+        for attempt in (0, 1):
+            extra = "" if attempt == 0 else "\n\nIMPORTANT: your previous answer contained non-English characters. Write ONLY in English."
+            resp = self._post_api({"model": VISION_MODEL, "max_tokens": 600, "temperature": 0, "system": VISION_SYSTEM + extra,
+                                   "tools": [VISION_TOOL], "tool_choice": {"type": "tool", "name": "write_description"},
+                                   "messages": [{"role": "user", "content": content}]})
+            txt = str(self._tool_input(resp).get("text", "")).strip()
+            if txt and not NON_ENGLISH.search(txt):
+                with _cache_lock:
+                    _desc_cache[h] = txt
+                return k, txt
+        return k, ""
 
     def _json(self, obj, code=200):
         body = json.dumps(obj).encode()
