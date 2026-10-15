@@ -39,6 +39,8 @@
   .tag { background:var(--bg); border:1px solid var(--line); border-radius:4px; padding:0 6px; font-size:12px; }
   .desc { margin-top:4px; font-size:13px; }
   .notes { margin-top:4px; font-size:12px; }
+  .card { position:relative; } .card.sel { outline:2px solid var(--acc); }
+  .pick { position:absolute; left:8px; top:8px; z-index:2; width:20px; height:20px; cursor:pointer; accent-color:var(--acc); }
   .price { margin-top:6px; font-weight:600; }
   #more { display:block; margin:0 auto 30px; }
   #lb { position:fixed; inset:0; background:#000d; display:none; z-index:20; flex-direction:column; align-items:center; justify-content:center; gap:10px; }
@@ -68,6 +70,8 @@
       <label>Prefijo código <input id="prefix" type="text" style="min-width:50px;width:60px" placeholder="ej. C"></label>
       <label>Margen % <input id="pct" type="text" style="min-width:40px;width:50px"></label>
       <label>+ Yenes <input id="fee" type="text" style="min-width:60px;width:70px"></label>
+      <label>URL export <input id="exp" type="text" style="min-width:420px"></label>
+      <label>Etiquetas rank (n=texto) <textarea id="labels" rows="3" style="width:180px"></textarea></label>
       <label>Máx. fotos <input id="maxn" type="text" style="min-width:40px;width:50px"></label>
     </div>
   </details>
@@ -82,6 +86,9 @@
     <button id="markup" title="Aplica margen % + tarifa fija en yenes (ver Ajustes)"></button>
     <span id="fx" class="mute"></span>
     <button id="export">Exportar CSV filtrado</button>
+    <span class="mute">|</span>
+    <button id="selAll">Seleccionar filtrados</button><button id="selNone">Limpiar</button>
+    <button id="exportC" class="primary">Exportar customer (<span id="selN">0</span>)</button>
   </div>
 </header>
 <div id="status" class="mute"></div>
@@ -93,6 +100,7 @@
 const FIELDS = {
   id:     { label:'Código (CTag)', alias:['ctag','c tag','code','codigo','código','id','sku','item id','ref'] },
   brand:  { label:'Marca',         alias:['brand name','brand','marca'] },
+  name:   { label:'Nombre',        alias:['item name','name','nombre'] },
   desc:   { label:'Descripción',   alias:['item description','description','descripcion','descripción'] },
   notes:  { label:'Notas',         alias:['public notes','notes','notas'] },
   type:   { label:'Tipo',          alias:['item type','type','tipo','category','categoria','categoría'] },
@@ -277,18 +285,19 @@ const io = new IntersectionObserver(es => es.forEach(e => {
 }), { rootMargin: '300px' });
 
 function addCard(r) {
-  const c = document.createElement('div'); c.className = 'card'; c._r = r;
+  const c = document.createElement('div'); c.className = 'card' + (selected.has(code(r)) ? ' sel' : ''); c._r = r;
   const orig = [get(r, 'price'), get(r, 'cur')].filter(Boolean).join(' '), u = usdOf(r), f = finalOf(r);
   const price = isNaN(u) ? (orig ? orig + (rates ? ' ⚠ moneda desconocida' : '') : '')
     : fmtUSD(f) + ' USD';
   const sub = isNaN(u) ? '' : (markupOn ? `base ${fmtUSD(u)} · ` : '') + 'orig. ' + orig;
-  c.innerHTML = `<div class="photo"><span class="none">cargando…</span></div>
+  c.innerHTML = `<input type="checkbox" class="pick" ${selected.has(code(r)) ? 'checked' : ''}><div class="photo"><span class="none">cargando…</span></div>
     <div class="info"><div class="brand">${esc(get(r, 'brand') || '—')}</div>
     <div class="code">${esc(code(r))}</div>
     ${get(r, 'desc') ? `<div class="desc">${esc(get(r, 'desc'))}</div>` : ''}
     <div class="meta">${['type', 'grade', 'entity'].map(k => get(r, k) ? `<span class="tag">${esc(get(r, k))}</span>` : '').join('')}</div>
     ${price ? `<div class="price">${esc(price)}</div>` : ''}${sub ? `<div class="mute notes">${esc(sub)}</div>` : ''}
     ${get(r, 'notes') ? `<div class="mute notes">${esc(get(r, 'notes'))}</div>` : ''}</div>`;
+  c.querySelector('.pick').onchange = e => { toggle(code(r), e.target.checked); c.classList.toggle('sel', e.target.checked); };
   $('grid').append(c); io.observe(c);
 }
 async function loadCard(c) {
@@ -339,6 +348,7 @@ $('more').onclick = more;
 function debounce(f, ms) { let t; return (...a) => { clearTimeout(t); t = setTimeout(() => f(...a), ms); }; }
 $('markup').onclick = () => { markupOn = !markupOn; store.set('markupOn', markupOn ? '1' : '0'); setMarkupBtn(); if (rows.length) refresh(false); };
 ['pct', 'fee'].forEach(id => $(id).addEventListener('change', () => { store.set(id, $(id).value); setMarkupBtn(); if (rows.length) refresh(false); }));
+['labels', 'exp'].forEach(id => $(id).addEventListener('change', () => store.set(id, $(id).value)));
 ['tpl', 'size', 'prefix', 'maxn'].forEach(id => $(id).addEventListener('change', () => {
   store.set(id, $(id).value); imgCache.clear(); if (rows.length) refresh(false);
 }));
@@ -353,9 +363,66 @@ $('export').onclick = () => {
   a.href = URL.createObjectURL(new Blob(['﻿' + csv], { type: 'text/csv' })); a.download = 'catalogo_filtrado.csv'; a.click();
 };
 
+
+/* ---------- selección y export "customer" ---------- */
+const selected = new Set(JSON.parse(store.get('selected', '[]')));
+function toggle(k, on) { if (!k) return; on ? selected.add(k) : selected.delete(k); saveSel(); }
+function saveSel() { store.set('selected', JSON.stringify([...selected])); $('selN').textContent = selected.size; }
+const RANKS = [['SA WITH TAGS', 1, 'SA'], ['SA', 2, 'SA'], ['S', 3, 'S'], ['A', 4, 'A'], ['AB', 5, 'AB'], ['B+', 6, 'B+'], ['B', 7, 'B'], ['B-', 8, 'B-'], ['BC', 9, 'BC'], ['C', 10, 'C']];
+const GRADE_RE = /GRADING:\s*(SA\s+with\s+tags|SA|S|AB|A|BC|B\+|B-|B|C)(?![A-Za-z])/i;
+const detailOf = r => Object.entries(r).find(([k, v]) => k !== '_i' && /GRADING:/i.test(v))?.[1] || '';
+const nameOf = r => [get(r, 'name'), get(r, 'desc')].find(v => v && !/GRADING:/i.test(v)) || '';
+function labels() {
+  const o = {}; $('labels').value.split(/\n/).forEach(l => { const m = l.match(/^\s*(\d+)\s*=\s*(.+?)\s*$/); if (m) o[m[1]] = m[2]; }); return o;
+}
+function rankOf(detail) {
+  const m = detail.match(GRADE_RE); if (!m) return '';
+  const key = m[1].toUpperCase().replace(/\s+/g, ' '), [, n, letter] = RANKS.find(x => x[0] === key);
+  const lab = labels()[n];
+  return `${n} - ${letter} RANK` + (lab ? ` (${lab})` : '');
+}
+const NPIC = 13;
+const qcsv = v => '"' + String(v ?? '').replace(/"/g, '""') + '"';
+function photoUrl(id, n) { return $('exp').value.trim().replace('{id}', id).replace('{n}', n); }
+async function exportCustomer() {
+  if (!selected.size) return setStatus('Selecciona artículos primero', true);
+  if (!rates) return setStatus('No hay tipos de cambio; no se puede calcular el precio USD', true);
+  const sel = rows.filter(r => selected.has(code(r))), out = []; let done = 0, nopic = 0, noid = 0, noprice = 0;
+  const queue = [...sel.keys()], urls = {};
+  await Promise.all(Array.from({ length: 8 }, async () => {
+    while (queue.length) {
+      const k = queue.shift(), id = code(sel[k]);
+      urls[k] = id ? await findImages(id) : [];
+      if (++done % 10 === 0) setStatus(`Buscando fotos… ${done}/${sel.length}`);
+    }
+  }));
+  const head = ['BRAND', 'SKU', 'ITEM NAME', 'DETAILED GRADING', 'GRADING (RANK)', 'Purchase?', 'Buy Now Price', 'Picture #1', 'Star Rating'];
+  for (let n = 2; n <= NPIC; n++) head.push('Picture #' + n);
+  for (let n = 1; n <= NPIC; n++) head.push(String(n));
+  out.push(head.map(qcsv).join(','));
+  sel.forEach((r, k) => {
+    const id = code(r), have = Math.min(urls[k].length, NPIC), price = finalOf(r);
+    if (!id) noid++; else if (!have) nopic++; if (isNaN(price)) noprice++;
+    const pic = n => n <= have ? `=image("${photoUrl(id, n)}",4,100,100)` : '';
+    const row = [get(r, 'brand'), id, nameOf(r), detailOf(r), rankOf(detailOf(r)), '', isNaN(price) ? '' : price.toFixed(2), pic(1), ''];
+    for (let n = 2; n <= NPIC; n++) row.push(pic(n));
+    for (let n = 1; n <= NPIC; n++) row.push(n <= have ? `=iferror(HYPERLINK("${photoUrl(id, n)}","${id} - photo${n}"))` : '');
+    out.push(row.map(qcsv).join(','));
+  });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob(['﻿' + out.join('\n')], { type: 'text/csv' })); a.download = 'customer_' + new Date().toISOString().slice(0, 10) + '.csv'; a.click();
+  const w = [noid && `${noid} sin CTag`, nopic && `${nopic} sin fotos`, noprice && `${noprice} sin precio USD (moneda desconocida)`].filter(Boolean);
+  setStatus(`Exportados ${sel.length} artículos · Buy Now ${markupOn ? 'CON' : 'SIN'} margen` + (w.length ? ' · ⚠ ' + w.join(', ') : ''), !!w.length);
+}
+$('exportC').onclick = exportCustomer;
+$('selAll').onclick = () => { view.forEach(r => code(r) && selected.add(code(r))); saveSel(); document.querySelectorAll('.card').forEach(c => { c.classList.add('sel'); c.querySelector('.pick').checked = true; }); };
+$('selNone').onclick = () => { selected.clear(); saveSel(); document.querySelectorAll('.card').forEach(c => { c.classList.remove('sel'); c.querySelector('.pick').checked = false; }); };
+
 /* ---------- init ---------- */
 $('tpl').value = store.get('tpl', 'https://s3.amazonaws.com/storage.j-ports/photographs/{id}/{size}/{n}.jpg');
-$('size').value = store.get('size', 'medium'); $('prefix').value = store.get('prefix', ''); $('maxn').value = store.get('maxn', '12');
+$('size').value = store.get('size', 'medium'); $('prefix').value = store.get('prefix', ''); $('maxn').value = store.get('maxn', '13');
+$('exp').value = store.get('exp', 'https://s3.amazonaws.com/storage.j-ports/photographs/{id}/{n}.jpg');
+$('labels').value = store.get('labels', '1=With Tags\n4=Superb Condition\n7=Good Condition'); saveSel();
 $('url').value = store.get('url', '');
 $('pct').value = store.get('pct', '35'); $('fee').value = store.get('fee', '2500'); setMarkupBtn(); loadRates();
 </script>
