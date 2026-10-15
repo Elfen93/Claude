@@ -26,6 +26,11 @@ Si pegas una lista con varias peticiones, la IA las ejecuta una por una (`search
 
 - **Cuarta plantilla**: `prompts/top10_resale_buys.txt`, sourcing para reventa basado en el informe *Top 10 Buys* (25 sep): bolsos Céline Box/Luggage, Bottega, Dior Montaigne, Hermès Dogon, LV Capucines y Fendi Peekaboo, grados A–B+, precio de compra (`price_basis=buying`) en USD y colores vivos como preferencia. Los 10 bolsos del informe pasan sus filtros. La app no calcula márgenes de reventa (el catálogo no trae precio retail ni de reventa): sirve para generar candidatos y tú estimas el margen.
 
+## Filtro de estado (grado)
+- Fila **Estado**: un botón por cada grado que existe en tu hoja (SA c/etiq., SA, S, A, AB, B+, B, B-, BC, C y *sin grado*), con el número de artículos. Marca **uno o varios** para ver solo esos grados exactos (p. ej. solo BC, o AB + B+ + B). Los contadores se ajustan a los demás filtros.
+- El selector *atajo "o mejor"…* marca de golpe todos los grados desde SA hasta el elegido (el antiguo "X o mejor").
+- El asistente lo entiende: `solo BC`, `solo B+ y B`, `estado de AB a B-`, `A o mejor`. En las plantillas de prompt, una línea puede llevar `grades` (grados exactos) o el rango `best_rank_allowed`/`worst_rank_allowed`.
+
 ## Descargar exactamente lo que quieres
 - **La selección no se pierde** al filtrar ni al quitar filtros (se guarda por CTag). La barra inferior dice cuántos seleccionados ves y cuántos quedan fuera de los filtros.
 - **Catálogo montado**: tras una búsqueda múltiple, el botón 🎯 *Dentro del catálogo montado (N)* mantiene la vista limitada a esos N; *Quitar filtros* no lo tira. Con él activo puedes filtrar **dentro** del catálogo por entity, marca, precio o estado. Pulsa el botón para salir de él y de nuevo para volver.

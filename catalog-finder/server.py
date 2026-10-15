@@ -150,6 +150,7 @@ Reglas:
 - select_count > 0 solo si el usuario pide ELEGIR/SELECCIONAR/ESCOGER una cantidad concreta; si pide variedad o mezcla de marcas, diversify_brands=true.
 - Si el usuario da una LISTA de peticiones distintas, rellena `searches` con una entrada por linea (y deja vacios los filtros de nivel superior). Respeta las instrucciones por linea que el usuario indique (filtro duro vs preferencia blanda, topes de precio, cantidad).
 - Monedas: '$' = USD, '€' = EUR, '£' = GBP; '¥' = JPY salvo que diga yuan/CNY. Si el usuario NO indica moneda, deja price_currency vacio (la app usa la moneda que el usuario esta viendo).
+- Estado: si pide grados concretos ('solo BC', 'solo B+ y B', 'unicamente AB') usa grades con esos grados exactos; 'X o mejor' o un rango ('de AB a B-') puede usar worst/best_rank_allowed o grades.
 - Si el usuario da rangos en una moneda (EUR...), rellena price_currency; si habla de 'precio de compra/buying price/sourcing', usa price_basis=buying. 'Del grado AB al B-' => best_rank_allowed=5, worst_rank_allowed=8.
 - reply: una frase corta en espanol diciendo que has entendido y aplicado. No inventes nada que el usuario no pidio."""
 _SEARCH_PROPS = {
@@ -163,6 +164,7 @@ _SEARCH_PROPS = {
     "max_price": {"type": "number"},
     "worst_rank_allowed": {"type": "integer", "minimum": 1, "maximum": 10},
     "best_rank_allowed": {"type": "integer", "minimum": 1, "maximum": 10, "description": "Grado MINIMO aceptado (excluye los mejores). Ej: AB..B- => best_rank_allowed=5 y worst_rank_allowed=8"},
+    "grades": {"type": "array", "items": {"type": "string", "enum": ["SA with tags", "SA", "S", "A", "AB", "B+", "B", "B-", "BC", "C"]}, "description": "Grados EXACTOS aceptados (p.ej. solo BC => [\"BC\"]; AB, B+ y B => [\"AB\",\"B+\",\"B\"]). Tiene prioridad sobre best/worst_rank_allowed"},
     "price_currency": {"type": "string", "description": "Moneda en la que estan min_price/max_price (EUR, JPY, USD...). La app convierte con el cambio actual. Por defecto USD"},
     "price_basis": {"type": "string", "enum": ["shown", "buying"], "description": "buying = comparar con el PRECIO DE COMPRA (sin margen); shown = el precio que ve el cliente (con margen si esta activado)"},
     "sort": {"type": "string", "enum": ["", "price_asc", "price_desc"], "description": "Orden dentro de esta busqueda (price_asc = los mas baratos primero)"},

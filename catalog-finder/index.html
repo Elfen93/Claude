@@ -125,11 +125,10 @@
       <div class="row"><span class="lbl" id="priceLbl">Precio</span>
         <input id="pmin" type="text" placeholder="mín" style="width:80px"> – <input id="pmax" type="text" placeholder="máx" style="width:80px">
         <span id="pchips"></span></div>
-      <div class="row"><span class="lbl">Estado</span>
-        <select id="frank">
-          <option value="0">Cualquiera</option><option value="1">SA con etiquetas</option><option value="2">SA o mejor</option><option value="3">S o mejor</option>
-          <option value="4">A o mejor</option><option value="5">AB o mejor</option><option value="6">B+ o mejor</option><option value="7">B o mejor</option>
-          <option value="8">B- o mejor</option><option value="9">BC o mejor</option>
+      <div class="row"><span class="lbl">Estado</span><span id="gchips"></span>
+        <select id="frank" title="Atajo: marca de golpe todos los grados desde SA hasta el elegido">
+          <option value="0">atajo: "o mejor"…</option><option value="2">SA o mejor</option><option value="3">S o mejor</option><option value="4">A o mejor</option>
+          <option value="5">AB o mejor</option><option value="6">B+ o mejor</option><option value="7">B o mejor</option><option value="8">B- o mejor</option><option value="9">BC o mejor</option>
         </select></div>
       <div class="row"><span class="lbl">Marcas</span><span id="bchips"></span>
         <input id="bAdd" list="bList" type="text" placeholder="otra marca…" style="width:150px"><datalist id="bList"></datalist></div>
@@ -410,9 +409,10 @@ $('loaded').onclick = () => { if (rows.length) $('loadBox').style.display = $('l
 $('loaded').style.cursor = 'pointer'; $('loaded').title = 'Clic para cambiar de hoja';
 
 /* ============ filtros ============ */
-const F = { rankMin: 0, onlySel: false, loose: false, catalog: null, q: '', brands: new Set(), entities: new Set(), min: null, max: null, rank: 0, groups: [], exclude: [], sort: '', onlyImg: false };
+const F = { grades: new Set(), rankMin: 0, onlySel: false, loose: false, catalog: null, q: '', brands: new Set(), entities: new Set(), min: null, max: null, rank: 0, groups: [], exclude: [], sort: '', onlyImg: false };
 function resetFilters(redraw = true, keepCatalog = false) {
   const cat = F.catalog;
+  F.grades.clear();
   Object.assign(F, { rankMin: 0, onlySel: false, loose: false, catalog: keepCatalog ? cat : null, q: '', min: null, max: null, rank: 0, groups: [], exclude: [], sort: '', onlyImg: false }); F.brands.clear(); F.entities.clear();
   $('q').value = ''; $('pmin').value = $('pmax').value = ''; $('frank').value = '0'; $('sort').value = ''; $('onlyImg').checked = false; $('onlySel').checked = false;
   if (redraw) refresh(false);
@@ -424,6 +424,7 @@ function matches(r, skip, f = F) {
   if (skip !== 'entities' && f.entities.size && !f.entities.has(get(r, 'entity'))) return false;
   if (f.rank && !(r._rank && r._rank <= f.rank)) return false;
   if (f.rankMin && !(r._rank && r._rank >= f.rankMin)) return false;
+  if (skip !== 'grades' && f.grades && f.grades.size && !f.grades.has(r._rank || 0)) return false;
   if (f.min != null || f.max != null) { const p = f.basis === 'buying' ? usdOf(r) : finalOf(r); if (isNaN(p) || (f.min != null && p < f.min) || (f.max != null && p > f.max)) return false; }
   if (f.q && !r._text.includes(f.q)) return false;
   const t = f.loose ? r._text : r._core;
@@ -437,15 +438,29 @@ function chips(el, facet, set, max) {
   el.innerHTML = '';
   shownL.forEach(([name, n]) => { const b = document.createElement('button'); b.className = 'chip' + (set.has(name) ? ' on' : ''); b.innerHTML = `${esc(name)} <small>${n}</small>`; b.onclick = () => { set.has(name) ? set.delete(name) : set.add(name); refresh(false); }; el.append(b); });
 }
+const GRADE_LABEL = { 1: 'SA c/etiq.', 2: 'SA', 3: 'S', 4: 'A', 5: 'AB', 6: 'B+', 7: 'B', 8: 'B-', 9: 'BC', 10: 'C', 0: 'sin grado' };
+function gradeSet(sp) { // grados aceptados por una petición: lista exacta o rango mejor..peor
+  const set = new Set();
+  if (sp.grades?.length) sp.grades.forEach(g => { const e = rankEntry(String(g).replace(/\s+/g, ' ')); if (e) set.add(e[1]); });
+  else if (sp.best_rank_allowed || sp.worst_rank_allowed) for (let r = sp.best_rank_allowed || 1; r <= (sp.worst_rank_allowed || 10); r++) set.add(r);
+  return set;
+}
 function facets() {
-  const fb = new Map(), fe = new Map();
+  const fb = new Map(), fe = new Map(), fg = new Map();
   for (const r of rows) {
+    if (matches(r, 'grades')) { const k = r._rank || 0; fg.set(k, (fg.get(k) || 0) + 1); }
     if (matches(r, 'brands')) { const b = get(r, 'brand'); if (b) fb.set(b, (fb.get(b) || 0) + 1); }
     if (matches(r, 'entities')) { const e = get(r, 'entity'); if (e) fe.set(e, (fe.get(e) || 0) + 1); }
   }
   chips($('bchips'), fb, F.brands, 14); chips($('echips'), fe, F.entities, 10);
   $('eRow').style.display = fe.size || F.entities.size ? '' : 'none';
   $('bList').innerHTML = [...fb.keys()].sort().map(b => `<option value="${esc(b)}">`).join('');
+  const gl = $('gchips'); gl.innerHTML = '';
+  [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 0].filter(k => fg.get(k) || F.grades.has(k)).forEach(k => {
+    const b = document.createElement('button'); b.className = 'chip' + (F.grades.has(k) ? ' on' : '');
+    b.innerHTML = `${esc(GRADE_LABEL[k])} <small>${fg.get(k) || 0}</small>`; b.title = k ? 'Grado exacto (puedes marcar varios)' : 'Artículos cuyo grading no se pudo leer';
+    b.onclick = () => { F.grades.has(k) ? F.grades.delete(k) : F.grades.add(k); refresh(false); }; gl.append(b);
+  });
 }
 const bandEdges = () => [200, 500, 1000, 2500].map(u => nice(fromUSD(u))); // límites en la moneda de salida
 function priceChips() {
@@ -459,7 +474,7 @@ function priceChips() {
 }
 function refresh(rebuild) {
   runId++;
-  const sh = v => v == null ? '' : Math.round(fromUSD(v) * 100) / 100; $('pmin').value = sh(F.min); $('pmax').value = sh(F.max); $('priceLbl').textContent = 'Precio ' + outCur; $('frank').value = String(F.rank);
+  const sh = v => v == null ? '' : Math.round(fromUSD(v) * 100) / 100; $('pmin').value = sh(F.min); $('pmax').value = sh(F.max); $('priceLbl').textContent = 'Precio ' + outCur; $('frank').value = '0';
   facets(); priceChips();
   view = rows.filter(r => matches(r));
   if (!view.length && F.groups.length && !F.loose) { F.loose = true; view = rows.filter(r => matches(r)); if (!view.length) F.loose = false; }
@@ -496,7 +511,7 @@ const bind = (id, ev, f) => $(id).addEventListener(ev, f);
 bind('q', 'input', debounce(() => { F.q = strip($('q').value); refresh(false); }, 200));
 bind('sort', 'change', () => { F.sort = $('sort').value; refresh(false); });
 bind('onlyImg', 'change', () => { F.onlyImg = $('onlyImg').checked; refresh(false); });
-bind('frank', 'change', () => { F.rank = +$('frank').value; refresh(false); });
+bind('frank', 'change', () => { const n = +$('frank').value; if (n) F.grades = new Set(Array.from({ length: n }, (_, i) => i + 1)); $('frank').value = '0'; refresh(false); });
 ['pmin', 'pmax'].forEach(id => bind(id, 'change', () => { const v = k => { const n = parseFloat($(k).value.replace(',', '.')); return isNaN(n) ? null : n; }; F.min = toUSD(v('pmin'), outCur); F.max = toUSD(v('pmax'), outCur); refresh(false); }));
 bind('bAdd', 'change', () => { const v = strip($('bAdd').value), hit = rows.map(r => get(r, 'brand')).find(b => strip(b) === v); if (hit) { F.brands.add(hit); $('bAdd').value = ''; refresh(false); } });
 $('reset').onclick = () => resetFilters(true, true); // quita los filtros pero conserva el catálogo montado y la selección
@@ -594,7 +609,12 @@ function basicParse(text) {
   if ((m = t.match(/(?:elige|elegir|selecciona|seleccionar|escoge|escoger|dame|pick|choose|select|top|primeros)\s+(?:los\s+)?(\d+)/))) { spec.select_count = +m[1]; used.push(m[0]); }
   else if (/\b(elige|selecciona|escoge|pick|choose|select)\b/.test(t)) spec.select_count = 30;
   if (/variad|mezcla|diversif|mix|distint/.test(t)) spec.diversify_brands = true;
-  if ((m = t.match(/\b(sa|s|ab|a|b\+|b-|bc|b|c)\s*(?:o|or)\s*(?:mejor|better|superior)/))) { spec.worst_rank_allowed = rankEntry(m[1])[1]; used.push(m[0]); }
+  const G = '(?:sa|s|ab|a|b\\+|b-|bc|b|c)';
+  if ((m = t.match(new RegExp('(?:solo|only|exactamente|unicamente|exclusivamente)\\s+(?:estado\\s+|grado\\s+|grade\\s+)?(' + G + '(?:\\s*(?:,|\\by\\b|\\band\\b|\\bo\\b|\\bor\\b|/)\\s*' + G + ')*)(?![a-z+-])')))) {
+    spec.grades = m[1].split(/\s*(?:,|\by\b|\band\b|\bo\b|\bor\b|\/)\s*/).map(x => x.trim().toUpperCase()).filter(x => rankEntry(x)); used.push(m[0]);
+  } else if ((m = t.match(new RegExp('(?:estado|grado|grade)s?\\s*(?:de|entre|from)?\\s*(' + G + ')\\s*(?:a|y|to|and|-)\\s*(' + G + ')(?![a-z+-])')))) {
+    const x = rankEntry(m[1].toUpperCase())[1], y = rankEntry(m[2].toUpperCase())[1]; spec.best_rank_allowed = Math.min(x, y); spec.worst_rank_allowed = Math.max(x, y); used.push(m[0]);
+  } else if ((m = t.match(/\b(sa|s|ab|a|b\+|b-|bc|b|c)\s*(?:o|or)\s*(?:mejor|better|superior)/))) { spec.worst_rank_allowed = rankEntry(m[1])[1]; used.push(m[0]); }
   else if (/excelente|casi nuevo|perfecto|pristine|like new/.test(t)) spec.worst_rank_allowed = 4;
   else if (/muy buen estado|muy bueno|superb/.test(t)) spec.worst_rank_allowed = 5;
   else if (/buen estado|buena condicion|good condition/.test(t)) spec.worst_rank_allowed = 7;
@@ -613,7 +633,8 @@ function describe(s) {
   if (s.entities?.length) p.push('entity: ' + s.entities.join(', '));
   if (s.keyword_groups?.length) p.push('palabras: ' + s.keyword_groups.map(g => g.slice(0, 2).join('/')).join(' + '));
   if (s.min_price != null || s.max_price != null) p.push(`precio ${s.min_price != null ? '$' + s.min_price : ''}–${s.max_price != null ? '$' + s.max_price : ''}`);
-  if (s.worst_rank_allowed) p.push(s.best_rank_allowed ? `estado ${RANKS.find(x => x[1] === s.best_rank_allowed)?.[2]} a ${RANKS.find(x => x[1] === s.worst_rank_allowed)?.[2]}` : `estado ${RANKS.find(x => x[1] === s.worst_rank_allowed)?.[2]} o mejor`);
+  if (s.grades?.length) p.push('estado solo ' + s.grades.join(', '));
+  else if (s.worst_rank_allowed) p.push(s.best_rank_allowed ? `estado ${RANKS.find(x => x[1] === s.best_rank_allowed)?.[2]} a ${RANKS.find(x => x[1] === s.worst_rank_allowed)?.[2]}` : `estado ${RANKS.find(x => x[1] === s.worst_rank_allowed)?.[2]} o mejor`);
   if (s.select_count) p.push(`seleccionar ${s.select_count}${s.diversify_brands ? ' variando marcas' : ''}`);
   return p.length ? p.join(' · ') : 'no he entendido ningún filtro';
 }
@@ -631,7 +652,7 @@ async function runSearches(list, said) {
   const plan = list.map((s, si) => {
     const f = { loose: false, catalog: null, q: '', brands: new Set(canonList(s.brands, 'brand')), entities: new Set(canonList(s.entities, 'entity')),
       groups: (s.keyword_groups || []).map(g => g.map(strip).filter(Boolean)).filter(g => g.length), exclude: (s.exclude_keywords || []).map(strip).filter(Boolean),
-      min: toUSD(s.min_price, s.price_currency), max: toUSD(s.max_price, s.price_currency), rank: s.worst_rank_allowed || 0, rankMin: s.best_rank_allowed || 0, basis: s.price_basis === 'buying' ? 'buying' : 'shown' };
+      min: toUSD(s.min_price, s.price_currency), max: toUSD(s.max_price, s.price_currency), rank: 0, rankMin: 0, grades: gradeSet(s), basis: s.price_basis === 'buying' ? 'buying' : 'shown' };
     if ((s.min_price != null || s.max_price != null) && s.price_currency && !curRate(s.price_currency)) report0.push(`⚠ ${s.label || 'búsqueda ' + (si + 1)}: no conozco la moneda ${s.price_currency}; uso ${outCur}`);
     const price = r => f.basis === 'buying' ? usdOf(r) : finalOf(r);
     const pref = (s.prefer_keywords || []).map(strip).filter(Boolean), sc = r => pref.reduce((n, w) => n + (hit(r._text, w) ? 1 : 0), 0);
@@ -668,7 +689,7 @@ async function applySpec(s, said) {
   canonList(s.brands, 'brand').forEach(b => F.brands.add(b)); canonList(s.entities, 'entity').forEach(b => F.entities.add(b));
   F.groups = (s.keyword_groups || []).map(g => g.map(strip).filter(Boolean)).filter(g => g.length);
   F.exclude = (s.exclude_keywords || []).map(strip).filter(Boolean);
-  F.min = toUSD(s.min_price, s.price_currency); F.max = toUSD(s.max_price, s.price_currency); F.rank = s.worst_rank_allowed || 0; F.rankMin = s.best_rank_allowed || 0;
+  F.min = toUSD(s.min_price, s.price_currency); F.max = toUSD(s.max_price, s.price_currency); F.rank = 0; F.rankMin = 0; F.grades = gradeSet(s);
   F.sort = { price_asc: 'pa', price_desc: 'pd', brand: 'brand' }[s.sort] || ''; $('sort').value = F.sort;
   refresh(false);
   const rep = $('reply'); rep.style.display = ''; rep.textContent = (said ? said + ' — ' : '') + `${describe(s)} → ${view.length} resultados`;
