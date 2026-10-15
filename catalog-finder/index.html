@@ -286,7 +286,7 @@ function fmtMoney(v, cur = outCur) {
 }
 const profLabel = () => { const p = prof(); return p ? `${p.name} (+${p.pct}%${p.fee ? ' + ' + p.fee.toLocaleString(LOC()) + ' ' + p.feeCur : ''})` : tl('sin margen'); };
 const CUR_ALIAS = { '$': 'USD', 'US$': 'USD', '€': 'EUR', '£': 'GBP', '¥': 'JPY', '円': 'JPY', 'YEN': 'JPY', 'RMB': 'CNY', '元': 'CNY', 'CN¥': 'CNY', 'HK$': 'HKD' };
-const curOf = r => { const c = get(r, 'cur').toUpperCase().replace(/\s/g, ''); return CUR_ALIAS[c] || c; };
+const curOf = r => { let c = get(r, 'cur').toUpperCase().replace(/\s/g, ''); if (!c) { const m = String(get(r, 'price')).match(/€|\$|£|¥|\b(?:eur|usd|gbp|jpy|cny)\b/i); c = m ? m[0].toUpperCase() : ''; } return CUR_ALIAS[c] || c; }; // sin columna de moneda: se toma del símbolo del precio (60€)
 const priceNum = s => {
   let v = String(s).replace(/[^\d.,-]/g, ''); if (!v) return NaN;
   const lc = v.lastIndexOf(','), ld = v.lastIndexOf('.');
