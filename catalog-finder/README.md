@@ -17,10 +17,9 @@ Al actualizar: la versión nueva cierra sola la copia anterior que siga abierta.
 ## 🗂 Back office: invoices, clientes e historial
 Todo se guarda en **`catalog.db`**, un solo archivo dentro de la carpeta (no va a git). Para hacer copia de seguridad o pasarlo a otro ordenador, copia ese archivo. Al abrir esta versión por primera vez, los clientes, márgenes y plantillas que tenías en el navegador se copian solos a `catalog.db`.
 - **Historial:** cada vez que cargas la hoja, la app la compara con la carga anterior y muestra junto al título «🆕 nuevos · 📉 bajan de precio · ya no están». Al pulsarlo, ves esos artículos. La pestaña *Novedades* del back office guarda el historial completo.
-- **Back office** (botón 🗂 arriba): pestañas Invoices, Clientes, Tiers, Entidades y Novedades.
+- **Back office** (botón 🗂 arriba): pestañas Invoices, Clientes, Entidades y Novedades.
 - **Entidades** (UK, JP, HK): datos de empresa, registros, banco, textos legales, logo, moneda, plazo y numeración. Deja tu `entidades.json` en la carpeta y se importa solo al arrancar, o usa *Importar*.
-- **Clientes:** empresa, contacto, email, teléfono, dirección, VAT/Company No, tier, entidad habitual y referencia para numerar (ALOPRINT 0003).
-- **Tiers:** descuento fijo (en cualquier moneda, se convierte) más un % extra, en el orden que elijas. Ejemplo: Diamond = 30 USD + 10%.
+- **Clientes:** empresa, contacto, email, teléfono, dirección, VAT/Company No, entidad habitual y referencia para numerar (ALOPRINT 0003).
 - **Crear una invoice:**
   - Desde el buscador, selecciona artículos y pulsa *🧾 Crear invoice*; el precio lleva el margen del cliente elegido.
   - O pega una lista de CTag y precio, o importa un Excel/CSV.

@@ -15,10 +15,9 @@ Lors d’une mise à jour : la nouvelle version ferme d’elle-même l’ancienn
 ## 🗂 Back office : factures, clients et historique
 Tout est stocké dans **`catalog.db`**, un seul fichier dans le dossier (pas dans git). Pour sauvegarder ou changer d’ordinateur, copiez ce fichier. À la première ouverture de cette version, les clients, marges et modèles enregistrés dans votre navigateur y sont copiés automatiquement.
 - **Historique :** à chaque chargement de la feuille, l’app la compare au chargement précédent et affiche « 🆕 nouveaux · 📉 baisses de prix · disparus » à côté du titre. Cliquez pour voir ces articles. L’onglet *Nouveautés* garde l’historique complet.
-- **Back office** (bouton 🗂) : onglets Factures, Clients, Tiers, Entités et Nouveautés.
+- **Back office** (bouton 🗂) : onglets Factures, Clients, Entités et Nouveautés.
 - **Entités** (UK, JP, HK) : données de société, immatriculations, banque, mentions légales, logo, devise, échéance et numérotation. Déposez votre `entidades.json` dans le dossier et il est importé au démarrage, ou utilisez *Importer*.
-- **Clients :** société, contact, e-mail, téléphone, adresse, TVA/n° de société, tier, entité habituelle et référence de numérotation (ALOPRINT 0003).
-- **Tiers :** remise fixe (toute devise, convertie) plus un % en plus, dans l’ordre choisi. Exemple : Diamond = 30 USD + 10 %.
+- **Clients :** société, contact, e-mail, téléphone, adresse, TVA/n° de société, entité habituelle et référence de numérotation (ALOPRINT 0003).
 - **Créer une facture :**
   - Depuis la recherche, sélectionnez des articles puis *🧾 Créer une facture* ; les prix incluent la marge du client choisi.
   - Ou collez une liste CTag + prix, ou importez un Excel/CSV.

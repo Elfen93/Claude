@@ -15,10 +15,9 @@ When updating: the new version closes any older copy still running by itself. If
 ## 🗂 Back office: invoices, clients and history
 Everything is stored in **`catalog.db`**, a single file in the folder (not in git). To back up or move to another computer, copy that file. The first time you open this version, the clients, margins and templates stored in your browser are copied into it automatically.
 - **History:** every time you load the sheet, the app compares it with the previous load and shows "🆕 new · 📉 price drops · gone" next to the title. Click to see those items. The *What's new* tab keeps the full history.
-- **Back office** (🗂 button): Invoices, Clients, Tiers, Entities and What's new tabs.
+- **Back office** (🗂 button): Invoices, Clients, Entities and What's new tabs.
 - **Entities** (UK, JP, HK): company details, registrations, bank, legal texts, logo, currency, due days and numbering. Put your `entidades.json` in the folder and it is imported on start, or use *Import*.
-- **Clients:** company, contact, email, phone, address, VAT/Company No, tier, usual entity and numbering reference (ALOPRINT 0003).
-- **Tiers:** fixed discount (any currency, converted) plus an extra %, in the order you choose. Example: Diamond = 30 USD + 10%.
+- **Clients:** company, contact, email, phone, address, VAT/Company No, usual entity and numbering reference (ALOPRINT 0003).
 - **Creating an invoice:**
   - From the search page, select items and click *🧾 Create invoice*; prices include the chosen client's margin.
   - Or paste a CTag + price list, or import an Excel/CSV.

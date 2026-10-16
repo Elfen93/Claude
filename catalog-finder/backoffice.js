@@ -1,4 +1,4 @@
-/* Back office de Catalog Finder: invoices (UK / JP / HK), clientes, tiers, entidades e historial.
+/* Back office de Catalog Finder: invoices (UK / JP / HK), clientes, entidades e historial.
    Todo se guarda en catalog.db a través del servidor local (python server.py). */
 'use strict';
 const $ = id => document.getElementById(id);
@@ -37,28 +37,27 @@ const addDays = (d, n) => { const x = new Date(d + 'T12:00:00'); x.setDate(x.get
 const photo = c => (store.get('tpl', 'https://s3.amazonaws.com/storage.j-ports/photographs/{id}/{size}/{n}.jpg')).replace('{id}', encodeURIComponent(c)).replace('{size}', 'medium').replace('{n}', 1);
 
 /* ---------- datos ---------- */
-let ents = [], clients = [], tiers = [], invoices = [];
+let ents = [], clients = [], invoices = [];
 async function loadAll() {
-  [ents, clients, tiers, invoices] = await Promise.all(['entities', 'clients', 'tiers', 'invoices'].map(k => api(k)));
+  [ents, clients, invoices] = await Promise.all(['entities', 'clients', 'invoices'].map(k => api(k)));
 }
 const entOf = id => ents.find(e => e.id === +id) || null;
 const cliOf = id => clients.find(c => c.id === +id) || null;
-const tierOf = name => tiers.find(t => t.name === name) || null;
 const isHK = e => (e?.template || '') === 'hk';
 
 /* ---------- pestañas ---------- */
 document.querySelectorAll('#tabs button').forEach(b => b.onclick = () => showTab(b.dataset.t));
 function showTab(t) {
   document.querySelectorAll('#tabs button').forEach(b => b.classList.toggle('on', b.dataset.t === t));
-  ['inv', 'cli', 'tier', 'ent', 'news'].forEach(k => $('t-' + k).style.display = k === t ? '' : 'none');
-  ({ cli: renderClients, tier: renderTiers, ent: renderEntForm, news: renderNews, inv: renderInvList })[t]?.();
+  ['inv', 'cli', 'ent', 'news'].forEach(k => $('t-' + k).style.display = k === t ? '' : 'none');
+  ({ cli: renderClients, ent: renderEntForm, news: renderNews, inv: renderInvList })[t]?.();
 }
 
 /* ============ invoice en edición ============ */
 let inv = null, dirty = false;
 function blank(entId) {
   const e = entOf(entId) || ents[0] || {};
-  return { entity_id: e.id, client_id: null, tier: '', currency: e.currency || 'USD', date: today(), due: addDays(today(), e.dueDays || 0),
+  return { entity_id: e.id, client_id: null, currency: e.currency || 'USD', date: today(), due: addDays(today(), e.dueDays || 0),
     shipTxt: e.shipping || '', terms: e.terms || '', lines: [], ship: 0, tax: +e.taxPct || 0, paid: 0, fee1: 0, fee2: 0,
     comm: e.commissionPct ?? 5, srcCur: isHK(e) ? 'HKD' : e.currency || 'USD', rate: null, labels: e.labels || 'ja', notes: '' };
 }
@@ -69,7 +68,6 @@ function fillForm() {
   $('iEnt').innerHTML = ents.map(x => `<option value="${x.id}">${esc(x.code)} · ${esc(x.name || '')}</option>`).join(''); $('iEnt').value = inv.entity_id;
   $('iCli').innerHTML = `<option value="">${esc(tl('— elige cliente —'))}</option>` + [...clients].sort((a, b) => cliName(a).localeCompare(cliName(b))).map(c => `<option value="${c.id}">${esc(cliName(c))}</option>`).join('');
   $('iCli').value = inv.client_id || '';
-  $('iTier').innerHTML = `<option value="">${esc(tl('— sin tier —'))}</option>` + tiers.map(t => `<option>${esc(t.name)}</option>`).join(''); $('iTier').value = inv.tier || '';
   $('iCur').innerHTML = curOptions(inv.currency); $('iSrcCur').innerHTML = curOptions(inv.srcCur);
   fields.forEach(([id, k]) => $(id).value = inv[k] ?? '');
   numFields.forEach(([id, k]) => $(id).value = inv[k] ?? '');
@@ -92,10 +90,9 @@ $('iEnt').onchange = () => { // cambiar de entidad: moneda, plazos y textos por 
 };
 $('iCli').onchange = () => {
   const c = cliOf($('iCli').value); inv.client_id = c ? c.id : null;
-  if (c) { if (c.tier !== undefined) inv.tier = c.tier || ''; if (c.commissionPct != null && c.commissionPct !== '') inv.comm = +c.commissionPct; }
+  if (c) { if (c.commissionPct != null && c.commissionPct !== '') inv.comm = +c.commissionPct; }
   fillForm(); touch();
 };
-$('iTier').onchange = () => { inv.tier = $('iTier').value; delete inv.tierRule; update(); touch(); };
 $('iCur').onchange = () => { setCurrency($('iCur').value); if (isHK(entOf(inv.entity_id))) autoRate(); fillForm(); touch(); };
 $('iSrcCur').onchange = () => { inv.srcCur = $('iSrcCur').value; autoRate(); update(); touch(); };
 function setCurrency(cur) { // los precios de venta se convierten a la nueva moneda
@@ -166,16 +163,9 @@ function compute(x = inv) {
   }
   const lines = x.lines.map(l => ({ ...l, amount: rnd(num(l.price) * (l.qty === '' || l.qty == null ? 1 : +l.qty), cur) }));
   const sub = rnd(lines.reduce((a, l) => a + l.amount, 0), cur);
-  const tr = x.tierRule || tierOf(x.tier), disc = [];
-  if (tr && sub) {
-    const fixed = rnd(conv(+tr.fixed || 0, tr.fixedCur || cur, cur) || 0, cur), pct = +tr.pct || 0;
-    const fixedLine = () => fixed && disc.push({ label: tl('{t}: descuento', { t: tr.name }), labelEn: `${tr.name} discount`, v: fixed, note: tr.fixedCur !== cur ? `${fmtC(+tr.fixed, tr.fixedCur)}` : '' });
-    const pctLine = base => pct && disc.push({ label: tl('{t}: {p}% extra', { t: tr.name, p: pct }), labelEn: `${tr.name} extra ${pct}%`, v: rnd(base * pct / 100, cur) });
-    if ((tr.order || 'fixed_first') === 'fixed_first') { fixedLine(); pctLine(Math.max(0, sub - fixed)); } else { pctLine(sub); fixedLine(); }
-  }
-  const discount = disc.reduce((a, d) => a + d.v, 0), net = sub - discount, ship = +x.ship || 0;
+  const net = sub, ship = +x.ship || 0;
   const tax = rnd((net + ship) * (+x.tax || 0) / 100, cur), total = rnd(net + ship + tax, cur), paid = +x.paid || 0;
-  return { hk, cur, lines, sub, disc, discount, net, ship, tax, total, paid, payable: rnd(total - paid, cur), qty: lines.reduce((a, l) => a + (l.qty === '' || l.qty == null ? 1 : +l.qty), 0) };
+  return { hk, cur, lines, sub, net, ship, tax, total, paid, payable: rnd(total - paid, cur), qty: lines.reduce((a, l) => a + (l.qty === '' || l.qty == null ? 1 : +l.qty), 0) };
 }
 let upT = 0;
 function update() { clearTimeout(upT); upT = setTimeout(_update, 120); }
@@ -183,10 +173,9 @@ function _update() {
   const t = compute(), cur = t.cur, row = (k, v, cls = '') => `<div class="${cls}"><span>${esc(k)}</span><b class="num">${esc(v)}</b></div>`;
   $('totals').innerHTML = t.hk
     ? row(tl('Martillo ({n} vendidos)', { n: t.sold }), fmtC(t.hammer, cur)) + row(tl('Subtotal (con tasas)'), fmtC(t.sub, cur)) + row(tl('Comisión {p}%', { p: inv.comm || 0 }), fmtC(t.comm, cur)) + row(tl('Impuesto'), fmtC(t.tax, cur)) + row(tl('Total'), fmtC(t.total, cur), 'big')
-    : row(tl('Subtotal'), fmtC(t.sub, cur)) + t.disc.map(d => row(d.label + (d.note ? ` (${d.note})` : ''), '−' + fmtC(d.v, cur))).join('')
+    : row(tl('Subtotal'), fmtC(t.sub, cur))
       + (t.ship ? row(tl('Envío'), fmtC(t.ship, cur)) : '') + row(tl('Impuesto {p}%', { p: +inv.tax || 0 }), fmtC(t.tax, cur)) + row(tl('Total'), fmtC(t.total, cur))
       + (t.paid ? row(tl('Ya pagado'), '−' + fmtC(t.paid, cur)) : '') + row(tl('A pagar'), fmtC(t.payable, cur), 'big');
-  if (rates == null && inv.tier) $('totals').innerHTML += `<div class="err hint">${esc(tl('Sin tipos de cambio: el descuento fijo no se puede convertir'))}</div>`;
   $('preview').innerHTML = renderSheet(inv, t); fitPreview();
   numberPreview();
 }
@@ -234,7 +223,6 @@ function sheetUK(x, t, e, c, number) {
   <tr><td colspan="5"></td><td class="center lgrey">${t.qty}</td><td colspan="3"></td></tr></table>
   <table class="totals" style="width:42%;margin-left:auto;margin-top:6px">
     <tr><td class="right blue" style="font-weight:400">subtotal</td><td class="right lgrey">${fmtC(t.sub, cur)}</td></tr>
-    ${t.disc.map(d => `<tr><td class="right blue" style="font-weight:400">${esc(d.labelEn)}</td><td class="right lgrey">-${fmtC(d.v, cur)}</td></tr>`).join('')}
     <tr><td class="right blue" style="font-weight:400">Shipping</td><td class="right lgrey">${fmtC(t.ship, cur)}</td></tr>
     <tr><td class="right blue" style="font-weight:400">${esc(e.taxLabel || 'VAT')}</td><td class="right lgrey">${fmtC(t.tax, cur)}</td></tr>
     ${t.paid ? `<tr><td class="right blue" style="font-weight:400">${esc(e.deductionLabel || 'Paid')}</td><td class="right lgrey">-${fmtC(t.paid, cur)}</td></tr>` : ''}
@@ -267,7 +255,6 @@ function sheetJP(x, t, e, c, number) {
   <tr><td colspan="5"></td><td class="center lgrey">${t.qty}</td><td colspan="3"></td></tr></table>
   <table class="totals" style="width:46%;margin-left:auto;margin-top:6px">
     <tr><td class="right blue" style="font-weight:400">落札金額合計税抜 (subtotal)</td><td class="right lgrey">${fmtN(t.sub, cur)}</td></tr>
-    ${t.disc.map(d => `<tr><td class="right blue" style="font-weight:400">${esc(d.labelEn)}</td><td class="right lgrey">-${fmtN(d.v, cur)}</td></tr>`).join('')}
     ${t.ship ? `<tr><td class="right blue" style="font-weight:400">送料 (Shipping)</td><td class="right lgrey">${fmtN(t.ship, cur)}</td></tr>` : ''}
     ${t.tax ? `<tr><td class="right blue" style="font-weight:400">消費税 (Tax)</td><td class="right lgrey">${fmtN(t.tax, cur)}</td></tr>` : ''}
     ${t.paid ? `<tr><td class="right blue" style="font-weight:400">${esc(e.deductionLabel || 'Remaining Balance')}</td><td class="right lgrey">${fmtN(t.paid, cur)}</td></tr>` : ''}
@@ -310,11 +297,11 @@ function sheetHK(x, t, e, c, number) {
 }
 
 /* ---------- guardar / imprimir ---------- */
-function snapshotInv() { // la invoice guardada lleva copia de entidad, cliente y tier: si luego cambian, se reimprime igual
-  const t = compute(), e = entOf(inv.entity_id), c = cliOf(inv.client_id), tr = tierOf(inv.tier);
-  return { ...inv, entity: e ? { ...e } : inv.entity, client: c ? { ...c } : inv.client, tierRule: inv.tier ? (tr || inv.tierRule || null) : null,
+function snapshotInv() { // la invoice guardada lleva copia de entidad y cliente: si luego cambian, se reimprime igual
+  const t = compute(), e = entOf(inv.entity_id), c = cliOf(inv.client_id);
+  return { ...inv, entity: e ? { ...e } : inv.entity, client: c ? { ...c } : inv.client,
     lines: inv.lines.filter(l => l.code || l.details || l.desc || l.price || l.src),
-    totals: { sub: t.sub, discount: t.discount || 0, total: t.total, payable: t.payable, cur: t.cur, n: t.hk ? t.sold : t.qty } };
+    totals: { sub: t.sub, total: t.total, payable: t.payable, cur: t.cur, n: t.hk ? t.sold : t.qty } };
 }
 $('iSave').onclick = async () => {
   if (!inv.client_id) return say(tl('Elige un cliente'));
@@ -423,14 +410,13 @@ $('lnDraft').onclick = useDraft;
 /* ============ clientes ============ */
 const CF = [['company', 'Empresa / tienda'], ['name', 'Nombre de contacto'], ['ref', 'Referencia para la numeración (ej. ALOPRINT)'], ['email', 'Email'], ['phone', 'Teléfono'],
   ['address', 'Dirección (envío)', 'area'], ['country', 'País'], ['companyNo', 'Company No'], ['vatNo', 'VAT No'], ['regNo', 'Nº de registro'],
-  ['tier', 'Tier', 'tier'], ['entity', 'Entidad habitual', 'ent'], ['commissionPct', 'Comisión % (HK, si no es la de la entidad)'], ['invStart', 'Empezar numeración en (si ya tenía invoices)'], ['notes', 'Notas', 'area']];
+  ['entity', 'Entidad habitual', 'ent'], ['commissionPct', 'Comisión % (HK, si no es la de la entidad)'], ['invStart', 'Empezar numeración en (si ya tenía invoices)'], ['notes', 'Notas', 'area']];
 let editingCli = null;
 function openClient(c) {
   editingCli = c ? { ...c } : {};
   $('cDlgT').textContent = c ? tl('Cliente') : tl('Cliente nuevo'); $('cDel').style.display = c ? '' : 'none';
   $('cForm').innerHTML = CF.map(([k, lbl, ty]) => `<label class="col" ${ty === 'area' ? 'style="grid-column:1/-1"' : ''}>${esc(tl(lbl))}${
     ty === 'area' ? `<textarea data-k="${k}" rows="3">${esc(editingCli[k] || '')}</textarea>`
-    : ty === 'tier' ? `<select data-k="${k}"><option value="">${esc(tl('— sin tier —'))}</option>${tiers.map(t => `<option${t.name === editingCli[k] ? ' selected' : ''}>${esc(t.name)}</option>`).join('')}</select>`
     : ty === 'ent' ? `<select data-k="${k}"><option value="">—</option>${ents.map(e => `<option value="${e.id}"${e.id === +editingCli[k] ? ' selected' : ''}>${esc(e.code)}</option>`).join('')}</select>`
     : `<input data-k="${k}" value="${esc(editingCli[k] ?? '')}">`}</label>`).join('');
   $('cDlg').style.display = '';
@@ -441,7 +427,7 @@ $('cSave').onclick = async () => {
   if (!editingCli.company && !editingCli.name) return say(tl('Pon al menos el nombre o la empresa'));
   const { id } = await api('clients/save', editingCli); clients = await api('clients'); $('cDlg').style.display = 'none';
   renderClients();
-  if (inv && (!inv.client_id || inv.client_id === id)) { inv.client_id = id; const c = cliOf(id); if (c?.tier !== undefined) inv.tier = c.tier || ''; if (!inv.id && c?.entity && +c.entity !== inv.entity_id && !inv.lines.length) { $('iEnt').value = c.entity; $('iEnt').onchange(); } }
+  if (inv && (!inv.client_id || inv.client_id === id)) { inv.client_id = id; const c = cliOf(id); if (!inv.id && c?.entity && +c.entity !== inv.entity_id && !inv.lines.length) { $('iEnt').value = c.entity; $('iEnt').onchange(); } }
   if (inv) fillForm(); say(tl('Cliente guardado'));
 };
 $('cDel').onclick = async () => { if (!confirm(tl('¿Eliminar este cliente? Sus invoices guardadas se conservan.'))) return; await api('clients/delete', { id: editingCli.id }); clients = await api('clients'); $('cDlg').style.display = 'none'; renderClients(); fillForm(); };
@@ -449,40 +435,12 @@ $('cNew').onclick = () => openClient(null); $('iCliNew').onclick = () => openCli
 function renderClients() {
   const q = ($('cQ').value || '').toLowerCase(), list = clients.filter(c => !q || JSON.stringify(c).toLowerCase().includes(q));
   const count = id => invoices.filter(i => i.client_id === id).length;
-  $('cList').innerHTML = `<tr><th>${esc(tl('Empresa / nombre'))}</th><th>Email</th><th>${esc(tl('Teléfono'))}</th><th>${esc(tl('País'))}</th><th>Tier</th><th>${esc(tl('Invoices'))}</th></tr>`
-    + (list.length ? list.map(c => `<tr class="clk" data-id="${c.id}"><td><b>${esc(cliName(c))}</b></td><td>${esc(c.email || '')}</td><td>${esc(c.phone || '')}</td><td>${esc(c.country || '')}</td><td>${esc(c.tier || '')}</td><td>${count(c.id)}</td></tr>`).join('')
+  $('cList').innerHTML = `<tr><th>${esc(tl('Empresa / nombre'))}</th><th>Email</th><th>${esc(tl('Teléfono'))}</th><th>${esc(tl('País'))}</th><th>${esc(tl('Invoices'))}</th></tr>`
+    + (list.length ? list.map(c => `<tr class="clk" data-id="${c.id}"><td><b>${esc(cliName(c))}</b></td><td>${esc(c.email || '')}</td><td>${esc(c.phone || '')}</td><td>${esc(c.country || '')}</td><td>${count(c.id)}</td></tr>`).join('')
       : `<tr><td colspan="6" class="mute">${esc(tl('Aún no hay clientes. Crea el primero con «＋ Cliente nuevo».'))}</td></tr>`);
   $('cList').querySelectorAll('tr[data-id]').forEach(tr => tr.onclick = () => openClient(cliOf(tr.dataset.id)));
 }
 $('cQ').oninput = renderClients;
-
-/* ============ tiers ============ */
-let tierDraft = [];
-function renderTiers() {
-  tierDraft = tiers.map(t => ({ ...t }));
-  drawTiers();
-}
-function drawTiers() {
-  const ex = t => { const fixed = +t.fixed || 0, pct = +t.pct || 0, b = 1000; const f = conv(fixed, t.fixedCur || 'USD', 'USD'); const fx = isNaN(f) ? fixed : f;
-    const v = (t.order || 'fixed_first') === 'fixed_first' ? (b - fx) * (1 - pct / 100) : b * (1 - pct / 100) - fx; return fmtC(v, 'USD'); };
-  $('tList').innerHTML = `<tr><th>${esc(tl('Nombre'))}</th><th>${esc(tl('Descuento fijo'))}</th><th>${esc(tl('Moneda'))}</th><th>${esc(tl('% extra'))}</th><th>${esc(tl('Orden'))}</th><th>${esc(tl('Notas'))}</th><th>${esc(tl('Ej. sobre $1,000'))}</th><th></th></tr>`
-    + tierDraft.map((t, i) => `<tr data-i="${i}"><td><input data-k="name" value="${esc(t.name || '')}" style="width:120px"></td><td><input data-k="fixed" value="${t.fixed ?? 0}" style="width:70px"></td>
-      <td><select data-k="fixedCur">${curOptions(t.fixedCur || 'USD')}</select></td><td><input data-k="pct" value="${t.pct ?? 0}" style="width:60px"></td>
-      <td><select data-k="order"><option value="fixed_first"${t.order !== 'pct_first' ? ' selected' : ''}>${esc(tl('primero el fijo'))}</option><option value="pct_first"${t.order === 'pct_first' ? ' selected' : ''}>${esc(tl('primero el %'))}</option></select></td>
-      <td><input data-k="notes" value="${esc(t.notes || '')}"></td><td class="num">${ex(t)}</td><td><button data-del>✕</button></td></tr>`).join('');
-  $('tList').querySelectorAll('tr[data-i]').forEach(tr => {
-    const t = tierDraft[+tr.dataset.i];
-    tr.querySelectorAll('[data-k]').forEach(inp => inp.onchange = () => { const k = inp.dataset.k; t[k] = ['fixed', 'pct'].includes(k) ? num(inp.value) : inp.value; drawTiers(); $('tState').textContent = tl('cambios sin guardar'); });
-    tr.querySelector('[data-del]').onclick = () => { tierDraft.splice(+tr.dataset.i, 1); drawTiers(); $('tState').textContent = tl('cambios sin guardar'); };
-  });
-}
-$('tAdd').onclick = () => { tierDraft.push({ name: '', fixed: 0, fixedCur: 'USD', pct: 0, order: 'fixed_first' }); drawTiers(); };
-$('tSave').onclick = async () => {
-  const keep = new Set(tierDraft.filter(t => t.id).map(t => t.id));
-  for (const t of tiers) if (!keep.has(t.id)) await api('tiers/delete', { id: t.id });
-  for (const t of tierDraft) if (t.name) await api('tiers/save', t);
-  tiers = await api('tiers'); renderTiers(); $('tState').innerHTML = `<span class="ok">${esc(tl('✓ Guardado'))}</span>`; if (inv) fillForm();
-};
 
 /* ============ entidades ============ */
 const EF = [['code', 'Código (UK, JP, HK…)'], ['template', 'Plantilla', 'tpl'], ['name', 'Nombre de la empresa'], ['title', 'Título del documento'], ['address', 'Dirección', 'area'],

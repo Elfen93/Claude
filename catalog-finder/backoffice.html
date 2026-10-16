@@ -90,7 +90,6 @@
   <div class="tabs" id="tabs">
     <button data-t="inv" class="on">🧾 Invoices</button>
     <button data-t="cli">👥 Clientes</button>
-    <button data-t="tier">🏷 Tiers</button>
     <button data-t="ent">🏢 Entidades</button>
     <button data-t="news">🆕 Novedades</button>
   </div>
@@ -108,7 +107,6 @@
           <div class="grid2">
             <label class="col">Entidad <select id="iEnt"></select></label>
             <label class="col">Cliente <span class="row" style="margin:0;flex-wrap:nowrap"><select id="iCli" style="flex:1"></select><button id="iCliNew" title="Cliente nuevo">＋</button><button id="iCliEdit" title="Editar la ficha del cliente">✎</button></span></label>
-            <label class="col">Tier <select id="iTier"></select></label>
             <label class="col">Moneda <select id="iCur"></select></label>
             <label class="col">Fecha <input id="iDate" type="date"></label>
             <label class="col">Vence <input id="iDue" type="date"></label>
@@ -172,16 +170,6 @@
     <div class="panel">
       <div class="row"><h2 style="margin:0">Clientes</h2><button class="primary" id="cNew">＋ Cliente nuevo</button><input id="cQ" type="text" placeholder="buscar…" style="margin-left:auto"></div>
       <table class="list" id="cList"></table>
-    </div>
-  </section>
-
-  <!-- ================= TIERS ================= -->
-  <section id="t-tier" style="display:none">
-    <div class="panel">
-      <h2>Tiers de cliente</h2>
-      <p class="hint">Cada tier puede tener un descuento fijo (en su moneda, se convierte a la de la invoice) y un % extra. El orden importa: con 1000 USD, «primero el fijo» da (1000 − 30) × 0,9 = 873; «primero el %» da 1000 × 0,9 − 30 = 870.</p>
-      <table class="list" id="tList"></table>
-      <div class="row" style="margin-top:8px"><button id="tAdd">＋ Tier</button><button class="primary" id="tSave">Guardar tiers</button><span id="tState" class="mute"></span></div>
     </div>
   </section>
 

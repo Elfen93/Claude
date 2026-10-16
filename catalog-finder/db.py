@@ -1,6 +1,6 @@
 """Base de datos local de Catalog Finder (un solo archivo: catalog.db). Solo libreria estandar.
 
-Guarda: ajustes de la app (kv), historial de cargas del catalogo (items/loads), clientes, tiers,
+Guarda: ajustes de la app (kv), historial de cargas del catalogo (items/loads), clientes,
 entidades (UK/JP/HK...), invoices y el estado de cada articulo (vendido...).
 Copia de seguridad = copiar catalog.db.
 """
@@ -9,7 +9,7 @@ import json, os, sqlite3, threading, time
 ROOT = os.path.dirname(os.path.abspath(__file__))
 DB_FILE = os.environ.get("CATALOG_DB", os.path.join(ROOT, "catalog.db"))
 ENTITIES_FILE = os.path.join(ROOT, "entidades.json")
-KINDS = ("clients", "tiers", "entities", "invoices")
+KINDS = ("clients", "entities", "invoices")
 _lock = threading.Lock()
 
 # Plantillas de partida (sin datos bancarios: se rellenan en Ajustes o importando entidades.json)
@@ -21,7 +21,6 @@ SEED_ENTITIES = [
     {"code": "HK", "template": "hk", "name": "J-Ports Global Limited", "title": "LBA オークション請求書", "currency": "JPY", "numbering": "stamp", "dueDays": 0,
      "commissionPct": 5, "labels": "ja", "taxPct": 0},
 ]
-SEED_TIERS = [{"name": "Diamond", "fixed": 30, "fixedCur": "USD", "pct": 10, "order": "fixed_first", "notes": ""}]
 
 
 def _conn():
@@ -49,9 +48,6 @@ def init():
         if not c.execute("SELECT 1 FROM docs WHERE kind='entities' LIMIT 1").fetchone():
             for e in SEED_ENTITIES:
                 c.execute("INSERT INTO docs(kind, data, updated) VALUES('entities', ?, ?)", (json.dumps(e, ensure_ascii=False), time.time()))
-        if not c.execute("SELECT 1 FROM docs WHERE kind='tiers' LIMIT 1").fetchone():
-            for t in SEED_TIERS:
-                c.execute("INSERT INTO docs(kind, data, updated) VALUES('tiers', ?, ?)", (json.dumps(t), time.time()))
     # entidades.json en la carpeta (datos completos de tus empresas): se importa al arrancar si es nuevo o ha cambiado
     if os.path.exists(ENTITIES_FILE):
         stamp = str(os.path.getmtime(ENTITIES_FILE))
@@ -150,7 +146,7 @@ def lookup(codes):
     return out
 
 
-# ---------- documentos: clientes, tiers, entidades, invoices ----------
+# ---------- documentos: clientes, entidades, invoices ----------
 def docs(kind):
     with _conn() as c:
         return [dict(json.loads(r["data"]), id=r["id"]) for r in c.execute("SELECT id, data FROM docs WHERE kind=? ORDER BY id", (kind,))]
