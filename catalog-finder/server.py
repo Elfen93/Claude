@@ -172,10 +172,13 @@ _SEARCH_PROPS = {
     "grades": {"type": "array", "items": {"type": "string", "enum": ["SA with tags", "SA", "S", "A", "AB", "B+", "B", "B-", "BC", "C"]}, "description": "Grados EXACTOS aceptados (p.ej. solo BC => [\"BC\"]; AB, B+ y B => [\"AB\",\"B+\",\"B\"]). Tiene prioridad sobre best/worst_rank_allowed"},
     "price_currency": {"type": "string", "description": "Moneda en la que estan min_price/max_price (EUR, JPY, USD...). La app convierte con el cambio actual. Por defecto USD"},
     "price_basis": {"type": "string", "enum": ["shown", "buying"], "description": "buying = comparar con el PRECIO DE COMPRA (sin margen); shown = el precio que ve el cliente (con margen si esta activado)"},
-    "sort": {"type": "string", "enum": ["", "price_asc", "price_desc", "added_asc", "added_desc"], "description": "Orden dentro de esta busqueda (price_asc = los mas baratos primero; added_asc = los dados de alta hace mas tiempo primero; added_desc = los mas recientes primero)"},
+    "sort": {"type": "string", "enum": ["", "price_asc", "price_desc", "added_asc", "added_desc", "discount_desc"], "description": "Orden dentro de esta busqueda (price_asc = los mas baratos primero; added_asc = los dados de alta hace mas tiempo primero; added_desc = los mas recientes primero)"},
     "buyers": {"type": "array", "items": {"type": "string"}, "description": "Solo articulos de estos buyers (nombres exactos de la lista Buyers)"},
     "min_age_days": {"type": "integer", "minimum": 0, "description": "Dados de alta hace AL MENOS estos dias (stock antiguo). 'mas de 3 meses' = 91, 'mas de 6 meses' = 182, 'mas de 1 ano' = 365, 'mas de 2 anos' = 730"},
     "max_age_days": {"type": "integer", "minimum": 0, "description": "Dados de alta hace COMO MUCHO estos dias (novedades). 'ultimo mes' = 30"},
+    "item_types": {"type": "array", "items": {"type": "string"}, "description": "Tipos exactos de la lista Item types (columna Item Type). Si existen, usalos para el tipo de articulo (bolso, joya, cartera...) en vez de keyword_groups"},
+    "channels": {"type": "array", "items": {"type": "string"}, "description": "Canales (pestanas del snapshot: J-Ports, Storefront, EBTH, TRR, Wholesale...), nombres exactos"},
+    "owners": {"type": "array", "items": {"type": "string"}, "description": "Owners exactos (stock propio vs consignacion)"},
 }
 TOOL = {
     "name": "set_filters",
@@ -184,7 +187,7 @@ TOOL = {
         "type": "object",
         "properties": dict(
             _SEARCH_PROPS,
-            sort={"type": "string", "enum": ["", "price_asc", "price_desc", "brand", "added_asc", "added_desc", "buyer"]},
+            sort={"type": "string", "enum": ["", "price_asc", "price_desc", "brand", "added_asc", "added_desc", "buyer", "discount_desc"]},
             select_count={"type": "integer", "minimum": 0},
             diversify_brands={"type": "boolean"},
             searches={
@@ -209,6 +212,7 @@ Call write_plan ALWAYS. Fields:
 - prompt_text: the same plan as a readable English prompt, one line per search, in the style 'LINE: brand/model, grade range, price cap, how many, preferences, exclusions'. The user will read and edit it, and the app will be able to re-run it, so keep it faithful to `searches`.
 - assumptions: short bullet strings in the UI language listing what you assumed or could not know (e.g. a missing budget, a brand not in the catalog).
 - probe_keywords: up to 6 words you are unsure exist in this catalog's naming (e.g. a model or material); the app will report their counts/samples back to you in a second round. Empty when sure or when you are already revising.
+- Item types, channels and owners: when the summary lists them, use item_types (exact names) for the kind of item instead of keyword_groups, and channels/owners only if the brief asks.
 - Stock age and buyer: min_age_days (added at least N days ago, e.g. 'over 6 months' = 182), max_age_days (added within N days), sort added_asc/added_desc, buyers (exact names from the summary) - only if the summary says the data exists.
 - reply: one short sentence in the UI language.
 When you receive `feedback` (dry-run results for your draft, plus probe results), REVISE: fix lines with 0/very few matches (broaden or correct a keyword, drop a wrong hard filter), fix leaks seen in the removed/kept samples, keep what worked. Do not add commentary beyond the tool call."""
@@ -238,7 +242,7 @@ def api_key():
     if not k and os.path.exists(KEY_FILE):
         k = open(KEY_FILE).read().strip()
     return k
-APP_VERSION = "2026-10-16.5"  # igual que APP_VERSION en index.html: si no coinciden, la app avisa de que el servidor es viejo
+APP_VERSION = "2026-10-16.6"  # igual que APP_VERSION en index.html: si no coinciden, la app avisa de que el servidor es viejo
 PORT = int(sys.argv[1]) if len(sys.argv) > 1 else 8765
 RATE_SOURCES = (
     ("https://open.er-api.com/v6/latest/USD", lambda d: (d["rates"], d.get("time_last_update_utc", ""))),
@@ -471,6 +475,10 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         ctx = "Marcas (nombre (n.o de articulos)):\n" + "\n".join(d.get("brands", [])[:400]) \
             + "\n\nEntities:\n" + "\n".join(d.get("entities", [])[:100]) + f"\n\nArticulos en el catalogo: {d.get('total', '?')}" \
             + ("\n\nBuyers:\n" + "\n".join(map(str, d.get("buyers", [])[:200])) if d.get("buyers") else "") \
+            + ("\n\nItem types (usa item_types para el tipo de articulo):\n" + "\n".join(map(str, d.get("types", [])[:150])) if d.get("types") else "") \
+            + ("\n\nCanales (channels):\n" + "\n".join(map(str, d.get("channels", []))) if d.get("channels") else "") \
+            + ("\n\nOwners:\n" + "\n".join(map(str, d.get("owners", [])[:100])) if d.get("owners") else "") \
+            + ("\n\nHay precio inicial: 'los mas rebajados' -> sort=discount_desc." if d.get("hasInit") else "") \
             + (f"\n\nLos articulos tienen fecha de alta. Hoy es {d.get('today', '')}." if d.get("hasAdded") else "\n\nLa hoja no tiene fecha de alta: no uses min_age_days/max_age_days.") \
             + f"\n\nIdioma: el usuario puede escribir en espanol, ingles o frances. Escribe el campo `reply` en {LANG_NAMES.get(str(d.get('lang', 'es'))[:2], 'espanol')}. Las palabras clave (keyword_groups) siempre en INGLES."
         payload = {
@@ -570,10 +578,11 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             return self._err(400, self.m("Solo se permiten URLs de Google Sheets/Drive", "Only Google Sheets/Drive URLs are allowed", "Seules les URL Google Sheets/Drive sont autorisées"))
         try:
             req = urllib.request.Request(target, headers={"User-Agent": "catalog-finder"})
-            with urllib.request.urlopen(req, timeout=60, context=ssl.create_default_context()) as r:
+            with urllib.request.urlopen(req, timeout=120, context=ssl.create_default_context()) as r:
                 body = r.read()
+                ctype = r.headers.get("Content-Type") or "text/csv; charset=utf-8"
             self.send_response(200)
-            self.send_header("Content-Type", "text/csv; charset=utf-8")
+            self.send_header("Content-Type", ctype if "spreadsheet" in ctype or "octet" in ctype or "zip" in ctype else "text/csv; charset=utf-8")  # CSV o xlsx (todas las pestañas)
             self.send_header("Content-Length", str(len(body)))
             self.end_headers()
             self.wfile.write(body)

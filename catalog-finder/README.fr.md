@@ -33,6 +33,12 @@ Tout est stocké dans **`catalog.db`**, un seul fichier dans le dossier (pas dan
   - Chaque carte affiche la date d’ajout et depuis combien de temps.
   - L’assistant comprend « sacs de plus de 6 mois ».
   - Le format de date est détecté automatiquement ; si besoin, réglez-le dans *Réglages avancés → Dates*.
+- **Snapshot complet (xlsx à plusieurs onglets) :** importez le xlsx ou collez son lien d’export xlsx ; plusieurs liens CSV séparés par des espaces fonctionnent aussi.
+  - Chaque onglet devient un **Canal**.
+  - Nouveaux filtres **Type** (Item Type) et **Owner**.
+  - Prix actuel = *PAT - Current* avec la colonne « Cur » juste avant ; prix initial = *PAT - Initial*.
+  - Chaque carte montre la baisse depuis l’ajout, et on peut trier par plus forte baisse.
+  - Les lignes dont la devise a changé sans que le montant change sont signalées « ⚠ devise douteuse ».
 - **🧾 Factures** (UK, JP, HK) : depuis la sélection de la recherche, une liste CTag + prix collée ou un Excel.
   - HK : adjudication en HKD → yens, 5 % de commission, « Passed » sans prix.
   - Numérotation : par client pour UK, séquentielle pour JP, date et heure pour HK.

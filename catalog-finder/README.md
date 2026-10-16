@@ -35,6 +35,12 @@ Todo se guarda en **`catalog.db`**, un solo archivo dentro de la carpeta (no va 
   - En cada tarjeta, la fecha de alta y cuánto tiempo hace.
   - El asistente lo entiende: «bolsos de más de 6 meses», «lo comprado por Ken hace más de 2 años, los más antiguos primero».
   - Las fechas tipo 03/04/2026 se leen solas; si hace falta, se fija el formato en *Ajustes avanzados → Fechas*.
+- **Snapshot completo (xlsx con varias pestañas):** sube el xlsx o pega el enlace de exportación en xlsx; también se pueden poner varios enlaces CSV separados por espacios.
+  - Cada pestaña (J-Ports, Storefront, EBTH, TRR, Wholesale) pasa a ser un **Canal**.
+  - Filtros nuevos por **Tipo** (Item Type) y **Owner**.
+  - Precio actual = *PAT - Current* con su moneda (la columna «Cur» justo antes, la P). Precio inicial = *PAT - Initial* (con la I).
+  - Cada tarjeta muestra la rebaja desde el alta («−20% desde el alta»), y se puede ordenar por mayor rebaja.
+  - Las filas donde cambió la moneda pero no el importe salen con «⚠ moneda dudosa».
 - **🧾 Invoices** (UK, JP, HK): desde la selección del buscador (*🧾 Crear invoice*), pegando CTag + precio o importando un Excel.
   - HK: martillo en HKD → yenes, 5% de comisión, «Passed» sin precio.
   - Numeración: por cliente en UK, correlativa en JP, fecha y hora en HK.

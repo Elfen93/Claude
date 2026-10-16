@@ -61,7 +61,7 @@
   .info { position:relative; }
   .rsv { position:absolute; right:8px; top:8px; border:none; background:none; padding:0 2px; opacity:.45; font-size:14px; }
   .rsv:hover { opacity:1; }
-  .notes.warn { color:#b26a00; }
+  .notes.warn { color:#b26a00; } .notes.ok { color:var(--acc); }
   #more { display:block; margin:0 auto 30px; }
   #bar { position:fixed; left:0; right:0; bottom:0; z-index:10; background:var(--card); border-top:1px solid var(--line); padding:10px 16px; display:flex; flex-wrap:wrap; gap:10px; align-items:center; }
   #bar .sp { margin-right:auto; }
@@ -99,7 +99,7 @@
         <input id="url" type="text" placeholder="Pega aquí el enlace CSV de Google Sheets (Archivo → Compartir → Publicar en la web → CSV)">
         <button class="primary" id="load">Cargar</button>
         <span class="mute">o sube el archivo</span>
-        <input id="file" type="file" accept=".csv,.tsv,text/csv">
+        <input id="file" type="file" accept=".csv,.tsv,.xlsx,.xls,text/csv">
         <label title="Al abrir la app se descarga la hoja del enlace guardado"><input type="checkbox" id="autoLoad"> cargar al abrir</label>
       </div>
     </div>
@@ -147,11 +147,14 @@
       <div class="row"><span class="lbl">Marcas</span><span id="bchips"></span>
         <input id="bAdd" list="bList" type="text" placeholder="otra marca…" style="width:150px"><datalist id="bList"></datalist></div>
       <div class="row" id="eRow"><span class="lbl">Entity</span><span id="echips"></span></div>
+      <div class="row" id="tRow" style="display:none"><span class="lbl">Tipo</span><span id="tchips"></span></div>
+      <div class="row" id="cRow" style="display:none"><span class="lbl">Canal</span><span id="cchips"></span></div>
+      <div class="row" id="oRow" style="display:none"><span class="lbl">Owner</span><span id="ochips"></span></div>
       <div class="row" id="yRow" style="display:none"><span class="lbl">Buyer</span><span id="ychips"></span></div>
       <div class="row" id="aRow" style="display:none"><span class="lbl">Antigüedad</span><span id="achips"></span></div>
       <div class="row"><span class="lbl">Texto</span>
         <input id="q" type="text" placeholder="código, palabra… (ej. black, tote, lizard)" style="min-width:260px">
-        <select id="sort"><option value="">Orden original</option><option value="brand">Marca</option><option value="pa">Precio ↑</option><option value="pd">Precio ↓</option><option value="old">Alta: antiguo → nuevo</option><option value="new">Alta: nuevo → antiguo</option><option value="buyer">Buyer</option></select>
+        <select id="sort"><option value="">Orden original</option><option value="brand">Marca</option><option value="pa">Precio ↑</option><option value="pd">Precio ↓</option><option value="old">Alta: antiguo → nuevo</option><option value="new">Alta: nuevo → antiguo</option><option value="buyer">Buyer</option><option value="disc">Mayor rebaja desde el alta</option></select>
         <label><input type="checkbox" id="onlyImg"> solo con fotos</label>
         <label title="Artículos en una invoice guardada o reservados"><input type="checkbox" id="hideSold"> ocultar vendidos y reservados</label>
         <label id="noRepeatL" title="Oculta lo que ya está en un Excel enviado al cliente elegido"><input type="checkbox" id="noRepeat"> <span id="noRepeatT">no repetir lo ya enviado</span></label></div>
@@ -213,9 +216,14 @@ const FIELDS = {
   name:   { label:'Nombre',        alias:['item name','name','nombre','nom','designation'] },
   desc:   { label:'Descripción',   alias:['item description','description','descripcion','descripción'] },
   notes:  { label:'Notas',         alias:['public notes','notes','notas','remarques','notes publiques'] },
-  grade:  { label:'Grading (si hay)', alias:['grading','grade','condition','estado','condicion','condición'] },
-  price:  { label:'Precio',        alias:['price after tax','original price','price','precio','prix'] },
-  cur:    { label:'Moneda',        alias:['currency','moneda','curr','devise'] },
+  grade:  { label:'Grading (si hay)', alias:['grading','grade','condition','estado','condicion','condición','ext grading'] },
+  price:  { label:'Precio',        alias:['pat - current','pat current','current price','price after tax','original price','price','precio','prix'] },
+  cur:    { label:'Moneda',        alias:['currency','moneda','curr','cur','devise'] },
+  priceInit: { label:'Precio inicial (PAT - Initial)', alias:['pat - initial','pat initial','initial price','precio inicial','prix initial'] },
+  curInit: { label:'Moneda del precio inicial', alias:[] },
+  type:   { label:'Tipo (Item Type)', alias:['item type','type','tipo','tipo de articulo','category','categoria','categorie'] },
+  owner:  { label:'Owner',         alias:['owner','propietario','proprietaire','consignor'] },
+  channel: { label:'Canal (pestaña)', alias:['canal','channel','platform','plataforma','plateforme'] },
   entity: { label:'Entity',        alias:['entity','entidad','entite','owner','seller','vendor','company'] },
   added:  { label:'Fecha de alta (Added date)', alias:['added date','date added','added','added on','fecha de alta','fecha alta','fecha','date ajout','date d ajout',"date d'ajout",'created','created at','listing date','date'] },
   buyer:  { label:'Buyer (comprador)', alias:['buyer','buyer name','comprador','compradora','acheteur','acheteuse','purchaser','bought by'] },
@@ -317,6 +325,7 @@ function prep() { // precalcula por fila: texto de búsqueda, detalle de grading
   dateOrder = detectDateOrder();
   for (const r of rows) {
     r._added = map.added ? parseDate(get(r, 'added')) : null;
+    r._cw = curWarn(r); // moneda cambiada sin convertir el importe (p. ej. 2.835 HKD → «2.835 元»)
     const vals = Object.entries(r).filter(([k]) => k[0] !== '_').map(([, v]) => v);
     r._detail = vals.find(v => /GRADING:/i.test(v)) || '';
     let m = r._detail.match(GRADE_RE) || (get(r, 'grade') || '').trim().match(GRADE_ONLY);
@@ -358,7 +367,7 @@ function fmtMoney(v, cur = outCur) {
   catch { return v.toLocaleString(LOC(), { maximumFractionDigits: 0 }) + ' ' + cur; }
 }
 const profLabel = () => { const p = prof(); return p ? `${p.name} (+${p.pct}%${p.fee ? ' + ' + p.fee.toLocaleString(LOC()) + ' ' + p.feeCur : ''})` : tl('sin margen'); };
-const CUR_ALIAS = { '$': 'USD', 'US$': 'USD', '€': 'EUR', '£': 'GBP', '¥': 'JPY', '円': 'JPY', 'YEN': 'JPY', 'RMB': 'CNY', '元': 'CNY', 'CN¥': 'CNY', 'HK$': 'HKD' };
+const CUR_ALIAS = { '$': 'USD', 'US$': 'USD', '€': 'EUR', '£': 'GBP', '¥': 'JPY', '円': 'JPY', 'YEN': 'JPY', 'RMB': 'CNY', '元': 'CNY', 'CN¥': 'CNY', 'HK$': 'HKD', 'NT$': 'TWD', 'S$': 'SGD', 'A$': 'AUD', 'C$': 'CAD', '₩': 'KRW' };
 const curOf = r => { let c = get(r, 'cur').toUpperCase().replace(/\s/g, ''); if (!c) { const m = String(get(r, 'price')).match(/€|\$|£|¥|\b(?:eur|usd|gbp|jpy|cny)\b/i); c = m ? m[0].toUpperCase() : ''; } return CUR_ALIAS[c] || c; }; // sin columna de moneda: se toma del símbolo del precio (60€)
 const priceNum = s => {
   let v = String(s).replace(/[^\d.,-]/g, ''); if (!v) return NaN;
@@ -372,6 +381,15 @@ function usdOf(r) {
   if (c === 'USD') return a;
   return rates[c] ? a / rates[c] : NaN;
 }
+const typeOf = r => get(r, 'type').replace(/\s*\((?:used|new|unused|nuevo|usado)[^)]*\)\s*$/i, '').trim(); // «Crossbody bag (used)» → «Crossbody bag»
+function initUSD(r) { // precio inicial (PAT - Initial) en USD, en su propia moneda
+  if (!map.priceInit) return NaN; const a = priceNum(get(r, 'priceInit')); if (isNaN(a) || !rates) return NaN;
+  let c = get(r, 'curInit').toUpperCase().replace(/\s/g, ''); c = CUR_ALIAS[c] || c || curOf(r); return c === 'USD' ? a : rates[c] ? a / rates[c] : NaN;
+}
+const curWarn = r => map.priceInit && map.curInit && (() => { let a = get(r, 'curInit').toUpperCase().replace(/\s/g, ''); a = CUR_ALIAS[a] || a; return a && curOf(r) && a !== curOf(r) && priceNum(get(r, 'priceInit')) === priceNum(get(r, 'price')) && priceNum(get(r, 'price')) > 0; })();
+const discOf = r => { // rebaja desde el alta (0,2 = −20%); entre monedas distintas, menos del 5% es ruido del tipo de cambio
+  if (r._cw) return NaN; const i = initUSD(r), u = usdOf(r); if (!(i > 0 && u > 0)) return NaN; const d = 1 - u / i;
+  let c = get(r, 'curInit').toUpperCase().replace(/\s/g, ''); c = CUR_ALIAS[c] || c; return c && c !== curOf(r) && Math.abs(d) < 0.05 ? 0 : d; };
 const finalOf = r => { const u = usdOf(r), p = prof(); return (isNaN(u) || !p) ? u : u * (1 + (+p.pct || 0) / 100) + (+p.fee || 0) / (rate(p.feeCur) || 1); }; // precio de venta en USD (interno)
 async function loadRates() {
   try {
@@ -468,22 +486,56 @@ async function pool(items, fn, n = 8) { const q = [...items.keys()]; await Promi
 
 /* ============ carga ============ */
 let loadedN = 0, loadSource = 'file', news = null;
-function setLoaded() { if (loadedN) $('loaded').textContent = tl('✓ {n} artículos cargados', { n: loadedN.toLocaleString(LOC()) }); }
-function ingest(text) {
-  const tbl = parseCSV(text);
-  if (tbl.length < 2) throw new Error(tl('El CSV está vacío'));
-  let hi = 0, best = 0; // la fila de cabeceras puede no ser la primera (hojas con títulos encima)
+function setLoaded() {
+  if (!loadedN) return; const cw = rows.filter(r => r._cw).length, ch = map.channel ? new Set(rows.map(r => get(r, 'channel')).filter(Boolean)).size : 0;
+  $('loaded').textContent = tl('✓ {n} artículos cargados', { n: loadedN.toLocaleString(LOC()) }) + (ch > 1 ? tl(' de {c} pestañas', { c: ch }) : '') + (cw ? tl(' · ⚠ {m} con moneda dudosa', { m: cw }) : '');
+}
+const baseH = h => strip(String(h).replace(/\s*\(\d+\)$/, '')); // «Cur (3)» → «cur»
+function findHeader(tbl) { // la fila de cabeceras puede no ser la primera (hojas con títulos encima)
+  let hi = 0, best = 0;
   for (let i = 0; i < Math.min(12, tbl.length - 1); i++) {
     const sc = tbl[i].filter(c => { const k = strip(c); return k && Object.values(FIELDS).some(d => d.alias.includes(k) || /^c-?tag\b/.test(k)); }).length;
     if (sc > best) { best = sc; hi = i; }
   }
-  if (best < 2) hi = 0;
-  headers = tbl[hi].map(h => h.trim());
-  rows = tbl.slice(hi + 1).map((r, i) => { const o = { _i: i }; headers.forEach((h, j) => o[h] = (r[j] || '').trim()); return o; });
+  return best < 2 ? 0 : hi;
+}
+const uniqH = hs => { const seen = {}; return hs.map(h => { h = String(h ?? '').trim(); const n = (seen[h] = (seen[h] || 0) + 1); return n > 1 ? `${h} (${n})` : h; }); }; // columnas repetidas («Cur» x4)
+function combineTables(parts) { // varias pestañas/hojas → una tabla con la columna «Canal» = nombre de la pestaña
+  const sheets = [], union = [];
+  for (const { name, tbl } of parts) {
+    if (!tbl || tbl.length < 2) continue;
+    const hi = findHeader(tbl), hdr = uniqH(tbl[hi]);
+    sheets.push({ name, hdr, body: tbl.slice(hi + 1).filter(r => r.some(c => String(c ?? '').trim())) });
+    hdr.forEach(x => { if (x && !union.includes(x)) union.push(x); });
+  }
+  if (!sheets.length) throw new Error(tl('El CSV está vacío'));
+  if (sheets.length === 1) return [sheets[0].hdr, ...sheets[0].body];
+  const head = [...union, 'Canal'], out = [head];
+  for (const s of sheets) { const pos = s.hdr.map(x => union.indexOf(x)); for (const r of s.body) { const row = Array(head.length).fill(''); pos.forEach((p, j) => { if (p >= 0) row[p] = r[j] ?? ''; }); row[head.length - 1] = s.name; out.push(row); } }
+  return out;
+}
+function workbookParts(buf) { // todas las pestañas de un xlsx
+  if (typeof XLSX === 'undefined') throw new Error(tl('No se cargó la librería xlsx (falta vendor/xlsx.bundle.js). Usa el botón CSV.'));
+  const wb = XLSX.read(buf, { type: 'array' });
+  return wb.SheetNames.map(name => ({ name, tbl: XLSX.utils.sheet_to_json(wb.Sheets[name], { header: 1, raw: false, defval: '', dateNF: 'yyyy-mm-dd hh:mm' }) }));
+}
+const isZip = buf => { const b = new Uint8Array(buf.slice(0, 2)); return b[0] === 0x50 && b[1] === 0x4b; };
+function ingest(input) {
+  const tbl = Array.isArray(input) ? input : parseCSV(input);
+  if (tbl.length < 2) throw new Error(tl('El CSV está vacío'));
+  const hi = findHeader(tbl);
+  headers = uniqH(tbl[hi]);
+  rows = tbl.slice(hi + 1).map((r, i) => { const o = { _i: i }; headers.forEach((h, j) => o[h] = String(r[j] ?? '').trim()); return o; });
   const saved = JSON.parse(store.get('map', '{}')); map = {};
   for (const [k, def] of Object.entries(FIELDS)) {
     const byAlias = headers.find(h => def.alias.includes(strip(h)) || (k === 'id' && /^c-?tag\b/.test(strip(h))));
     map[k] = (saved[k] && headers.includes(saved[k])) ? saved[k] : (byAlias || '');
+  }
+  { // la moneda de cada precio es la columna «Cur» más cercana a su izquierda (en el snapshot: P para Q, I para J)
+    const near = col => { const i = headers.indexOf(col); let best = ''; headers.forEach((x, j) => { if (j < i && FIELDS.cur.alias.includes(baseH(x))) best = x; }); return best; };
+    if (map.price && !(saved.cur && headers.includes(saved.cur))) map.cur = near(map.price) || map.cur;
+    if (map.priceInit && !(saved.curInit && headers.includes(saved.curInit))) map.curInit = near(map.priceInit);
+    if (map.owner && map.owner === map.entity) map.owner = '';
   }
   lastCatalog = null; buildMapping(); prep();
   { const have = new Set(rows.map(code)); [...selected].forEach(c => { if (!have.has(c)) selected.delete(c); }); }
@@ -573,26 +625,35 @@ function buildMapping() {
     l.append(s); $('mapping').append(l);
   }
 }
-async function loadURL() {
+async function loadURL() { // uno o varios enlaces (separados por espacios o saltos); un enlace xlsx trae todas las pestañas
   const u = $('url').value.trim(); if (!u) return;
   store.set('url', u); loadSource = u; $('loaded').textContent = tl('Descargando…');
-  try { const r = await fetch('/fetch?url=' + encodeURIComponent(u)); if (!r.ok) throw new Error(await r.text()); ingest(await r.text()); }
+  try {
+    const urls = u.split(/\s+/).filter(Boolean), parts = [];
+    for (const [i, x] of urls.entries()) {
+      const r = await fetch('/fetch?url=' + encodeURIComponent(x)); if (!r.ok) throw new Error(await r.text());
+      const buf = await r.arrayBuffer();
+      if (isZip(buf)) parts.push(...workbookParts(buf)); else parts.push({ name: urls.length > 1 ? tl('Hoja {n}', { n: i + 1 }) : '', tbl: parseCSV(new TextDecoder().decode(buf)) });
+    }
+    $('loaded').textContent = tl('Leyendo…'); await new Promise(res => setTimeout(res, 0));
+    ingest(combineTables(parts));
+  }
   catch (e) { $('loaded').innerHTML = `<span class="err">${esc(tl('Error: {m}', { m: e.message }))}${location.protocol === 'file:' ? esc(tl(' (abre la app con: python server.py)')) : ''}</span>`; }
 }
 $('load').onclick = loadURL;
 $('url').onkeydown = e => { if (e.key === 'Enter') loadURL(); };
-$('file').onchange = async e => { const f = e.target.files[0]; if (!f) return; loadSource = 'file'; try { ingest(await f.text()); } catch (err) { $('loaded').innerHTML = `<span class="err">${esc(err.message)}</span>`; } };
+$('file').onchange = async e => { const f = e.target.files[0]; if (!f) return; loadSource = 'file'; try { $('loaded').textContent = tl('Leyendo…'); const buf = await f.arrayBuffer(); ingest(isZip(buf) ? combineTables(workbookParts(buf)) : parseCSV(new TextDecoder().decode(buf))); } catch (err) { $('loaded').innerHTML = `<span class="err">${esc(err.message)}</span>`; } };
 $('loaded').onclick = () => { if (rows.length) $('loadBox').style.display = $('loadBox').style.display === 'none' ? '' : 'none'; };
 $('loaded').style.cursor = 'pointer'; $('loaded').title = tl('Clic para cambiar de hoja');
 
 /* ============ filtros ============ */
 let sold = {}, offers = {}; // código → estado (vendido/reservado) · código → { cliente: fecha en que se le envió }
 async function loadSold() { if (!store.online) return; try { const r = await fetch('/api/status', { headers: API_H }); if (r.ok) { const d = await r.json(); sold = d.status || {}; offers = d.offers || {}; if (rows.length) refresh(false); } } catch {} }
-const F = { buyers: new Set(), ageMin: null, ageMax: null, grades: new Set(), rankMin: 0, onlySel: false, loose: false, catalog: null, q: '', brands: new Set(), entities: new Set(), min: null, max: null, rank: 0, groups: [], exclude: [], excludeName: [], sort: '', onlyImg: false };
+const F = { types: new Set(), channels: new Set(), owners: new Set(), buyers: new Set(), ageMin: null, ageMax: null, grades: new Set(), rankMin: 0, onlySel: false, loose: false, catalog: null, q: '', brands: new Set(), entities: new Set(), min: null, max: null, rank: 0, groups: [], exclude: [], excludeName: [], sort: '', onlyImg: false };
 function resetFilters(redraw = true, keepCatalog = false) {
   const cat = F.catalog;
   F.grades.clear();
-  Object.assign(F, { rankMin: 0, onlySel: false, loose: false, catalog: keepCatalog ? cat : null, q: '', min: null, max: null, rank: 0, groups: [], exclude: [], excludeName: [], sort: '', onlyImg: false, ageMin: null, ageMax: null }); F.brands.clear(); F.entities.clear(); F.buyers.clear();
+  Object.assign(F, { rankMin: 0, onlySel: false, loose: false, catalog: keepCatalog ? cat : null, q: '', min: null, max: null, rank: 0, groups: [], exclude: [], excludeName: [], sort: '', onlyImg: false, ageMin: null, ageMax: null }); F.brands.clear(); F.entities.clear(); F.buyers.clear(); F.types.clear(); F.channels.clear(); F.owners.clear();
   $('q').value = ''; $('pmin').value = $('pmax').value = ''; $('frank').value = '0'; $('sort').value = ''; $('onlyImg').checked = false; $('onlySel').checked = false;
   if (redraw) refresh(false);
 }
@@ -604,6 +665,9 @@ function matches(r, skip, f = F) {
   if (skip !== 'brands' && f.brands.size && !f.brands.has(get(r, 'brand'))) return false;
   if (skip !== 'entities' && f.entities.size && !f.entities.has(get(r, 'entity'))) return false;
   if (skip !== 'buyers' && f.buyers?.size && !f.buyers.has(get(r, 'buyer'))) return false;
+  if (skip !== 'types' && f.types?.size && !f.types.has(typeOf(r))) return false;
+  if (skip !== 'channels' && f.channels?.size && !f.channels.has(get(r, 'channel'))) return false;
+  if (skip !== 'owners' && f.owners?.size && !f.owners.has(get(r, 'owner'))) return false;
   if (skip !== 'age' && (f.ageMin != null || f.ageMax != null)) { const d = ageDays(r); if (d == null || (f.ageMin != null && d < f.ageMin) || (f.ageMax != null && d > f.ageMax)) return false; }
   if (f.rank && !(r._rank && r._rank <= f.rank)) return false;
   if (f.rankMin && !(r._rank && r._rank >= f.rankMin)) return false;
@@ -632,8 +696,12 @@ function gradeSet(sp) { // grados aceptados por una petición: lista exacta o ra
 }
 const AGES = [['< 1 mes', null, 30], ['> 3 meses', 91, null], ['> 6 meses', 182, null], ['> 1 año', 365, null], ['> 2 años', 730, null]]; // [etiqueta, días mín, días máx]
 function facets() {
-  const fb = new Map(), fe = new Map(), fg = new Map(), fy = new Map(), fa = new Map();
+  const fb = new Map(), fe = new Map(), fg = new Map(), fy = new Map(), fa = new Map(), ft = new Map(), fc = new Map(), fo = new Map();
+  const cnt = (m, v) => { if (v) m.set(v, (m.get(v) || 0) + 1); };
   for (const r of rows) {
+    if (map.type && matches(r, 'types')) cnt(ft, typeOf(r));
+    if (map.channel && matches(r, 'channels')) cnt(fc, get(r, 'channel'));
+    if (map.owner && matches(r, 'owners')) cnt(fo, get(r, 'owner'));
     if (map.buyer && matches(r, 'buyers')) { const y = get(r, 'buyer'); if (y) fy.set(y, (fy.get(y) || 0) + 1); }
     if (map.added && matches(r, 'age')) { const d = ageDays(r); if (d != null) AGES.forEach(([k, lo, hi]) => { if ((lo == null || d >= lo) && (hi == null || d <= hi)) fa.set(k, (fa.get(k) || 0) + 1); }); }
     if (matches(r, 'grades')) { const k = r._rank || 0; fg.set(k, (fg.get(k) || 0) + 1); }
@@ -642,6 +710,8 @@ function facets() {
   }
   chips($('bchips'), fb, F.brands, 14); chips($('echips'), fe, F.entities, 10); chips($('ychips'), fy, F.buyers, 14);
   $('yRow').style.display = fy.size || F.buyers.size ? '' : 'none';
+  chips($('tchips'), ft, F.types, 16); chips($('cchips'), fc, F.channels, 12); chips($('ochips'), fo, F.owners, 12);
+  $('tRow').style.display = ft.size || F.types.size ? '' : 'none'; $('cRow').style.display = fc.size > 1 || F.channels.size ? '' : 'none'; $('oRow').style.display = fo.size > 1 || F.owners.size ? '' : 'none';
   $('aRow').style.display = map.added && (fa.size || F.ageMin != null || F.ageMax != null) ? '' : 'none';
   const ac = $('achips'); ac.innerHTML = '';
   AGES.forEach(([k, lo, hi]) => { const on = F.ageMin === lo && F.ageMax === hi, b = document.createElement('button'); b.className = 'chip' + (on ? ' on' : ''); b.innerHTML = `${esc(tl(k))} <small>${fa.get(k) || 0}</small>`;
@@ -675,6 +745,7 @@ function refresh(rebuild) {
   if (s === 'brand') view.sort((a, b) => get(a, 'brand').localeCompare(get(b, 'brand')));
   if (s === 'pa' || s === 'pd') view.sort((a, b) => ((finalOf(a) || 0) - (finalOf(b) || 0)) * (s === 'pa' ? 1 : -1));
   if (s === 'old' || s === 'new') view.sort((a, b) => a._added == null ? 1 : b._added == null ? -1 : (a._added - b._added) * (s === 'old' ? 1 : -1)); // sin fecha, al final
+  if (s === 'disc') view.sort((a, b) => (isNaN(discOf(b)) ? -9 : discOf(b)) - (isNaN(discOf(a)) ? -9 : discOf(a)));
   if (s === 'buyer') view.sort((a, b) => (get(a, 'buyer') || '\uffff').localeCompare(get(b, 'buyer') || '\uffff'));
   if (F.catalog && !s) view.sort((a, b) => a._ord - b._ord);
   if (F.onlyImg) return onlyWithPhotos();
@@ -748,9 +819,9 @@ function addCard(r) {
   const price = isNaN(u) ? (orig ? orig + (rates ? tl(' ⚠ moneda desconocida') : '') : '') : fmtMoney(outVal(f)) + ' ' + outCur;
   const sub = isNaN(u) ? '' : (prof() ? tl('base {v} · ', { v: fmtMoney(fromUSD(u)) }) : '') + tl('orig. ') + orig;
   c.innerHTML = `<input type="checkbox" class="pick" ${on ? 'checked' : ''}>${r._rank ? `<span class="rank">${esc(r._letter)}</span>` : ''}<div class="photo"><span class="none">${esc(tl('cargando…'))}</span></div>
-    <div class="info"><button class="rsv" title="${esc(tl('Reservar / estado'))}">🔖</button><div class="brand">${esc(get(r, 'brand') || '—')}</div><div class="code">${esc(code(r))}${get(r, 'entity') ? ' · ' + esc(get(r, 'entity')) : ''}${get(r, 'buyer') ? ' · ' + esc(tl('buyer {b}', { b: get(r, 'buyer') })) : ''}</div>${r._added != null ? `<div class="notes mute">${esc(ageText(r))}</div>` : ''}
+    <div class="info"><button class="rsv" title="${esc(tl('Reservar / estado'))}">🔖</button><div class="brand">${esc(get(r, 'brand') || '—')}</div><div class="code">${esc(code(r))}${get(r, 'entity') ? ' · ' + esc(get(r, 'entity')) : ''}${get(r, 'buyer') ? ' · ' + esc(tl('buyer {b}', { b: get(r, 'buyer') })) : ''}</div>${typeOf(r) || get(r, 'channel') || get(r, 'owner') ? `<div class="notes mute">${esc([typeOf(r), get(r, 'channel'), get(r, 'owner')].filter(Boolean).join(' · '))}</div>` : ''}${r._added != null ? `<div class="notes mute">${esc(ageText(r))}</div>` : ''}
     <div class="desc">${esc(nameOf(r))}</div>
-    ${F.catalog && r._tag ? `<div class="notes">🎯 ${esc(r._tag)}</div>` : ''}${statusBadges(r)}${price ? `<div class="price">${esc(price)}</div>` : ''}${sub ? `<div class="mute notes">${esc(sub)}</div>` : ''}</div>`;
+    ${F.catalog && r._tag ? `<div class="notes">🎯 ${esc(r._tag)}</div>` : ''}${statusBadges(r)}${r._cw ? `<div class="notes warn">${esc(tl('⚠ moneda dudosa: mismo importe que el inicial en {c}', { c: get(r, 'curInit') }))}</div>` : ''}${Math.abs(discOf(r)) >= 0.01 ? `<div class="notes ${discOf(r) > 0 ? 'ok' : 'mute'}">${esc(discOf(r) > 0 ? tl('−{p}% desde el alta (antes {v})', { p: Math.round(discOf(r) * 100), v: [get(r, 'priceInit'), get(r, 'curInit')].join(' ') }) : tl('+{p}% desde el alta', { p: Math.round(-discOf(r) * 100) }))}</div>` : ''}${price ? `<div class="price">${esc(price)}</div>` : ''}${sub ? `<div class="mute notes">${esc(sub)}</div>` : ''}</div>`;
   c.querySelector('.rsv').onclick = () => reserveDlg(r);
   c.querySelector('.pick').onchange = e => { toggle(code(r), e.target.checked); c.classList.toggle('sel', e.target.checked); };
   $('grid').append(c); io.observe(c);
@@ -864,7 +935,13 @@ function basicParse(text) {
   for (const [k, v] of nameIdx) if (k.length > 1 && has(k)) spec.brands.push(v);
   for (const [k, v] of eIdx) if (k.length > 2 && has(k)) spec.entities.push(v);
   { const yIdx = new Map(); rows.forEach(r => { const y = get(r, 'buyer'); if (y) yIdx.set(strip(y), y); }); spec.buyers = [...yIdx].filter(([k]) => k.length > 1 && has(k)).map(([, v]) => v); }
+  for (const key of ['channel', 'owner']) { const ix = new Map(); rows.forEach(r => { const v = get(r, key); if (v) ix.set(strip(v), v); }); spec[key + 's'] = [...ix].filter(([k]) => k.length > 2 && has(k)).map(([, v]) => v); }
   for (const w of t.match(/[a-z]+/g) || []) { const d = BRANDLESS_DICT[w] || BRANDLESS_DICT[w.replace(/s$/, '')] || BRANDLESS_DICT[w.replace(/es$/, '')]; if (d && !spec.keyword_groups.some(g => g === d)) spec.keyword_groups.push(d); }
+  if (map.type) { // con columna Item Type: «bolso», «joya»… filtran por tipo (exacto) en vez de por palabras del nombre
+    const types = [...new Set(rows.map(typeOf).filter(Boolean))], sw = strip;
+    spec.item_types = [];
+    spec.keyword_groups = spec.keyword_groups.filter(g => { const hitT = types.filter(t => g.some(w => new RegExp('(^|[^a-z])' + w + '([^a-z]|$)').test(sw(t)))); if (!hitT.length || g.some(w => /^(black|white|red|blue|brown|beige|pink|green|leather|canvas)$/.test(w))) return true; spec.item_types.push(...hitT); return false; });
+  }
   for (const q of text.matchAll(/"([^"]+)"/g)) spec.keyword_groups.push([strip(q[1])]);
   if (spec.keyword_groups.some(g => g.includes('necklace') || g.includes('ring') || g.includes('earring') || g.includes('bracelet'))) spec.exclude_name_keywords = ['bag', 'handbag', 'tote', 'wallet', 'purse', 'pouch', 'clutch', 'backpack', 'satchel', 'crossbody', 'handle', 'strap', 'key ring', 'keyring', 'key holder', 'keychain', 'key chain', 'd-ring', 'o-ring', 'scarf', 'cufflink']; // joyas: fuera bolsos, llaveros y anillos de bolso
   if (/fashion|costume|bisuter|fantaisie|sin alta joyeria|no fine|pas de haute/.test(t)) spec.exclude_keywords = ['k18', '18k', 'k14', '14k', 'k10', '10k', 'k24', '24k', 'pt900', 'pt950', 'platinum', 'carat', 'diamond', 'sapphire', 'emerald', 'ruby', 'yellow gold', 'white gold', 'pink gold']; // bisutería: fuera joyería fina
@@ -875,6 +952,8 @@ function describe(s) {
   if (s.brands?.length) p.push(tl('marcas: ') + s.brands.join(', '));
   if (s.entities?.length) p.push(tl('entity: ') + s.entities.join(', '));
   if (s.buyers?.length) p.push(tl('buyer: ') + s.buyers.join(', '));
+  if (s.item_types?.length) p.push(tl('tipo: ') + [...new Set(s.item_types)].slice(0, 4).join(', ') + (s.item_types.length > 4 ? '…' : ''));
+  if (s.channels?.length) p.push(tl('canal: ') + s.channels.join(', ')); if (s.owners?.length) p.push(tl('owner: ') + s.owners.join(', '));
   if (s.min_age_days != null) p.push(tl('dados de alta hace más de {n} días', { n: s.min_age_days }));
   if (s.max_age_days != null) p.push(tl('dados de alta en los últimos {n} días', { n: s.max_age_days }));
   if (s.sort === 'added_asc') p.push(tl('los más antiguos primero')); if (s.sort === 'added_desc') p.push(tl('los más recientes primero'));
@@ -888,6 +967,7 @@ function describe(s) {
   return p.length ? p.join(' · ') : tl('no he entendido ningún filtro');
 }
 const BRAND_SYN = [['ysl', 'saint laurent', 'yves saint laurent'], ['dior', 'christian dior'], ['bottega', 'bottega veneta'], ['celine', 'celine paris'], ['lv', 'louis vuitton'], ['hermes', 'hermes paris'], ['the row', 'therow'], ['dg', 'dolce & gabbana', 'dolce gabbana']];
+function canonTypes(list) { const idx = new Map(rows.map(r => [strip(typeOf(r)), typeOf(r)])); return (list || []).map(x => idx.get(strip(String(x).replace(/\s*\((?:used|new)[^)]*\)\s*$/i, '')))).filter(Boolean); }
 function canonList(list, key) {
   const idx = new Map(rows.map(r => [strip(get(r, key)), get(r, key)]));
   return (list || []).map(x => { const k = strip(x); if (idx.has(k)) return idx.get(k); const g = BRAND_SYN.find(g => g.includes(k)); return g && g.map(z => idx.get(z)).find(Boolean); }).filter(Boolean);
@@ -898,7 +978,8 @@ function searchFilter(s) {
   return { loose: false, catalog: null, q: '', brands: new Set(canonList(s.brands, 'brand')), entities: new Set(canonList(s.entities, 'entity')),
     groups: (s.keyword_groups || []).map(g => g.map(strip).filter(Boolean)).filter(g => g.length), exclude: (s.exclude_keywords || []).map(strip).filter(Boolean), excludeName: (s.exclude_name_keywords || []).map(strip).filter(Boolean),
     min: toUSD(s.min_price, s.price_currency), max: toUSD(s.max_price, s.price_currency), rank: 0, rankMin: 0, grades: gradeSet(s), basis: s.price_basis === 'buying' ? 'buying' : 'shown',
-    buyers: new Set(canonList(s.buyers, 'buyer')), ageMin: s.min_age_days ?? null, ageMax: s.max_age_days ?? null };
+    buyers: new Set(canonList(s.buyers, 'buyer')), ageMin: s.min_age_days ?? null, ageMax: s.max_age_days ?? null,
+    types: new Set(canonTypes(s.item_types)), channels: new Set(canonList(s.channels, 'channel')), owners: new Set(canonList(s.owners, 'owner')) };
 }
 async function runSearches(list, said) {
   rows.forEach(r => { delete r._tag; delete r._ord; });
@@ -911,7 +992,7 @@ async function runSearches(list, said) {
     const pref = (s.prefer_keywords || []).map(strip).filter(Boolean), sc = r => pref.reduce((n, w) => n + (hit(r._text, w) ? 1 : 0), 0);
     const cmp0 = (a, b) => sc(b) - sc(a) || (a._rank || 99) - (b._rank || 99);
     const cmp = s.sort === 'price_asc' ? (a, b) => (price(a) || 1e12) - (price(b) || 1e12) || cmp0(a, b) : s.sort === 'price_desc' ? (a, b) => (price(b) || 0) - (price(a) || 0) || cmp0(a, b)
-      : s.sort === 'added_asc' ? (a, b) => (a._added ?? 9e15) - (b._added ?? 9e15) || cmp0(a, b) : s.sort === 'added_desc' ? (a, b) => (b._added ?? -1) - (a._added ?? -1) || cmp0(a, b) : cmp0;
+      : s.sort === 'discount_desc' ? (a, b) => (isNaN(discOf(b)) ? -9 : discOf(b)) - (isNaN(discOf(a)) ? -9 : discOf(a)) || cmp0(a, b) : s.sort === 'added_asc' ? (a, b) => (a._added ?? 9e15) - (b._added ?? 9e15) || cmp0(a, b) : s.sort === 'added_desc' ? (a, b) => (b._added ?? -1) - (a._added ?? -1) || cmp0(a, b) : cmp0;
     const strict = rows.filter(r => code(r) && matches(r, null, f)).sort(cmp), want = s.count || 6;
     let loose = [];
     if (strict.length < want && f.groups.length) { const ss = new Set(strict); loose = rows.filter(r => code(r) && !ss.has(r) && matches(r, null, { ...f, loose: true })).sort(cmp); }
@@ -944,8 +1025,9 @@ async function applySpec(s, said) {
   F.groups = (s.keyword_groups || []).map(g => g.map(strip).filter(Boolean)).filter(g => g.length);
   F.exclude = (s.exclude_keywords || []).map(strip).filter(Boolean); F.excludeName = (s.exclude_name_keywords || []).map(strip).filter(Boolean);
   F.min = toUSD(s.min_price, s.price_currency); F.max = toUSD(s.max_price, s.price_currency); F.rank = 0; F.rankMin = 0; F.grades = gradeSet(s);
-  canonList(s.buyers, 'buyer').forEach(b => F.buyers.add(b)); F.ageMin = s.min_age_days ?? null; F.ageMax = s.max_age_days ?? null;
-  F.sort = { price_asc: 'pa', price_desc: 'pd', brand: 'brand', added_asc: 'old', added_desc: 'new', buyer: 'buyer' }[s.sort] || ''; $('sort').value = F.sort;
+  canonList(s.buyers, 'buyer').forEach(b => F.buyers.add(b)); canonTypes(s.item_types).forEach(b => F.types.add(b));
+  canonList(s.channels, 'channel').forEach(b => F.channels.add(b)); canonList(s.owners, 'owner').forEach(b => F.owners.add(b)); F.ageMin = s.min_age_days ?? null; F.ageMax = s.max_age_days ?? null;
+  F.sort = { price_asc: 'pa', price_desc: 'pd', brand: 'brand', added_asc: 'old', added_desc: 'new', buyer: 'buyer', discount_desc: 'disc' }[s.sort] || ''; $('sort').value = F.sort;
   refresh(false);
   const rep = $('reply'); rep.style.display = ''; rep.textContent = (said ? said + ' — ' : '') + tl('{d} → {n} resultados', { d: describe(s), n: view.length });
   if (s.select_count > 0) { const n = await pickFirst(s.select_count, !!s.diversify_brands, true); rep.textContent += tl(' · {n} seleccionados', { n }); }
@@ -968,7 +1050,8 @@ async function askGo() {
         const ents = [...new Set(rows.map(r => get(r, 'entity')).filter(Boolean))];
         const r = await fetch('/ai', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Catalog-Finder': '1' },
           body: JSON.stringify({ lang, query: text, brands: [...cnt].sort((a, b) => b[1] - a[1]).slice(0, 400).map(([b, n]) => `${b} (${n})`), entities: ents, total: rows.length,
-            buyers: [...new Set(rows.map(r => get(r, 'buyer')).filter(Boolean))].slice(0, 200), hasAdded: !!map.added, today: new Date().toISOString().slice(0, 10) }) });
+            buyers: [...new Set(rows.map(r => get(r, 'buyer')).filter(Boolean))].slice(0, 200), hasAdded: !!map.added,
+            types: [...new Set(rows.map(typeOf).filter(Boolean))].slice(0, 150), channels: [...new Set(rows.map(r => get(r, 'channel')).filter(Boolean))], owners: [...new Set(rows.map(r => get(r, 'owner')).filter(Boolean))].slice(0, 100), hasInit: !!map.priceInit, today: new Date().toISOString().slice(0, 10) }) });
         if (!r.ok) throw new Error(await r.text());
         const s = await r.json(); store.set(pk, JSON.stringify(s)); return await applySpec(s, s.reply);
       } catch (e) { setStatus(aiErr(e) + (multi ? '' : tl('. Uso el modo básico.')), true); if (multi) { const r = $('reply'); r.style.display = ''; r.textContent = aiErr(e); return; } }
@@ -998,6 +1081,9 @@ function buildCatalogContext() {
     'Grades: ' + top(grades, 11).map(([k, n]) => `${gradeLbl(k)}=${n}`).join(', '),
     'Entities: ' + top(ents, 15).map(([k, n]) => `${k}(${n})`).join(', '),
     ...(map.buyer ? ['Buyers: ' + top(rows.reduce((m, r) => { const y = get(r, 'buyer'); if (y) m.set(y, (m.get(y) || 0) + 1); return m; }, new Map()), 30).map(([k, n]) => `${k}(${n})`).join(', ')] : []),
+    ...(map.type ? ['Item types: ' + top(rows.reduce((m, r) => { const t = typeOf(r); if (t) m.set(t, (m.get(t) || 0) + 1); return m; }, new Map()), 60).map(([k, n]) => `${k}(${n})`).join(', ')] : []),
+    ...(map.channel ? ['Channels (sheet tabs): ' + [...new Set(rows.map(r => get(r, 'channel')).filter(Boolean))].join(', ')] : []),
+    ...(map.owner ? ['Owners: ' + top(rows.reduce((m, r) => { const t = get(r, 'owner'); if (t) m.set(t, (m.get(t) || 0) + 1); return m; }, new Map()), 20).map(([k, n]) => `${k}(${n})`).join(', ')] : []),
     ...(map.added ? ['Added dates: items have an added date (age filters min_age_days / max_age_days and sort added_asc / added_desc are available).'] : []),
     'Brands: ' + brands.map(([k, n]) => `${k}(${n})`).join(', '),
     'Frequent words in item names: ' + top(words, 150).map(([k]) => k).join(' '),
@@ -1062,7 +1148,7 @@ function renderAiState() {
   };
   if ($('keyOff')) $('keyOff').onclick = async () => { await fetch('/ai-key', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Catalog-Finder': '1' }, body: JSON.stringify({ key: '' }) }); aiStatus(); };
 }
-const APP_VERSION = '2026-10-16.5'; // igual que APP_VERSION en server.py
+const APP_VERSION = '2026-10-16.6'; // igual que APP_VERSION en server.py
 let serverOld = false;
 const oldServerMsg = () => tl('⚠ El programa que está en marcha (la ventana negra) es una versión antigua. Cierra TODAS las ventanas negras de Catalog Finder y vuelve a abrirlo; luego recarga esta página.');
 async function aiStatus() {

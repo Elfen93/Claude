@@ -33,6 +33,12 @@ Everything is stored in **`catalog.db`**, a single file in the folder (not in gi
   - Each card shows the added date and how long ago it was.
   - The assistant understands “bags older than 6 months”.
   - Date format is detected automatically; if needed, set it in *Advanced settings → Dates*.
+- **Full snapshot (xlsx with several tabs):** upload the xlsx or paste its xlsx export link; several CSV links separated by spaces also work.
+  - Each tab becomes a **Channel**.
+  - New **Type** (Item Type) and **Owner** filters.
+  - Current price = *PAT - Current* with the “Cur” column right before it; initial price = *PAT - Initial*.
+  - Each card shows the markdown since listing, and you can sort by biggest markdown.
+  - Rows whose currency changed but whose amount did not are flagged “⚠ doubtful currency”.
 - **🧾 Invoices** (UK, JP, HK): from the search selection, a pasted CTag + price list or an Excel.
   - HK: hammer in HKD → yen, 5% commission, “Passed” when there is no price.
   - Numbering: per client for UK, sequential for JP, date and time for HK.
