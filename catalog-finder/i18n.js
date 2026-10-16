@@ -165,4 +165,16 @@ window.I18N = {
   ' · {n} grupos ({g})': { en: ' · {n} groups ({g})', fr: ' · {n} groupes ({g})' },
   'Descargados {n} artículos · Buy Now en {c} · {m}{x}': { en: 'Downloaded {n} items · Buy Now in {c} · {m}{x}', fr: '{n} articles téléchargés · Buy Now en {c} · {m}{x}' },
   'margen {p}': { en: 'margin {p}', fr: 'marge {p}' },
+  // ---- crear prompt con IA
+  '✨ Crear prompt con IA': { en: '✨ Create prompt with AI', fr: '✨ Créer le prompt avec l’IA' },
+  'Escribe una idea corta en el cuadro y la IA redacta el prompt detallado usando tu catálogo real (se envía un resumen: marcas, palabras frecuentes y unos 150 nombres de ejemplo). Gasta 2 llamadas a un modelo más potente.': { en: 'Type a short idea in the box and the AI writes the detailed prompt using your real catalog (a summary is sent: brands, frequent words and about 150 sample names). Uses 2 calls to a stronger model.', fr: 'Saisissez une idée courte dans la zone et l’IA rédige le prompt détaillé à partir de votre vrai catalogue (un résumé est envoyé : marques, mots fréquents et environ 150 noms d’exemple). Utilise 2 appels à un modèle plus puissant.' },
+  'Crear el prompt necesita la IA. Pulsa "Activar IA…" y pega tu clave.': { en: 'Creating the prompt needs the AI. Click "Activate AI…" and paste your key.', fr: 'Créer le prompt nécessite l’IA. Cliquez sur « Activer l’IA… » et collez votre clé.' },
+  '1/2 Escribiendo un primer borrador del plan…': { en: '1/2 Writing a first draft of the plan…', fr: '1/2 Rédaction d’un premier brouillon du plan…' },
+  '2/2 Probando el borrador contra tu catálogo y afinándolo…': { en: '2/2 Testing the draft against your catalog and refining it…', fr: '2/2 Test du brouillon sur votre catalogue et affinage…' },
+  'La IA no devolvió un plan': { en: 'The AI returned no plan', fr: 'L’IA n’a renvoyé aucun plan' },
+  'Prompt creado. Revísalo, edítalo si quieres y pulsa Buscar.': { en: 'Prompt created. Review it, edit it if you like and click Search.', fr: 'Prompt créé. Relisez-le, modifiez-le si vous voulez et cliquez sur Rechercher.' },
+  '{n} candidatos': { en: '{n} candidates', fr: '{n} candidats' },
+  ' (+{n} solo en notas)': { en: ' (+{n} only in notes)', fr: ' (+{n} seulement dans les notes)' },
+  'marca no encontrada: {b}': { en: 'brand not found: {b}', fr: 'marque introuvable : {b}' },
+  'Supuestos:': { en: 'Assumptions:', fr: 'Hypothèses :' },
 };

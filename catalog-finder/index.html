@@ -115,6 +115,7 @@
     <textarea id="ask" placeholder='Escríbelo como se lo dirías a una persona. Ej: "carteras Chanel o Hermès en estado A o mejor, entre $300 y $1500, elige 40 variadas"'></textarea>
     <div class="row" style="margin-top:8px">
       <button class="primary" id="askGo">Buscar</button>
+      <button id="planGo" title="Escribe una idea corta en el cuadro y la IA redacta el prompt detallado usando tu catálogo real (se envía un resumen: marcas, palabras frecuentes y unos 150 nombres de ejemplo). Gasta 2 llamadas a un modelo más potente.">✨ Crear prompt con IA</button>
       <button id="reset">Quitar todos los filtros</button>
       <button id="redo" style="display:none" title="Vuelve a pedirle a la IA que interprete la petición">↻ Reinterpretar con IA</button>
       <span id="aiState" class="mute"></span>
@@ -686,14 +687,17 @@ function canonList(list, key) {
 }
 const curRate = c => rate(c || outCur);
 const toUSD = (v, cur) => v == null ? null : v / (curRate(cur) || 1); // sin moneda indicada = la moneda que se está viendo
+function searchFilter(s) {
+  return { loose: false, catalog: null, q: '', brands: new Set(canonList(s.brands, 'brand')), entities: new Set(canonList(s.entities, 'entity')),
+    groups: (s.keyword_groups || []).map(g => g.map(strip).filter(Boolean)).filter(g => g.length), exclude: (s.exclude_keywords || []).map(strip).filter(Boolean), excludeName: (s.exclude_name_keywords || []).map(strip).filter(Boolean),
+    min: toUSD(s.min_price, s.price_currency), max: toUSD(s.max_price, s.price_currency), rank: 0, rankMin: 0, grades: gradeSet(s), basis: s.price_basis === 'buying' ? 'buying' : 'shown' };
+}
 async function runSearches(list, said) {
   rows.forEach(r => { delete r._tag; delete r._ord; });
   resetFilters(false);
   const rep = $('reply'), report0 = []; rep.style.display = ''; rep.textContent = tl('Preparando búsquedas…');
   const plan = list.map((s, si) => {
-    const f = { loose: false, catalog: null, q: '', brands: new Set(canonList(s.brands, 'brand')), entities: new Set(canonList(s.entities, 'entity')),
-      groups: (s.keyword_groups || []).map(g => g.map(strip).filter(Boolean)).filter(g => g.length), exclude: (s.exclude_keywords || []).map(strip).filter(Boolean), excludeName: (s.exclude_name_keywords || []).map(strip).filter(Boolean),
-      min: toUSD(s.min_price, s.price_currency), max: toUSD(s.max_price, s.price_currency), rank: 0, rankMin: 0, grades: gradeSet(s), basis: s.price_basis === 'buying' ? 'buying' : 'shown' };
+    const f = searchFilter(s);
     if ((s.min_price != null || s.max_price != null) && s.price_currency && !curRate(s.price_currency)) report0.push(tl('⚠ {l}: no conozco la moneda {c}; uso {o}', { l: s.label || tl('búsqueda {n}', { n: si + 1 }), c: s.price_currency, o: outCur }));
     const price = r => f.basis === 'buying' ? usdOf(r) : finalOf(r);
     const pref = (s.prefer_keywords || []).map(strip).filter(Boolean), sc = r => pref.reduce((n, w) => n + (hit(r._text, w) ? 1 : 0), 0);
@@ -762,6 +766,77 @@ async function askGo() {
   } finally { $('askGo').disabled = false; $('askGo').textContent = tl('Buscar'); }
 }
 $('askGo').onclick = askGo;
+
+/* ============ crear el prompt con IA a partir de un resumen ============ */
+const nm = r => (get(r, 'name') || get(r, 'desc') || code(r) || '').toString().slice(0, 70);
+const sampleLine = r => `${get(r, 'brand') || '?'} | ${nm(r)} | ${gradeLbl(r._rank || 0)} | ${fmtMoney(outVal(finalOf(r)))}`;
+function buildCatalogContext() {
+  const cnt = new Map(), ents = new Map(), grades = new Map(), words = new Map(), byBrand = new Map(); const prices = [];
+  for (const r of rows) {
+    const b = get(r, 'brand'); if (b) { cnt.set(b, (cnt.get(b) || 0) + 1); const a = byBrand.get(b) || []; if (a.length < 12) { a.push(r); byBrand.set(b, a); } }
+    const e = get(r, 'entity'); if (e) ents.set(e, (ents.get(e) || 0) + 1);
+    grades.set(r._rank || 0, (grades.get(r._rank || 0) || 0) + 1);
+    const p = finalOf(r); if (p > 0) prices.push(p);
+    for (const w of new Set((r._core || '').split(/[^a-z0-9]+/))) if (w.length > 2 && !/^\d+$/.test(w)) words.set(w, (words.get(w) || 0) + 1);
+  }
+  prices.sort((a, b) => a - b); const q = x => fmtMoney(outVal(prices[Math.floor((prices.length - 1) * x)] || 0));
+  const top = (m, n) => [...m].sort((a, b) => b[1] - a[1]).slice(0, n);
+  const brands = top(cnt, 60);
+  return [`Items: ${rows.length}. Display currency: ${outCur}.`,
+    `Prices (shown): min ${q(0)}, p25 ${q(.25)}, median ${q(.5)}, p75 ${q(.75)}, max ${q(1)}`,
+    'Grades: ' + top(grades, 11).map(([k, n]) => `${gradeLbl(k)}=${n}`).join(', '),
+    'Entities: ' + top(ents, 15).map(([k, n]) => `${k}(${n})`).join(', '),
+    'Brands: ' + brands.map(([k, n]) => `${k}(${n})`).join(', '),
+    'Frequent words in item names: ' + top(words, 150).map(([k]) => k).join(' '),
+    'Samples (brand | name | grade | price):\n' + brands.slice(0, 25).flatMap(([b]) => byBrand.get(b).map(sampleLine)).slice(0, 150).join('\n')].join('\n');
+}
+function dryRun(s) {
+  const f = searchFilter(s), ok = rows.filter(r => code(r) && matches(r, null, f));
+  const lf = { ...f, loose: true }, extra = f.groups.length ? rows.filter(r => code(r) && !ok.includes(r) && matches(r, null, lf)).length : 0;
+  let removed = [];
+  if (f.exclude.length || f.excludeName.length) { const g = { ...f, exclude: [], excludeName: [] }; removed = rows.filter(r => code(r) && !ok.includes(r) && matches(r, null, g)); }
+  const miss = (s.brands || []).filter(b => !canonList([b], 'brand').length);
+  return { strict: ok.length, loose: extra, removed: removed.length, keptSample: ok.slice(0, 5).map(sampleLine), removedSample: removed.slice(0, 5).map(sampleLine), missingBrands: miss };
+}
+function probeWord(w) {
+  const k = strip(w), hits = rows.filter(r => r._core && hit(r._core, k)), bc = new Map();
+  hits.forEach(r => { const b = get(r, 'brand') || '?'; bc.set(b, (bc.get(b) || 0) + 1); });
+  return `"${w}": ${hits.length} items; top brands ${[...bc].sort((a, b) => b[1] - a[1]).slice(0, 4).map(([b, n]) => `${b}(${n})`).join(', ') || '-'}; samples: ${hits.slice(0, 4).map(nm).join(' / ') || '-'}`;
+}
+function dryReport(searches) {
+  return searches.map((s, i) => { const d = dryRun(s); return { label: s.label || tl('búsqueda {n}', { n: i + 1 }), want: s.count || 6, ...d }; });
+}
+async function callPlan(body) {
+  const r = await fetch('/plan', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Catalog-Finder': '1' }, body: JSON.stringify({ lang, ...body }) });
+  if (!r.ok) throw new Error(await r.text()); return r.json();
+}
+async function planGo() {
+  const brief = $('ask').value.trim(); if (!brief || !rows.length) return;
+  const rep = $('reply'), btn = $('planGo'); rep.style.display = '';
+  if (!aiOn) { rep.textContent = tl('Crear el prompt necesita la IA. Pulsa "Activar IA…" y pega tu clave.'); return; }
+  btn.disabled = true; $('askGo').disabled = true;
+  try {
+    const context = buildCatalogContext();
+    rep.textContent = tl('1/2 Escribiendo un primer borrador del plan…');
+    let plan = await callPlan({ brief, context });
+    rep.textContent = tl('2/2 Probando el borrador contra tu catálogo y afinándolo…');
+    const dry = dryReport(plan.searches || []), probes = (plan.probe_keywords || []).slice(0, 6).map(probeWord);
+    const fb = 'DRY-RUN PER LINE:\n' + dry.map(d => `- ${d.label}: wanted ${d.want}; strict matches ${d.strict}; extra if loosened to notes ${d.loose}; removed only by exclusions ${d.removed}${d.missingBrands.length ? '; brands NOT in catalog: ' + d.missingBrands.join(', ') : ''}\n  kept sample: ${d.keptSample.join(' // ') || '-'}\n  removed sample: ${d.removedSample.join(' // ') || '-'}`).join('\n') + (probes.length ? '\n\nPROBES:\n' + probes.join('\n') : '');
+    let fin = plan;
+    try { fin = await callPlan({ brief, context, draft: plan, feedback: fb }); } catch (e) { /* si falla la revisión, vale el borrador */ }
+    if (!fin.searches?.length) fin = plan;
+    const text = (fin.prompt_text || '').trim(); if (!text) throw new Error(tl('La IA no devolvió un plan'));
+    $('ask').value = text;
+    store.set(planKey(text), JSON.stringify({ reply: '', searches: fin.searches })); // mismo texto = sin otra llamada a la IA
+    const rd = dryReport(fin.searches), mark = d => d.strict >= d.want ? '✓' : d.strict + d.loose > 0 ? '⚠' : '✗';
+    rep.textContent = (fin.reply ? fin.reply + '\n' : '') + tl('Prompt creado. Revísalo, edítalo si quieres y pulsa Buscar.') + '\n'
+      + rd.map(d => `${mark(d)} ${d.label}: ${tl('{n} candidatos', { n: d.strict })}${d.loose ? tl(' (+{n} solo en notas)', { n: d.loose }) : ''}${d.missingBrands.length ? ' · ' + tl('marca no encontrada: {b}', { b: d.missingBrands.join(', ') }) : ''}`).join('\n')
+      + ((fin.assumptions || []).length ? '\n' + tl('Supuestos:') + '\n' + fin.assumptions.map(a => '• ' + a).join('\n') : '');
+  } catch (e) { rep.textContent = tl('La IA falló ({e})', { e: String(e.message).slice(0, 160) }); }
+  finally { btn.disabled = false; $('askGo').disabled = false; }
+}
+$('planGo').onclick = planGo;
+
 $('redo').onclick = () => { if (lastPlan) store.set(lastPlan, ''); askGo(); };
 $('ask').onkeydown = e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); askGo(); } };
 function renderAiState() {

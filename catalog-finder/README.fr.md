@@ -14,6 +14,9 @@ Application locale pour chercher vos articles dans une feuille Google Sheets/CSV
 - **Avec l’IA** : *Activer l’IA…* et collez une clé API Anthropic (stockée uniquement dans le fichier `.api_key` sur votre ordinateur ; ou la variable `ANTHROPIC_API_KEY`). Elle comprend des phrases libres et de longues demandes multi-lignes (modèles prêts dans `prompts/`), et répond dans votre langue.
 - **Mode basique (sans clé)** : comprend les tranches de prix, marques, états (`seulement BC`, `AB à B-`, `A ou mieux`), quantité (`choisis 30`), `varié`, `pas cher` et les mots courants dans les trois langues.
 
+## ✨ Créer le prompt avec l’IA
+Saisissez une idée courte (« bijoux fantaisie Dior, B+ ou mieux, pas de sacs ») et cliquez sur *✨ Créer le prompt avec l’IA*. L’app envoie un résumé de VOTRE catalogue (marques, grades, prix, mots fréquents, ~150 noms d’exemple) ; l’IA rédige un plan ligne par ligne, l’app le teste sur vos données (correspondances, fuites, marques inexistantes) puis l’IA le corrige. Le prompt détaillé apparaît dans la zone pour que vous le modifiiez ; *Rechercher* l’exécute sans nouvel appel IA tant que le texte ne change pas. 2 appels à `claude-sonnet-5-5` (modifiable avec `CATALOG_PLAN_MODEL`). Nécessite une clé.
+
 ## Filtre d’état (grade)
 Un bouton par grade présent dans votre feuille, avec le nombre d’articles. Choisissez-en un ou plusieurs pour des grades exacts (seulement BC, ou AB + B+ + B). Le sélecteur *raccourci « ou mieux »* coche d’un coup tous les grades de SA jusqu’à celui choisi.
 

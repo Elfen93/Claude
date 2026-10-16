@@ -192,6 +192,29 @@ TOOL = {
     },
 }
 
+PLAN_MODEL = os.environ.get("CATALOG_PLAN_MODEL", "claude-sonnet-5-5")
+PLAN_SYSTEM = """You are a sourcing planner for a luxury second-hand catalog app. The user gives a SHORT BRIEF (any language). You write a detailed, line-by-line search plan that the app runs.
+You receive a summary of the real catalog (brands with counts, grades, prices, frequent words, sample item names). Item names/descriptions in the catalog are in ENGLISH, so every keyword must be English.
+Call write_plan ALWAYS. Fields:
+- searches: one entry per distinct request line (specific lines BEFORE generic ones, so items are not stolen by a generic line). Use only brand names that exist in the catalog summary (fix spelling/abbreviations). Use `count` for how many items each line should yield.
+- keyword_groups = HARD filter (AND of OR-groups, matched in name/description): use only for words every wanted item must have. prefer_keywords = SOFT ordering (colours, sizes, 'rare', materials the client merely likes). Never make a wish a hard filter if it would leave few results.
+- Exclude item TYPES with exclude_name_keywords (name/description only), e.g. a jewelry search must exclude bag words so bags that mention 'ring' (key ring, D-ring) do not leak in. Use exclude_keywords (full text) only for words in condition notes/accessories, and NOT to exclude by condition unless the brief asks (e.g. if missing rhinestones are acceptable, do not exclude 'missing').
+- Grades: scale 1=SA with tags, 2=SA, 3=S, 4=A, 5=AB, 6=B+, 7=B, 8=B-, 9=BC, 10=C. Use `grades` for exact lists, or best/worst_rank_allowed for ranges. Prices in the stated currency with price_currency (empty = the app's current currency); sourcing/buying budgets -> price_basis=buying.
+- prompt_text: the same plan as a readable English prompt, one line per search, in the style 'LINE: brand/model, grade range, price cap, how many, preferences, exclusions'. The user will read and edit it, and the app will be able to re-run it, so keep it faithful to `searches`.
+- assumptions: short bullet strings in the UI language listing what you assumed or could not know (e.g. a missing budget, a brand not in the catalog).
+- probe_keywords: up to 6 words you are unsure exist in this catalog's naming (e.g. a model or material); the app will report their counts/samples back to you in a second round. Empty when sure or when you are already revising.
+- reply: one short sentence in the UI language.
+When you receive `feedback` (dry-run results for your draft, plus probe results), REVISE: fix lines with 0/very few matches (broaden or correct a keyword, drop a wrong hard filter), fix leaks seen in the removed/kept samples, keep what worked. Do not add commentary beyond the tool call."""
+PLAN_TOOL = {
+    "name": "write_plan",
+    "description": "Devuelve el plan de busqueda detallado",
+    "input_schema": {"type": "object", "properties": {
+        "searches": {"type": "array", "items": {"type": "object", "properties": dict(_SEARCH_PROPS, count={"type": "integer", "minimum": 1})}},
+        "prompt_text": {"type": "string"}, "assumptions": {"type": "array", "items": {"type": "string"}},
+        "probe_keywords": {"type": "array", "items": {"type": "string"}, "maxItems": 6}, "reply": {"type": "string"}},
+        "required": ["searches", "prompt_text", "assumptions", "reply"]},
+}
+
 
 LANG_NAMES = {"es": "espanol", "en": "English", "fr": "francais"}
 
@@ -230,7 +253,7 @@ class Handler(http.server.SimpleHTTPRequestHandler):
 
     def do_POST(self):
         path = urllib.parse.urlparse(self.path).path
-        if path not in ("/ai", "/ai-key", "/describe") or not self._local_only():
+        if path not in ("/ai", "/ai-key", "/describe", "/plan") or not self._local_only():
             return self._err(403, self.m("Prohibido", "Forbidden", "Interdit"))
         try:
             data = json.loads(self.rfile.read(int(self.headers.get("Content-Length") or 0)) or b"{}")
@@ -247,6 +270,8 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             return self._json({"configured": bool(api_key())})
         if path == "/describe":
             return self._describe(data)
+        if path == "/plan":
+            return self._plan(data)
         return self._ai(data)
 
     def _post_api(self, payload, timeout=120):
@@ -364,6 +389,27 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         self.send_header("Content-Length", str(len(body)))
         self.end_headers()
         self.wfile.write(body)
+
+    def _plan(self, d):
+        if not api_key():
+            return self._err(400, self.m("Falta la clave de API", "Missing API key", "Clé API manquante"))
+        user = "BRIEF:\n" + str(d.get("brief", ""))[:6000] + "\n\nCATALOG SUMMARY:\n" + str(d.get("context", ""))[:30000]
+        msgs = [{"role": "user", "content": user}]
+        if d.get("draft"):
+            msgs += [{"role": "assistant", "content": [{"type": "tool_use", "id": "toolu_draft", "name": "write_plan", "input": d["draft"]}]},
+                     {"role": "user", "content": [{"type": "tool_result", "tool_use_id": "toolu_draft", "content": "Dry-run feedback from the app:\n" + str(d.get("feedback", ""))[:20000] + "\n\nRevise the plan now (probe_keywords empty)."}]}]
+        payload = {"model": PLAN_MODEL, "max_tokens": 8000,
+                   "system": PLAN_SYSTEM + f"\n\nUI language: {LANG_NAMES.get(str(d.get('lang', 'es'))[:2], 'espanol')} (assumptions and reply). prompt_text and keywords in English.",
+                   "tools": [PLAN_TOOL], "tool_choice": {"type": "tool", "name": "write_plan"}, "messages": msgs}
+        try:
+            out = self._tool_input(self._post_api(payload, timeout=120))
+        except urllib.error.HTTPError as e:
+            return self._err(502, self.m("La API respondio", "The API responded", "L’API a répondu") + f" {e.code}: {e.read().decode('utf-8', 'replace')[:300]}")
+        except Exception as e:  # noqa: BLE001
+            return self._err(502, self.m("No se pudo contactar con la API", "Could not reach the API", "Impossible de joindre l’API") + f": {e}")
+        if not out:
+            return self._err(502, self.m("La IA no devolvio un plan", "The AI returned no plan", "L’IA n’a renvoyé aucun plan"))
+        return self._json(out)
 
     def _ai(self, d):
         key = api_key()

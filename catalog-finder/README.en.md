@@ -14,6 +14,9 @@ Local app to search your items in a Google Sheets/CSV, see their photos and down
 - **With AI**: *Activate AI…* and paste an Anthropic API key (stored only in the `.api_key` file on your computer; or use the `ANTHROPIC_API_KEY` variable). It understands free sentences and long multi-line requests (ready-made templates in `prompts/`), and answers in your language.
 - **Basic mode (no key)**: understands price ranges, brands, grades (`only BC`, `AB to B-`, `A or better`), quantity (`pick 30`), `varied`, `cheap`, and common words in the three languages.
 
+## ✨ Create prompt with AI
+Type a short idea ("fashion jewelry Dior, B+ or better, no bags") and click *✨ Create prompt with AI*. The app sends a summary of YOUR catalog (brands, grades, prices, frequent words, ~150 sample names); the AI drafts a line-by-line plan, the app tests it against your data (matches, leaks, brands that don't exist) and the AI revises it. The detailed prompt lands in the box for you to edit; *Search* runs it without another AI call while the text is unchanged. It costs 2 calls to `claude-sonnet-5-5` (change with `CATALOG_PLAN_MODEL`). Needs a key.
+
 ## Grade filter
 One button per grade in your sheet, with counts. Pick one or several for exact grades (only BC, or AB + B+ + B). The *shortcut "or better"* selector ticks everything from SA down to the grade you choose.
 
