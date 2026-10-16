@@ -156,6 +156,7 @@ Reglas:
 - Descartar por tipo de articulo (p.ej. 'sin bolsos'): usa exclude_name_keywords (solo nombre/descripcion). Usa exclude_keywords solo para defectos o palabras en notas/condicion. NO excluyas por condicion salvo que el usuario lo pida (p.ej. si dice que acepta piezas con strass faltantes, no excluyas 'missing').
 - Si el usuario da rangos en una moneda (EUR...), rellena price_currency; si habla de 'precio de compra/buying price/sourcing', usa price_basis=buying. 'Del grado AB al B-' => best_rank_allowed=5, worst_rank_allowed=8.
 - Antiguedad (fecha de alta / Added date): 'mas de 6 meses en stock', 'comprado hace mas de 2 anos' -> min_age_days; 'novedades del ultimo mes' -> max_age_days; 'los mas antiguos primero' -> sort=added_asc. Buyer (quien lo compro): usa buyers con nombres exactos de la lista Buyers.
+- Si el mensaje dice que se pegaron codigos de articulos, la app YA limita la busqueda a esos articulos: aplica solo el resto de la peticion (seleccionar N, variar marcas, estado...) y no digas que no puedes filtrar por codigos.
 - reply: una frase corta, en el idioma indicado al final, diciendo que has entendido y aplicado. No inventes nada que el usuario no pidio."""
 _SEARCH_PROPS = {
     "label": {"type": "string", "description": "Nombre corto de la linea, p.ej. 'Hermes - Kelly'"},
@@ -242,7 +243,7 @@ def api_key():
     if not k and os.path.exists(KEY_FILE):
         k = open(KEY_FILE).read().strip()
     return k
-APP_VERSION = "2026-10-16.6"  # igual que APP_VERSION en index.html: si no coinciden, la app avisa de que el servidor es viejo
+APP_VERSION = "2026-10-16.7"  # igual que APP_VERSION en index.html: si no coinciden, la app avisa de que el servidor es viejo
 PORT = int(sys.argv[1]) if len(sys.argv) > 1 else 8765
 RATE_SOURCES = (
     ("https://open.er-api.com/v6/latest/USD", lambda d: (d["rates"], d.get("time_last_update_utc", ""))),

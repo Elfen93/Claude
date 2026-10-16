@@ -561,7 +561,7 @@ function ingest(input) {
     if (map.priceInit && !(saved.curInit && headers.includes(saved.curInit))) map.curInit = near(map.priceInit);
     if (map.owner && map.owner === map.entity) map.owner = '';
   }
-  lastCatalog = null; buildMapping(); prep();
+  lastCatalog = null; pasteScope = null; buildMapping(); prep();
   { const have = new Set(rows.map(code)); [...selected].forEach(c => { if (!have.has(c)) selected.delete(c); }); }
   $('s2').style.display = $('s3').style.display = $('bar').style.display = '';
   loadedN = rows.length; setLoaded();
@@ -682,6 +682,7 @@ function resetFilters(redraw = true, keepCatalog = false) {
   if (redraw) refresh(false);
 }
 function matches(r, skip, f = F) {
+  if (pasteScope && !pasteScope.has(code(r))) return false;
   if ((hideSold || f.hideStatus) && sold[code(r)]) return false;
   { const cid = f.client !== undefined ? f.client : (noRepeat ? activeProf : ''); if (cid && offers[code(r)]?.[cid]) return false; }
   if (f.catalog && !f.catalog.has(r)) return false;
@@ -731,6 +732,7 @@ function pillsAndTokens() {
   pill('orig', 'Origen', orig);
   const opts = [F.onlyImg && tl('solo con fotos'), hideSold && tl('sin vendidos'), noRepeat && prof()?.id && tl('sin repetir')].filter(Boolean);
   const op = document.querySelector('#fbar .pill[data-pop="opt"]'); op.textContent = '⚙ ' + tl('Opciones') + (opts.length ? ' · ' + opts.length : '');
+  if (pasteScope) add(tl('📋 {n} códigos pegados', { n: pasteScope.size }), () => { pasteScope = null; });
   if (F.q) add('“' + F.q + '”', () => { F.q = ''; $('q').value = ''; });
   if (F.onlyImg) add(tl('solo con fotos'), () => { F.onlyImg = false; $('onlyImg').checked = false; });
   $('tokens').innerHTML = ''; toks.forEach(([l, off]) => { const b = document.createElement('button'); b.className = 'tok'; b.textContent = l + ' ✕'; b.onclick = () => { off(); refresh(false); }; $('tokens').append(b); });
@@ -1087,7 +1089,7 @@ async function runSearches(list, said) {
   }
   F.catalog = lastCatalog = new Set(picked); selected.clear(); picked.forEach(r => selected.add(code(r))); saveSel();
   refresh(false); syncChecks();
-  rep.textContent = (said ? said + '\n' : '') + tl('Catálogo montado en {s} s: {n} artículos, todos seleccionados.', { s: Math.round((Date.now() - t0) / 1000), n: picked.length }) + '\n' + report.join('\n');
+  rep.textContent = scopeNote() + (said ? said + '\n' : '') + tl('Catálogo montado en {s} s: {n} artículos, todos seleccionados.', { s: Math.round((Date.now() - t0) / 1000), n: picked.length }) + '\n' + report.join('\n');
 }
 async function applySpec(s, said) {
   if (s.searches?.length) return runSearches(s.searches, said);
@@ -1100,19 +1102,30 @@ async function applySpec(s, said) {
   canonList(s.channels, 'channel').forEach(b => F.channels.add(b)); canonList(s.owners, 'owner').forEach(b => F.owners.add(b)); F.ageMin = s.min_age_days ?? null; F.ageMax = s.max_age_days ?? null;
   F.sort = { price_asc: 'pa', price_desc: 'pd', brand: 'brand', added_asc: 'old', added_desc: 'new', buyer: 'buyer', discount_desc: 'disc' }[s.sort] || ''; $('sort').value = F.sort;
   refresh(false);
-  const rep = $('reply'); rep.style.display = ''; rep.textContent = (said ? said + ' — ' : '') + tl('{d} → {n} resultados', { d: describe(s), n: view.length });
+  const rep = $('reply'); rep.style.display = ''; rep.textContent = scopeNote() + (said ? said + ' — ' : '') + tl('{d} → {n} resultados', { d: describe(s), n: view.length });
   if (s.select_count > 0) { const n = await pickFirst(s.select_count, !!s.diversify_brands, true); rep.textContent += tl(' · {n} seleccionados', { n }); }
 }
 let aiOn = false, lastPlan = '';
 const planKey = t => 'plan:' + [...strip(t)].reduce((h, c) => (Math.imul(h, 31) + c.charCodeAt(0)) | 0, 7);
 
+let pasteScope = null, pasteMissing = 0; // códigos pegados en la petición: la búsqueda se hace solo entre esos artículos
+function pastedCodes(text) {
+  const have = new Set(rows.map(code)), toks = [...new Set((text.match(/\b[A-Z]{1,3}\d{3,}\b/gi) || []).map(s => s.toUpperCase()))];
+  const found = toks.filter(c => have.has(c)); if (found.length < 2) return null;
+  const rest = text.replace(/\b[A-Z]{1,3}\d{3,}\b/gi, ' ').split(/\n/).map(l => l.replace(/^[\s,;|\t-]+|[\s,;|\t-]+$/g, '').replace(/\s{2,}/g, ' ')).filter(l => /[a-zà-ÿ]/i.test(l)).join('\n');
+  return { found, missing: toks.length - found.length, rest };
+}
+const scopeNote = () => pasteScope ? tl('📋 Solo entre los {n} códigos pegados', { n: pasteScope.size }) + (pasteMissing ? tl(' ({m} no están en el catálogo cargado)', { m: pasteMissing }) : '') + '\n' : '';
 async function askGo() {
-  const text = $('ask').value.trim(); if (!text || !rows.length) return;
+  let text = $('ask').value.trim(); if (!text || !rows.length) return;
+  const raw = text, pc = pastedCodes(text);
+  pasteScope = pc ? new Set(pc.found) : null; pasteMissing = pc ? pc.missing : 0;
+  if (pc) text = pc.rest || tl('elige los mejores, variando marcas');
   const multi = text.split(/\n/).filter(l => l.trim()).length >= 3;
   if (multi && !aiOn) { const r = $('reply'); r.style.display = ''; r.textContent = tl('Esta petición tiene varias líneas y solo la IA sabe montarla. Pulsa "Activar IA…" y pega tu clave.'); return; }
   $('askGo').disabled = true; $('askGo').textContent = tl('Pensando…');
   try {
-    const pk = planKey(text), saved = store.get(pk, '');
+    const pk = planKey(raw), saved = store.get(pk, '');
     if (saved) { lastPlan = pk; $('redo').style.display = ''; const sp = JSON.parse(saved); return await applySpec(sp, (sp.reply || '') + tl(' (plantilla guardada, sin IA)')); }
     $('redo').style.display = 'none'; lastPlan = '';
     if (aiOn) {
@@ -1120,7 +1133,7 @@ async function askGo() {
         const cnt = new Map(); rows.forEach(r => { const b = get(r, 'brand'); if (b) cnt.set(b, (cnt.get(b) || 0) + 1); });
         const ents = [...new Set(rows.map(r => get(r, 'entity')).filter(Boolean))];
         const r = await fetch('/ai', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Catalog-Finder': '1' },
-          body: JSON.stringify({ lang, query: text, brands: [...cnt].sort((a, b) => b[1] - a[1]).slice(0, 400).map(([b, n]) => `${b} (${n})`), entities: ents, total: rows.length,
+          body: JSON.stringify({ lang, query: pc ? text + `\n\n(${pc.found.length} item codes were pasted: the app already limits the search to those items. Do not mention codes; just apply the rest of the request.)` : text, brands: [...cnt].sort((a, b) => b[1] - a[1]).slice(0, 400).map(([b, n]) => `${b} (${n})`), entities: ents, total: rows.length,
             buyers: [...new Set(rows.map(r => get(r, 'buyer')).filter(Boolean))].slice(0, 200), hasAdded: !!map.added,
             types: [...new Set(rows.map(typeOf).filter(Boolean))].slice(0, 150), channels: [...new Set(rows.map(r => get(r, 'channel')).filter(Boolean))], owners: [...new Set(rows.map(r => get(r, 'owner')).filter(Boolean))].slice(0, 100), hasInit: !!map.priceInit, today: new Date().toISOString().slice(0, 10) }) });
         if (!r.ok) throw new Error(await r.text());
@@ -1219,7 +1232,7 @@ function renderAiState() {
   };
   if ($('keyOff')) $('keyOff').onclick = async () => { await fetch('/ai-key', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Catalog-Finder': '1' }, body: JSON.stringify({ key: '' }) }); aiStatus(); };
 }
-const APP_VERSION = '2026-10-16.6'; // igual que APP_VERSION en server.py
+const APP_VERSION = '2026-10-16.7'; // igual que APP_VERSION en server.py
 let serverOld = false;
 const oldServerMsg = () => tl('⚠ El programa que está en marcha (la ventana negra) es una versión antigua. Cierra TODAS las ventanas negras de Catalog Finder y vuelve a abrirlo; luego recarga esta página.');
 async function aiStatus() {

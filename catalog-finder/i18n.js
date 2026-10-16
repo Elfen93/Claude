@@ -541,4 +541,8 @@ window.I18N = {
   '{a} con fotos entre los {b} primeros · pulsa «Mostrar más» para seguir': { en: '{a} with photos among the first {b} · click “Show more” to continue', fr: '{a} avec photos parmi les {b} premiers · cliquez sur « Afficher plus » pour continuer' },
   'buscar marca…': { en: 'search brand…', fr: 'chercher une marque…' },
   'buscar: código, palabra… (ej. black, tote, lizard)': { en: 'search: code, word… (e.g. black, tote, lizard)', fr: 'rechercher : code, mot… (ex. black, tote, lizard)' },
+  '📋 Solo entre los {n} códigos pegados': { en: '📋 Only among the {n} pasted codes', fr: '📋 Uniquement parmi les {n} codes collés' },
+  ' ({m} no están en el catálogo cargado)': { en: ' ({m} are not in the loaded catalog)', fr: ' ({m} ne sont pas dans le catalogue chargé)' },
+  'elige los mejores, variando marcas': { en: 'pick the best, varying brands', fr: 'choisis les meilleurs, en variant les marques' },
+  '📋 {n} códigos pegados': { en: '📋 {n} pasted codes', fr: '📋 {n} codes collés' },
 };
