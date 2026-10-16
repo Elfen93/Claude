@@ -7,7 +7,7 @@ Uso:  python3 server.py [puerto]
 Sirve index.html y un proxy /fetch?url=... para descargar el CSV de Google Sheets
 (el navegador no puede hacerlo directamente por CORS).
 """
-import concurrent.futures, hashlib, http.client, http.server, json, os, re, ssl, sys, threading, time, urllib.error, urllib.parse, urllib.request, webbrowser
+import concurrent.futures, io, hashlib, http.client, http.server, json, os, re, ssl, sys, threading, time, urllib.error, urllib.parse, urllib.request, webbrowser
 
 ROOT = os.path.dirname(os.path.abspath(__file__))
 KEY_FILE = os.path.join(ROOT, ".api_key")
@@ -275,10 +275,29 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         return self._ai(data)
 
     def _post_api(self, payload, timeout=120):
-        req = urllib.request.Request(API_BASE + "/v1/messages", data=json.dumps(payload).encode(),
-                                     headers={"x-api-key": api_key(), "anthropic-version": "2023-06-01", "content-type": "application/json"})
-        with urllib.request.urlopen(req, timeout=timeout, context=_ssl_ctx) as r:
-            return json.load(r)
+        def call(p):
+            req = urllib.request.Request(API_BASE + "/v1/messages", data=json.dumps(p).encode(),
+                                         headers={"x-api-key": api_key(), "anthropic-version": "2023-06-01", "content-type": "application/json"})
+            with urllib.request.urlopen(req, timeout=timeout, context=_ssl_ctx) as r:
+                return json.load(r)
+        try:
+            return call(payload)
+        except urllib.error.HTTPError as e:
+            body = e.read().decode("utf-8", "replace")
+            if e.code != 400 or "tool_choice" not in body or "tool_choice" not in payload:
+                raise urllib.error.HTTPError(e.url, e.code, e.msg, e.headers, io.BytesIO(body.encode()))
+        # algunos modelos piensan por defecto y no admiten tool_choice forzado: 1) sin pensar, 2) tool_choice automatico
+        try:
+            return call(dict(payload, thinking={"type": "disabled"}))
+        except urllib.error.HTTPError as e:
+            body = e.read().decode("utf-8", "replace")
+            if e.code != 400 or "tool_choice" not in body:
+                raise urllib.error.HTTPError(e.url, e.code, e.msg, e.headers, io.BytesIO(body.encode()))
+        p = {k: v for k, v in payload.items() if k != "temperature"}
+        name = payload["tool_choice"].get("name")
+        p["tool_choice"] = {"type": "auto"}
+        p["system"] = (p.get("system") or "") + f"\n\nYou MUST answer by calling the tool {name}; do not write plain text."
+        return call(p)
 
     @staticmethod
     def _tool_input(resp):
