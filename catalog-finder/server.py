@@ -274,29 +274,40 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             return self._plan(data)
         return self._ai(data)
 
+    _NO_FORCE = set()  # modelos que rechazan tool_choice forzado (se recuerda para no repetir la llamada fallida)
+
     def _post_api(self, payload, timeout=120):
         def call(p):
             req = urllib.request.Request(API_BASE + "/v1/messages", data=json.dumps(p).encode(),
                                          headers={"x-api-key": api_key(), "anthropic-version": "2023-06-01", "content-type": "application/json"})
             with urllib.request.urlopen(req, timeout=timeout, context=_ssl_ctx) as r:
                 return json.load(r)
-        try:
+
+        def fail(e, body):
+            return urllib.error.HTTPError(e.url, e.code, e.msg, e.headers, io.BytesIO(body.encode()))
+
+        forced = payload.get("tool_choice", {}).get("type") in ("tool", "any")
+        if forced and payload.get("model") not in self._NO_FORCE:
+            try:
+                return call(payload)
+            except urllib.error.HTTPError as e:
+                body = e.read().decode("utf-8", "replace")
+                if e.code != 400 or "tool_choice" not in body:
+                    raise fail(e, body)
+                self._NO_FORCE.add(payload.get("model"))
+        if not forced:
             return call(payload)
-        except urllib.error.HTTPError as e:
-            body = e.read().decode("utf-8", "replace")
-            if e.code != 400 or "tool_choice" not in body or "tool_choice" not in payload:
-                raise urllib.error.HTTPError(e.url, e.code, e.msg, e.headers, io.BytesIO(body.encode()))
-        # algunos modelos piensan por defecto y no admiten tool_choice forzado: 1) sin pensar, 2) tool_choice automatico
-        try:
-            return call(dict(payload, thinking={"type": "disabled"}))
-        except urllib.error.HTTPError as e:
-            body = e.read().decode("utf-8", "replace")
-            if e.code != 400 or "tool_choice" not in body:
-                raise urllib.error.HTTPError(e.url, e.code, e.msg, e.headers, io.BytesIO(body.encode()))
+        # modelos nuevos (Sonnet 5.5...) no admiten tool_choice forzado ni temperature: tool_choice automatico + instruccion
         p = {k: v for k, v in payload.items() if k != "temperature"}
         name = payload["tool_choice"].get("name")
         p["tool_choice"] = {"type": "auto"}
-        p["system"] = (p.get("system") or "") + f"\n\nYou MUST answer by calling the tool {name}; do not write plain text."
+        p["system"] = (p.get("system") or "") + f"\n\nYou MUST answer by calling the tool {name} exactly once; do not write plain text."
+        try:
+            return call(dict(p, thinking={"type": "between_tools"}))  # sin razonamiento largo = mas barato y rapido
+        except urllib.error.HTTPError as e:
+            body = e.read().decode("utf-8", "replace")
+            if e.code != 400 or "thinking" not in body:
+                raise fail(e, body)
         return call(p)
 
     @staticmethod
