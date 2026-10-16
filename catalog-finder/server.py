@@ -10,6 +10,8 @@ Sirve index.html y un proxy /fetch?url=... para descargar el CSV de Google Sheet
 import concurrent.futures, io, hashlib, http.client, http.server, json, os, re, socket, ssl, sys, threading, time, urllib.error, urllib.parse, urllib.request, webbrowser
 
 ROOT = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, ROOT)
+import db  # noqa: E402  base de datos local (catalog.db)
 KEY_FILE = os.path.join(ROOT, ".api_key")
 CACHE_FILE = os.path.join(ROOT, ".photo_cache.json")
 DESC_CACHE_FILE = os.path.join(ROOT, ".desc_cache.json")
@@ -231,7 +233,7 @@ def api_key():
     if not k and os.path.exists(KEY_FILE):
         k = open(KEY_FILE).read().strip()
     return k
-APP_VERSION = "2026-10-16.3"  # igual que APP_VERSION en index.html: si no coinciden, la app avisa de que el servidor es viejo
+APP_VERSION = "2026-10-16.4"  # igual que APP_VERSION en index.html: si no coinciden, la app avisa de que el servidor es viejo
 PORT = int(sys.argv[1]) if len(sys.argv) > 1 else 8765
 RATE_SOURCES = (
     ("https://open.er-api.com/v6/latest/USD", lambda d: (d["rates"], d.get("time_last_update_utc", ""))),
@@ -254,12 +256,14 @@ class Handler(http.server.SimpleHTTPRequestHandler):
 
     def do_POST(self):
         path = urllib.parse.urlparse(self.path).path
-        if path not in ("/ai", "/ai-key", "/describe", "/plan", "/shutdown") or not self._local_only():
+        if (path not in ("/ai", "/ai-key", "/describe", "/plan", "/shutdown") and not path.startswith("/api/")) or not self._local_only():
             return self._err(403, self.m("Prohibido", "Forbidden", "Interdit"))
         try:
             data = json.loads(self.rfile.read(int(self.headers.get("Content-Length") or 0)) or b"{}")
         except ValueError:
             return self._err(400, self.m("JSON invalido", "Invalid JSON", "JSON invalide"))
+        if path.startswith("/api/"):
+            return self._api_post(path[5:], data)
         if path == "/ai-key":
             key = str(data.get("key", "")).strip()
             if key:
@@ -483,6 +487,46 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                 return self._json(block["input"])
         return self._err(502, self.m("La IA no devolvio filtros", "The AI returned no filters", "L’IA n’a renvoyé aucun filtre"))
 
+    # ---------- base de datos local ----------
+    def _api_get(self, p, q):
+        if p == "kv":
+            return self._json(db.kv_all())
+        if p == "status":
+            return self._json(db.status_all())
+        if p == "loads":
+            return self._json(db.loads(int(q.get("limit", 20))))
+        if p == "load":
+            return self._json(db.load_detail(int(q.get("id", 0))))
+        if p == "next-number":
+            return self._json({"number": db.peek_number(json.loads(q.get("inv", "{}")))})
+        if p in db.KINDS:
+            return self._json(db.docs(p))
+        return self._err(404, "Not found")
+
+    def _api_post(self, p, d):
+        try:
+            if p == "kv":
+                db.kv_set(d.get("items") or {})
+                return self._json({"ok": True})
+            if p == "snapshot":
+                return self._json(db.snapshot(d.get("source"), d.get("items") or []))
+            if p == "lookup":
+                return self._json(db.lookup(d.get("codes") or []))
+            if p == "invoices/save":
+                did, number = db.save_invoice(d)
+                return self._json({"id": did, "number": number})
+            if p == "entities/import":
+                return self._json({"n": db.import_entities(d.get("entities") or [])})
+            kind, _, act = p.partition("/")
+            if kind in db.KINDS and act == "save":
+                return self._json({"id": db.save(kind, d)})
+            if kind in db.KINDS and act == "delete":
+                db.delete(kind, int(d.get("id")))
+                return self._json({"ok": True})
+        except Exception as e:  # noqa: BLE001
+            return self._err(400, f"{type(e).__name__}: {e}")
+        return self._err(404, "Not found")
+
     def end_headers(self):
         self.send_header("Cache-Control", "no-store")  # que el navegador nunca sirva una version vieja
         super().end_headers()
@@ -495,6 +539,12 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             return self._json({"configured": bool(api_key()), "version": APP_VERSION})
         if u.path == "/rates":
             return self._rates()
+        if u.path.startswith("/api/"):
+            if not self._local_only():
+                return self._err(403, self.m("Prohibido", "Forbidden", "Interdit"))
+            return self._api_get(u.path[5:], {k: v[0] for k, v in urllib.parse.parse_qs(u.query).items()})
+        if os.path.basename(u.path).startswith(".") or u.path.endswith((".db", ".db-wal", ".db-shm", ".py", ".json")) and not u.path.startswith("/vendor/"):
+            return self._err(404, "Not found")  # nunca servir la base de datos, la clave ni el codigo
         if u.path != "/fetch":
             return super().do_GET()
         target = urllib.parse.parse_qs(u.query).get("url", [""])[0]
@@ -584,6 +634,7 @@ def start_server():
 
 if __name__ == "__main__":
     srv = start_server()
+    db.init()
     url = f"http://127.0.0.1:{PORT}/"
     print({"es": f"Catalog Finder en {url}  (Ctrl+C para salir)", "en": f"Catalog Finder at {url}  (Ctrl+C to quit)", "fr": f"Catalog Finder sur {url}  (Ctrl+C pour quitter)"}[term_lang()])
     try:

@@ -12,6 +12,20 @@ Lors d’une mise à jour : la nouvelle version ferme d’elle-même l’ancienn
 2. **Que cherchez-vous ?** Écrivez-le comme à une personne (français, anglais ou espagnol) : *« sacs noirs à moins de 500 euros, choisis 5 variés »*. Ou filtrez à la main : tranche de prix, état, marques, entity, texte, ordre, uniquement avec photos.
 3. **Choisissez** : cochez les cartes, *Sélectionner tous les résultats* ou *les premiers N*. Puis **Télécharger Excel (.xlsx)**.
 
+## 🗂 Back office : factures, clients et historique
+Tout est stocké dans **`catalog.db`**, un seul fichier dans le dossier (pas dans git). Pour sauvegarder ou changer d’ordinateur, copiez ce fichier. À la première ouverture de cette version, les clients, marges et modèles enregistrés dans votre navigateur y sont copiés automatiquement.
+- **Historique :** à chaque chargement de la feuille, l’app la compare au chargement précédent et affiche « 🆕 nouveaux · 📉 baisses de prix · disparus » à côté du titre. Cliquez pour voir ces articles. L’onglet *Nouveautés* garde l’historique complet.
+- **Back office** (bouton 🗂) : onglets Factures, Clients, Tiers, Entités et Nouveautés.
+- **Entités** (UK, JP, HK) : données de société, immatriculations, banque, mentions légales, logo, devise, échéance et numérotation. Déposez votre `entidades.json` dans le dossier et il est importé au démarrage, ou utilisez *Importer*.
+- **Clients :** société, contact, e-mail, téléphone, adresse, TVA/n° de société, tier, entité habituelle et référence de numérotation (ALOPRINT 0003).
+- **Tiers :** remise fixe (toute devise, convertie) plus un % en plus, dans l’ordre choisi. Exemple : Diamond = 30 USD + 10 %.
+- **Créer une facture :**
+  - Depuis la recherche, sélectionnez des articles puis *🧾 Créer une facture* ; les prix incluent la marge du client choisi.
+  - Ou collez une liste CTag + prix, ou importez un Excel/CSV.
+  - HK (enchère LBA) : prix d’adjudication en HKD → yens avec le taux de change, 5 % de commission par lot ; les lignes sans prix sortent en « Passed ».
+- **Enregistrer** attribue le numéro : par client pour UK, séquentiel pour JP, date et heure pour HK. Les articles sont marqués **vendus** ; la recherche les masque (*masquer les vendus*) ou les signale.
+- **PDF :** *🖨 PDF / imprimer* ouvre l’impression du navigateur ; choisissez « Enregistrer en PDF ». L’aperçu à côté de l’éditeur correspond au PDF.
+
 ## Assistant
 - **Avec l’IA** : *Activer l’IA…* et collez une clé API Anthropic (stockée uniquement dans le fichier `.api_key` sur votre ordinateur ; ou la variable `ANTHROPIC_API_KEY`). Elle comprend des phrases libres et de longues demandes multi-lignes (modèles prêts dans `prompts/`), et répond dans votre langue.
 - **Mode basique (sans clé)** : comprend les tranches de prix, marques, états (`seulement BC`, `AB à B-`, `A ou mieux`), quantité (`choisis 30`), `varié`, `pas cher` et les mots courants dans les trois langues.

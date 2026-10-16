@@ -12,6 +12,20 @@ When updating: the new version closes any older copy still running by itself. If
 2. **What are you looking for?** Type it like you would tell a person (English, French or Spanish): *"black wallets under 300 euros, pick 5 varied"*. Or filter by hand: price range, grade, brands, entity, text, order, only with photos.
 3. **Choose**: tick cards, *Select all results*, or *the first N*. Then **Download Excel (.xlsx)**.
 
+## 🗂 Back office: invoices, clients and history
+Everything is stored in **`catalog.db`**, a single file in the folder (not in git). To back up or move to another computer, copy that file. The first time you open this version, the clients, margins and templates stored in your browser are copied into it automatically.
+- **History:** every time you load the sheet, the app compares it with the previous load and shows "🆕 new · 📉 price drops · gone" next to the title. Click to see those items. The *What's new* tab keeps the full history.
+- **Back office** (🗂 button): Invoices, Clients, Tiers, Entities and What's new tabs.
+- **Entities** (UK, JP, HK): company details, registrations, bank, legal texts, logo, currency, due days and numbering. Put your `entidades.json` in the folder and it is imported on start, or use *Import*.
+- **Clients:** company, contact, email, phone, address, VAT/Company No, tier, usual entity and numbering reference (ALOPRINT 0003).
+- **Tiers:** fixed discount (any currency, converted) plus an extra %, in the order you choose. Example: Diamond = 30 USD + 10%.
+- **Creating an invoice:**
+  - From the search page, select items and click *🧾 Create invoice*; prices include the chosen client's margin.
+  - Or paste a CTag + price list, or import an Excel/CSV.
+  - HK (LBA auction): hammer price in HKD → yen with the exchange rate, 5% commission per lot; lines without a price print as "Passed".
+- **Saving** assigns the number: per client for UK, sequential for JP, date and time for HK. The items are marked **sold**; the search page hides them (*hide sold*) or labels them.
+- **PDF:** *🖨 PDF / print* opens the browser's print dialog; choose "Save as PDF". The preview next to the editor matches the PDF.
+
 ## Assistant
 - **With AI**: *Activate AI…* and paste an Anthropic API key (stored only in the `.api_key` file on your computer; or use the `ANTHROPIC_API_KEY` variable). It understands free sentences and long multi-line requests (ready-made templates in `prompts/`), and answers in your language.
 - **Basic mode (no key)**: understands price ranges, brands, grades (`only BC`, `AB to B-`, `A or better`), quantity (`pick 30`), `varied`, `cheap`, and common words in the three languages.

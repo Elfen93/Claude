@@ -78,12 +78,13 @@
   <label>Moneda <select id="outCurSel"></select></label>
   <label>Cliente <select id="profSel" title="Cada cliente tiene su margen, tarifa fija y moneda"></select></label>
   <button id="profEdit" title="Editar el cliente elegido o crear uno nuevo">✎ Margen</button>
+  <a href="backoffice.html" target="_blank" class="chip" style="text-decoration:none">🗂 Back office</a>
 </div>
 
 <div class="wrap">
   <!-- 1 -->
   <div class="step" id="s1">
-    <h2><span class="num">1</span> Carga tu hoja <span id="loaded" class="mute"></span></h2>
+    <h2><span class="num">1</span> Carga tu hoja <span id="loaded" class="mute"></span> <span id="news" class="mute" style="font-weight:normal"></span></h2>
     <div id="loadBox">
       <div class="row">
         <input id="url" type="text" placeholder="Pega aquí el enlace CSV de Google Sheets (Archivo → Compartir → Publicar en la web → CSV)">
@@ -138,7 +139,8 @@
       <div class="row"><span class="lbl">Texto</span>
         <input id="q" type="text" placeholder="código, palabra… (ej. black, tote, lizard)" style="min-width:260px">
         <select id="sort"><option value="">Orden original</option><option value="brand">Marca</option><option value="pa">Precio ↑</option><option value="pd">Precio ↓</option></select>
-        <label><input type="checkbox" id="onlyImg"> solo con fotos</label></div>
+        <label><input type="checkbox" id="onlyImg"> solo con fotos</label>
+        <label title="Artículos que ya están en una invoice guardada"><input type="checkbox" id="hideSold"> ocultar vendidos</label></div>
     </div>
   </div>
 
@@ -164,6 +166,7 @@
   <span class="sp"><b id="selN">0</b> seleccionados<span id="selView" class="mute"></span> · Buy Now <b id="bnMode"></b> · <button id="seeSel" title="Muestra solo los artículos seleccionados para revisarlos">ver solo seleccionados</button></span>
   <label title="Parte los artículos descargados en grupos">Dividir por <select id="splitBy"><option value="">— (una sola hoja)</option><option value="entity">Entity</option><option value="brand">Marca</option><option value="grade">Estado</option><option value="price">Rango de precio</option></select></label>
   <label id="splitOutL" style="display:none"><select id="splitOut"><option value="tabs">en pestañas (1 archivo)</option><option value="files">en archivos separados</option></select></label>
+  <button id="toInvoice" title="Abre el back office con los artículos seleccionados en una invoice nueva">🧾 Crear invoice</button>
   <button id="exportCsv">CSV</button>
   <button id="exportX" class="primary">Descargar Excel (.xlsx)</button>
 </div>
@@ -196,10 +199,23 @@ const FIELDS = {
   entity: { label:'Entity',        alias:['entity','entidad','entite','owner','seller','vendor','company'] },
 };
 const $ = id => document.getElementById(id);
-const store = {
-  get(k, d) { try { return localStorage.getItem(k) ?? d; } catch { return d; } },
-  set(k, v) { try { localStorage.setItem(k, v); } catch {} },
-};
+const API_H = { 'Content-Type': 'application/json', 'X-Catalog-Finder': '1' };
+const store = (() => { // ajustes guardados en catalog.db (en la carpeta de la app); el navegador solo guarda una copia
+  let srv = null; const pending = {}; let timer = 0;
+  try { const x = new XMLHttpRequest(); x.open('GET', '/api/kv', false); x.setRequestHeader('X-Catalog-Finder', '1'); x.send(); if (x.status === 200) srv = JSON.parse(x.responseText); } catch {}
+  const flush = keepalive => { clearTimeout(timer); timer = 0; const items = { ...pending }; for (const k in pending) delete pending[k]; if (!Object.keys(items).length) return Promise.resolve();
+    return fetch('/api/kv', { method: 'POST', headers: API_H, body: JSON.stringify({ items }), keepalive }).catch(() => {}); };
+  if (srv && !srv._migrated) { // primera vez con base de datos: se copian los ajustes que había en este navegador
+    try { for (let i = 0; i < localStorage.length; i++) { const k = localStorage.key(i); if (!(k in srv)) srv[k] = pending[k] = localStorage.getItem(k); } } catch {}
+    srv._migrated = pending._migrated = '1'; flush();
+  }
+  addEventListener('pagehide', () => flush(true));
+  return {
+    online: !!srv, flush,
+    get(k, d) { if (srv) return k in srv ? srv[k] : d; try { return localStorage.getItem(k) ?? d; } catch { return d; } },
+    set(k, v) { v = String(v); if (srv) { srv[k] = v; pending[k] = v; if (!timer) timer = setTimeout(flush, 300); } try { localStorage.setItem(k, v); } catch {} },
+  };
+})();
 let lang = store.get('lang', 'es'); if (!window.LANGS[lang]) lang = 'es';
 const LOC = () => ({ es: 'en-US', en: 'en-US', fr: 'fr-FR' }[lang]); // el español conserva el formato de siempre ($1,234)
 const tl = (k, v) => { const s = lang === 'es' ? k : (window.I18N[k]?.[lang] ?? k); return v ? s.replace(/\{(\w+)\}/g, (m, x) => x in v ? v[x] : m) : s; };
@@ -389,7 +405,7 @@ function findImages(id) {
 async function pool(items, fn, n = 8) { const q = [...items.keys()]; await Promise.all(Array.from({ length: n }, async () => { while (q.length) { const i = q.shift(); await fn(items[i], i); } })); }
 
 /* ============ carga ============ */
-let loadedN = 0;
+let loadedN = 0, loadSource = 'file', news = null;
 function setLoaded() { if (loadedN) $('loaded').textContent = tl('✓ {n} artículos cargados', { n: loadedN.toLocaleString(LOC()) }); }
 function ingest(text) {
   const tbl = parseCSV(text);
@@ -413,6 +429,27 @@ function ingest(text) {
   loadedN = rows.length; setLoaded();
   $('loadBox').style.display = 'none'; resetFilters(false); refresh(true);
   if (!map.id) setStatus(tl('⚠ No encuentro la columna del código (CTag). Elígela en Ajustes avanzados.'), true);
+  else snapshotLoad();
+}
+async function snapshotLoad() { // historial: compara esta carga con la anterior de la misma hoja
+  if (!store.online) return;
+  try {
+    const items = rows.map(r => [code(r), get(r, 'brand'), nameOf(r).slice(0, 200), priceNum(get(r, 'price')), curOf(r), get(r, 'entity'), r._letter]).filter(x => x[0]).map(x => (isNaN(x[3]) && (x[3] = null), x));
+    const r = await fetch('/api/snapshot', { method: 'POST', headers: API_H, body: JSON.stringify({ source: loadSource, items }) });
+    if (r.ok) { news = await r.json(); renderNews(); }
+  } catch {}
+}
+function renderNews() {
+  const el = $('news'); if (!news) { el.innerHTML = ''; return; }
+  if (news.first) { el.textContent = tl('· historial iniciado: la próxima carga te dirá qué es nuevo'); return; }
+  const by = new Map(rows.map(r => [code(r), r])), pick = list => new Set(list.map(c => by.get(c)).filter(Boolean));
+  const since = news.since ? new Date(news.since * 1000).toLocaleDateString(LOC()) : '';
+  const parts = [];
+  if (news.new.length) parts.push(`<button class="chip" data-k="new">${esc(tl('🆕 {n} nuevos', { n: news.new.length }))}</button>`);
+  if (news.down.length) parts.push(`<button class="chip" data-k="down">${esc(tl('📉 {n} bajan de precio', { n: news.down.length }))}</button>`);
+  if (news.gone.length) parts.push(`<span class="mute">${esc(tl('{n} ya no están', { n: news.gone.length }))}</span>`);
+  el.innerHTML = parts.length ? esc(tl('· desde la carga del {d}:', { d: since })) + ' ' + parts.join(' ') : esc(tl('· sin cambios desde la carga del {d}', { d: since }));
+  el.querySelectorAll('button').forEach(b => b.onclick = e => { e.stopPropagation(); resetFilters(false); F.catalog = lastCatalog = pick(b.dataset.k === 'new' ? news.new : news.down.map(d => d.c)); rows.forEach(r => delete r._tag); refresh(false); });
 }
 function buildMapping() {
   $('mapping').innerHTML = '';
@@ -426,17 +463,19 @@ function buildMapping() {
 }
 async function loadURL() {
   const u = $('url').value.trim(); if (!u) return;
-  store.set('url', u); $('loaded').textContent = tl('Descargando…');
+  store.set('url', u); loadSource = u; $('loaded').textContent = tl('Descargando…');
   try { const r = await fetch('/fetch?url=' + encodeURIComponent(u)); if (!r.ok) throw new Error(await r.text()); ingest(await r.text()); }
   catch (e) { $('loaded').innerHTML = `<span class="err">${esc(tl('Error: {m}', { m: e.message }))}${location.protocol === 'file:' ? esc(tl(' (abre la app con: python server.py)')) : ''}</span>`; }
 }
 $('load').onclick = loadURL;
 $('url').onkeydown = e => { if (e.key === 'Enter') loadURL(); };
-$('file').onchange = async e => { const f = e.target.files[0]; if (!f) return; try { ingest(await f.text()); } catch (err) { $('loaded').innerHTML = `<span class="err">${esc(err.message)}</span>`; } };
+$('file').onchange = async e => { const f = e.target.files[0]; if (!f) return; loadSource = 'file'; try { ingest(await f.text()); } catch (err) { $('loaded').innerHTML = `<span class="err">${esc(err.message)}</span>`; } };
 $('loaded').onclick = () => { if (rows.length) $('loadBox').style.display = $('loadBox').style.display === 'none' ? '' : 'none'; };
 $('loaded').style.cursor = 'pointer'; $('loaded').title = tl('Clic para cambiar de hoja');
 
 /* ============ filtros ============ */
+let sold = {}; // código → { number, client } de las invoices guardadas
+async function loadSold() { if (!store.online) return; try { const r = await fetch('/api/status', { headers: API_H }); if (r.ok) { sold = await r.json(); if (rows.length) refresh(false); } } catch {} }
 const F = { grades: new Set(), rankMin: 0, onlySel: false, loose: false, catalog: null, q: '', brands: new Set(), entities: new Set(), min: null, max: null, rank: 0, groups: [], exclude: [], excludeName: [], sort: '', onlyImg: false };
 function resetFilters(redraw = true, keepCatalog = false) {
   const cat = F.catalog;
@@ -446,6 +485,7 @@ function resetFilters(redraw = true, keepCatalog = false) {
   if (redraw) refresh(false);
 }
 function matches(r, skip, f = F) {
+  if (hideSold && sold[code(r)]) return false;
   if (f.catalog && !f.catalog.has(r)) return false;
   if (f.onlySel && !selected.has(code(r))) return false;
   if (skip !== 'brands' && f.brands.size && !f.brands.has(get(r, 'brand'))) return false;
@@ -541,6 +581,8 @@ const bind = (id, ev, f) => $(id).addEventListener(ev, f);
 bind('q', 'input', debounce(() => { F.q = strip($('q').value); refresh(false); }, 200));
 bind('sort', 'change', () => { F.sort = $('sort').value; refresh(false); });
 bind('onlyImg', 'change', () => { F.onlyImg = $('onlyImg').checked; refresh(false); });
+let hideSold = store.get('hideSold', '1') === '1'; $('hideSold').checked = hideSold;
+bind('hideSold', 'change', () => { hideSold = $('hideSold').checked; store.set('hideSold', hideSold ? '1' : '0'); refresh(false); });
 bind('frank', 'change', () => { const n = +$('frank').value; if (n) F.grades = new Set(Array.from({ length: n }, (_, i) => i + 1)); $('frank').value = '0'; refresh(false); });
 ['pmin', 'pmax'].forEach(id => bind(id, 'change', () => { const v = k => { const n = parseFloat($(k).value.replace(',', '.')); return isNaN(n) ? null : n; }; F.min = toUSD(v('pmin'), outCur); F.max = toUSD(v('pmax'), outCur); refresh(false); }));
 bind('bAdd', 'change', () => { const v = strip($('bAdd').value), hit = rows.map(r => get(r, 'brand')).find(b => strip(b) === v); if (hit) { F.brands.add(hit); $('bAdd').value = ''; refresh(false); } });
@@ -556,7 +598,7 @@ function addCard(r) {
   c.innerHTML = `<input type="checkbox" class="pick" ${on ? 'checked' : ''}>${r._rank ? `<span class="rank">${esc(r._letter)}</span>` : ''}<div class="photo"><span class="none">${esc(tl('cargando…'))}</span></div>
     <div class="info"><div class="brand">${esc(get(r, 'brand') || '—')}</div><div class="code">${esc(code(r))}${get(r, 'entity') ? ' · ' + esc(get(r, 'entity')) : ''}</div>
     <div class="desc">${esc(nameOf(r))}</div>
-    ${F.catalog && r._tag ? `<div class="notes">🎯 ${esc(r._tag)}</div>` : ''}${price ? `<div class="price">${esc(price)}</div>` : ''}${sub ? `<div class="mute notes">${esc(sub)}</div>` : ''}</div>`;
+    ${F.catalog && r._tag ? `<div class="notes">🎯 ${esc(r._tag)}</div>` : ''}${sold[code(r)] ? `<div class="notes err">${esc(tl('Vendido · {n}', { n: sold[code(r)].number + (sold[code(r)].client ? ' · ' + sold[code(r)].client : '') }))}</div>` : ''}${price ? `<div class="price">${esc(price)}</div>` : ''}${sub ? `<div class="mute notes">${esc(sub)}</div>` : ''}</div>`;
   c.querySelector('.pick').onchange = e => { toggle(code(r), e.target.checked); c.classList.toggle('sel', e.target.checked); };
   $('grid').append(c); io.observe(c);
 }
@@ -849,7 +891,7 @@ function renderAiState() {
   };
   if ($('keyOff')) $('keyOff').onclick = async () => { await fetch('/ai-key', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Catalog-Finder': '1' }, body: JSON.stringify({ key: '' }) }); aiStatus(); };
 }
-const APP_VERSION = '2026-10-16.3'; // igual que APP_VERSION en server.py
+const APP_VERSION = '2026-10-16.4'; // igual que APP_VERSION en server.py
 let serverOld = false;
 const oldServerMsg = () => tl('⚠ El programa que está en marcha (la ventana negra) es una versión antigua. Cierra TODAS las ventanas negras de Catalog Finder y vuelve a abrirlo; luego recarga esta página.');
 async function aiStatus() {
@@ -1025,6 +1067,15 @@ async function exportXlsx() {
 function done(n, warn, extra = '') { setStatus(tl('Descargados {n} artículos · Buy Now en {c} · {m}{x}', { n, c: outCur, m: prof() ? tl('margen {p}', { p: profLabel() }) : tl('sin margen'), x: extra }) + (warn ? ' · ⚠ ' + warn : ''), !!warn); }
 $('splitBy').onchange = () => { $('splitOutL').style.display = $('splitBy').value ? '' : 'none'; };
 $('exportX').onclick = exportXlsx; $('exportCsv').onclick = exportCsv;
+$('toInvoice').onclick = async () => { // pasa la selección al back office (precio con el margen del cliente elegido, en USD)
+  const by = new Map(rows.map(r => [code(r), r])), sel = [...selected].map(c => by.get(c)).filter(Boolean);
+  if (!sel.length) return setStatus(tl('Selecciona primero los artículos de la invoice'), true);
+  if (!store.online) return setStatus(tl('El back office necesita la app abierta con python server.py'), true);
+  const w = window.open('', '_blank');
+  store.set('invoiceDraft', JSON.stringify({ at: Date.now(), profile: activeProf, lines: sel.map(r => ({ code: code(r), brand: get(r, 'brand'), details: nameOf(r), grade: r._letter, entity: get(r, 'entity'), priceUSD: isNaN(finalOf(r)) ? null : finalOf(r), baseUSD: isNaN(usdOf(r)) ? null : usdOf(r) })) }));
+  await store.flush();
+  if (w) w.location = 'backoffice.html#draft'; else location.href = 'backoffice.html#draft';
+};
 
 /* ============ ajustes / init ============ */
 ['labels', 'exp'].forEach(id => bind(id, 'change', () => store.set(id, $(id).value)));
@@ -1037,7 +1088,7 @@ $('labels').value = store.get('labels', '1=With Tags\n4=Superb Condition\n7=Good
 $('natural').checked = store.get('natural', '1') === '1';
 $('url').value = store.get('url', '');
 function relocalize() { // vuelve a pintar lo que se genera por código (lo estático lo hace applyI18n)
-  setLoaded(); $('loaded').title = tl('Clic para cambiar de hoja'); renderAiState(); buildCurSelects();
+  setLoaded(); $('loaded').title = tl('Clic para cambiar de hoja'); renderAiState(); buildCurSelects(); renderNews();
   if (headers.length) buildMapping();
   if (rows.length) refresh(true); else updateBar();
   if (rates) loadRates();
@@ -1045,7 +1096,8 @@ function relocalize() { // vuelve a pintar lo que se genera por código (lo est�
 $('langSel').innerHTML = Object.entries(window.LANGS).map(([k, v]) => `<option value="${k}">${v}</option>`).join(''); $('langSel').value = lang;
 $('langSel').onchange = () => { lang = $('langSel').value; store.set('lang', lang); applyI18n(); relocalize(); $('reply').style.display = 'none'; };
 captureI18n(); applyI18n();
-saveSel(); buildCurSelects(); loadRates(); aiStatus();
+saveSel(); buildCurSelects(); loadRates(); aiStatus(); loadSold();
+addEventListener('focus', loadSold); // al volver del back office, refresca los vendidos
 </script>
 </body>
 </html>

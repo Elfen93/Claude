@@ -1,0 +1,232 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Back office · Catalog Finder</title>
+<style>
+  :root { --bg:#f6f5f2; --card:#fff; --ink:#1d1d1b; --mute:#6b6a66; --line:#e3e1db; --acc:#1f4d3a; --accsoft:#e3efe8; --warn:#b3261e; }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg:#161615; --card:#201f1e; --ink:#eeeceb; --mute:#9d9a94; --line:#33312f; --acc:#7cc4a0; --accsoft:#22332b; --warn:#ff8a80; }
+  }
+  * { box-sizing:border-box; }
+  body { margin:0 0 60px; font:14px/1.45 system-ui,-apple-system,Segoe UI,sans-serif; background:var(--bg); color:var(--ink); }
+  input, select, button, textarea { font:inherit; color:var(--ink); background:var(--card); border:1px solid var(--line); border-radius:6px; padding:5px 8px; }
+  textarea { width:100%; resize:vertical; }
+  button { cursor:pointer; } button:disabled { opacity:.5; cursor:default; }
+  button.primary { background:var(--acc); color:#fff; border-color:var(--acc); }
+  @media (prefers-color-scheme: dark) { button.primary { color:#111; } }
+  .mute { color:var(--mute); } .err { color:var(--warn); } .ok { color:var(--acc); }
+  .top { display:flex; flex-wrap:wrap; gap:10px; align-items:center; padding:10px 16px; border-bottom:1px solid var(--line); }
+  .top h1 { font-size:16px; margin:0; }
+  .tabs { display:flex; gap:4px; flex-wrap:wrap; margin-right:auto; }
+  .tabs button { border-radius:999px; }
+  .tabs button.on { background:var(--acc); color:#fff; border-color:var(--acc); }
+  @media (prefers-color-scheme: dark) { .tabs button.on { color:#111; } }
+  .wrap { max-width:1500px; margin:0 auto; padding:0 16px; }
+  .panel { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:14px 16px; margin:14px 0; }
+  .panel h2 { font-size:15px; margin:0 0 10px; }
+  .row { display:flex; flex-wrap:wrap; gap:8px; align-items:center; margin-bottom:8px; }
+  label { display:flex; gap:6px; align-items:center; color:var(--mute); }
+  label.col { flex-direction:column; align-items:stretch; gap:2px; font-size:12px; }
+  .grid2 { display:grid; grid-template-columns:repeat(auto-fill,minmax(230px,1fr)); gap:8px 12px; }
+  table.list { width:100%; border-collapse:collapse; }
+  table.list th, table.list td { border-bottom:1px solid var(--line); padding:5px 6px; text-align:left; vertical-align:middle; }
+  table.list th { color:var(--mute); font-weight:600; font-size:12px; }
+  table.list tr.clk { cursor:pointer; } table.list tr.clk:hover { background:var(--accsoft); }
+  table.lines input { width:100%; padding:3px 5px; }
+  table.lines td { padding:3px 4px; }
+  .num { text-align:right; font-variant-numeric:tabular-nums; }
+  .thumb { width:38px; height:38px; object-fit:cover; border-radius:4px; background:var(--line); }
+  .tot { margin-left:auto; min-width:300px; }
+  .tot div { display:flex; justify-content:space-between; gap:20px; padding:2px 0; }
+  .tot .big { font-weight:700; font-size:16px; border-top:1px solid var(--line); margin-top:4px; padding-top:6px; }
+  .editor { display:grid; grid-template-columns:minmax(520px,1fr) minmax(420px,1fr); gap:14px; align-items:start; }
+  @media (max-width:1100px) { .editor { grid-template-columns:1fr; } }
+  .previewBox { background:#fff; border:1px solid var(--line); border-radius:8px; overflow:auto; max-height:85vh; }
+  .overlay { position:fixed; inset:0; background:#0008; z-index:30; display:flex; align-items:center; justify-content:center; padding:16px; }
+  .box { background:var(--card); border-radius:12px; padding:18px 20px; width:min(720px,100%); max-height:90vh; overflow:auto; }
+  .chip { border:1px solid var(--line); background:var(--bg); border-radius:999px; padding:3px 11px; font-size:13px; cursor:pointer; }
+  .hint { font-size:12px; color:var(--mute); }
+  #msg { position:fixed; bottom:14px; left:50%; transform:translateX(-50%); background:var(--ink); color:var(--bg); padding:8px 14px; border-radius:8px; display:none; z-index:50; max-width:90vw; white-space:pre-line; }
+
+  /* ---------- la invoice (lo que se imprime) ---------- */
+  .sheet { color:#111; background:#fff; font:11px/1.35 Arial, "Helvetica Neue", "Yu Gothic", Meiryo, sans-serif; padding:22px 26px; width:210mm; min-height:297mm; margin:0 auto; }
+  .sheet.land { width:297mm; min-height:210mm; font-family:"Times New Roman", "Yu Mincho", serif; }
+  .sheet table { border-collapse:collapse; width:100%; }
+  .sheet .rule { border-top:4px solid #3c3c8c; margin:4px 0 10px; }
+  .sheet .blue { color:#2b3a99; font-weight:700; }
+  .sheet .orange { color:#e69138; font-weight:700; }
+  .sheet .grey { background:#bfbfbf; }
+  .sheet .lgrey { background:#d9d9d9; }
+  .sheet .green { background:#d9ead3; }
+  .sheet .pre { white-space:pre-line; }
+  .sheet .small { font-size:9px; }
+  .sheet .right { text-align:right; } .sheet .center { text-align:center; }
+  .sheet .items th { color:#2b3a99; text-align:left; padding:4px 4px; font-size:10px; }
+  .sheet .items td { padding:7px 4px; border-bottom:1px solid #eee; vertical-align:middle; }
+  .sheet .items img { width:34px; height:34px; object-fit:cover; }
+  .sheet .totals td { padding:3px 6px; }
+  .sheet .logo { max-height:70px; max-width:160px; }
+  .sheet.hk .box1 td, .sheet.hk .box1 th { border:1px solid #000; padding:2px 6px; }
+  .sheet.hk .items td { border:1px solid #000; text-align:center; padding:6px 3px; }
+  .sheet.hk .items th { color:#111; font-weight:400; text-align:center; }
+  .sheet.hk .red { color:#c00; }
+  .sheet .notice { font-size:10px; }
+
+  @media print {
+    body { background:#fff; margin:0; }
+    body > *:not(#printArea) { display:none !important; }
+    #printArea { display:block !important; }
+    .sheet { padding:0; width:auto; min-height:0; }
+    .sheet .items tr { break-inside:avoid; }
+  }
+  #printArea { display:none; }
+</style>
+</head>
+<body>
+<div class="top">
+  <h1>🗂 Back office</h1>
+  <div class="tabs" id="tabs">
+    <button data-t="inv" class="on">🧾 Invoices</button>
+    <button data-t="cli">👥 Clientes</button>
+    <button data-t="tier">🏷 Tiers</button>
+    <button data-t="ent">🏢 Entidades</button>
+    <button data-t="news">🆕 Novedades</button>
+  </div>
+  <label title="Idioma / Language / Langue">🌐 <select id="langSel"></select></label>
+  <a href="index.html" class="chip" style="text-decoration:none">🔎 Buscador</a>
+</div>
+
+<div class="wrap">
+  <!-- ================= INVOICES ================= -->
+  <section id="t-inv">
+    <div class="editor">
+      <div>
+        <div class="panel">
+          <h2><span id="invTitle">Invoice nueva</span> <span id="invNum" class="mute"></span></h2>
+          <div class="grid2">
+            <label class="col">Entidad <select id="iEnt"></select></label>
+            <label class="col">Cliente <span class="row" style="margin:0;flex-wrap:nowrap"><select id="iCli" style="flex:1"></select><button id="iCliNew" title="Cliente nuevo">＋</button><button id="iCliEdit" title="Editar la ficha del cliente">✎</button></span></label>
+            <label class="col">Tier <select id="iTier"></select></label>
+            <label class="col">Moneda <select id="iCur"></select></label>
+            <label class="col">Fecha <input id="iDate" type="date"></label>
+            <label class="col">Vence <input id="iDue" type="date"></label>
+            <label class="col sale">Envío (texto) <input id="iShipTxt" type="text"></label>
+            <label class="col sale">Terms <input id="iTerms" type="text"></label>
+          </div>
+          <div class="grid2 hk" style="margin-top:8px">
+            <label class="col">Comisión % <input id="iComm" type="text"></label>
+            <label class="col">Precios de martillo en <select id="iSrcCur"></select></label>
+            <label class="col">Tipo de cambio (1 origen = x) <input id="iRate" type="text"></label>
+            <label class="col">Idioma de la invoice <select id="iLabels"><option value="ja">日本語</option><option value="en">English</option></select></label>
+          </div>
+        </div>
+
+        <div class="panel">
+          <div class="row">
+            <b>Artículos</b> <span id="lnCount" class="mute"></span>
+            <span style="margin-left:auto"></span>
+            <button id="lnAdd">＋ línea</button>
+            <button id="lnPaste" title="Pega una lista: código (CTag) y precio por línea, como en Excel">📋 Pegar lista</button>
+            <label class="chip" style="cursor:pointer" title="Excel o CSV con columnas CTag y precio">📄 Importar Excel/CSV <input id="lnFile" type="file" accept=".xlsx,.xls,.csv,.tsv" style="display:none"></label>
+            <button id="lnDraft" style="display:none">⬇ Usar la selección del buscador</button>
+          </div>
+          <div style="overflow:auto"><table class="list lines" id="lines"></table></div>
+          <div class="row" style="margin-top:10px;align-items:flex-start">
+            <div class="grid2" style="flex:1">
+              <label class="col sale">Gastos de envío <input id="iShip" type="text"></label>
+              <label class="col hk">作業補助費 / Handling fee <input id="iFee1" type="text"></label>
+              <label class="col hk">参加費 / Participation fee <input id="iFee2" type="text"></label>
+              <label class="col">Impuesto % <input id="iTax" type="text"></label>
+              <label class="col sale">Ya pagado / depósito <input id="iPaid" type="text"></label>
+            </div>
+            <div class="tot" id="totals"></div>
+          </div>
+          <label class="col" style="margin-top:6px">Notas internas (no salen en la invoice) <textarea id="iNotes" rows="2"></textarea></label>
+          <div class="row" style="margin-top:10px">
+            <button class="primary" id="iSave">💾 Guardar invoice</button>
+            <button id="iPrint">🖨 PDF / imprimir</button>
+            <button id="iNew">Nueva</button>
+            <button id="iDup" style="display:none">Duplicar</button>
+            <button id="iDel" style="display:none">Eliminar</button>
+            <span id="iState" class="mute"></span>
+          </div>
+        </div>
+      </div>
+      <div>
+        <div class="panel" style="padding:8px">
+          <div class="row" style="margin:0 4px 6px"><b>Vista previa</b><span class="mute hint">Así saldrá en el PDF</span></div>
+          <div class="previewBox"><div id="preview"></div></div>
+        </div>
+      </div>
+    </div>
+    <div class="panel">
+      <div class="row"><h2 style="margin:0">Invoices guardadas</h2><input id="invQ" type="text" placeholder="buscar cliente, número, código…" style="margin-left:auto;min-width:240px"></div>
+      <table class="list" id="invList"></table>
+    </div>
+  </section>
+
+  <!-- ================= CLIENTES ================= -->
+  <section id="t-cli" style="display:none">
+    <div class="panel">
+      <div class="row"><h2 style="margin:0">Clientes</h2><button class="primary" id="cNew">＋ Cliente nuevo</button><input id="cQ" type="text" placeholder="buscar…" style="margin-left:auto"></div>
+      <table class="list" id="cList"></table>
+    </div>
+  </section>
+
+  <!-- ================= TIERS ================= -->
+  <section id="t-tier" style="display:none">
+    <div class="panel">
+      <h2>Tiers de cliente</h2>
+      <p class="hint">Cada tier puede tener un descuento fijo (en su moneda, se convierte a la de la invoice) y un % extra. El orden importa: con 1000 USD, «primero el fijo» da (1000 − 30) × 0,9 = 873; «primero el %» da 1000 × 0,9 − 30 = 870.</p>
+      <table class="list" id="tList"></table>
+      <div class="row" style="margin-top:8px"><button id="tAdd">＋ Tier</button><button class="primary" id="tSave">Guardar tiers</button><span id="tState" class="mute"></span></div>
+    </div>
+  </section>
+
+  <!-- ================= ENTIDADES ================= -->
+  <section id="t-ent" style="display:none">
+    <div class="panel">
+      <div class="row"><h2 style="margin:0">Entidades</h2><select id="eSel"></select><button id="eNew">＋ Entidad</button>
+        <span style="margin-left:auto"></span>
+        <label class="chip" style="cursor:pointer">⬆ Importar (entidades.json) <input id="eImport" type="file" accept=".json" style="display:none"></label>
+        <button id="eExport">⬇ Exportar</button></div>
+      <p class="hint">Datos de tu empresa que salen en cada invoice: dirección, registros, banco, textos legales. Se guardan solo en tu ordenador (catalog.db).</p>
+      <div id="eForm"></div>
+      <div class="row" style="margin-top:10px"><button class="primary" id="eSave">Guardar entidad</button><span id="eState" class="mute"></span></div>
+    </div>
+  </section>
+
+  <!-- ================= NOVEDADES ================= -->
+  <section id="t-news" style="display:none">
+    <div class="panel">
+      <h2>Historial de cargas del catálogo</h2>
+      <p class="hint">Cada vez que cargas la hoja en el buscador, la app la compara con la carga anterior.</p>
+      <table class="list" id="nList"></table>
+    </div>
+    <div class="panel" id="nDetailBox" style="display:none"><h2 id="nDetailT"></h2><table class="list" id="nDetail"></table></div>
+  </section>
+</div>
+
+<div id="cDlg" class="overlay" style="display:none"><div class="box">
+  <h2 style="margin-top:0" id="cDlgT">Cliente</h2>
+  <div class="grid2" id="cForm"></div>
+  <div class="row" style="margin-top:12px"><button class="primary" id="cSave">Guardar</button><button id="cDel">Eliminar</button><button id="cCancel">Cancelar</button></div>
+</div></div>
+<div id="pDlg" class="overlay" style="display:none"><div class="box">
+  <h2 style="margin-top:0">Pegar lista</h2>
+  <p class="hint">Una línea por artículo: código (CTag) y precio. Para HK puedes añadir el número de lote (ej. 5-59-4). Se aceptan tabuladores (copiar de Excel), comas o espacios. Sin precio = «Passed» en HK.</p>
+  <textarea id="pText" rows="12" placeholder="C398068	15000&#10;C398062	1400"></textarea>
+  <div class="row" style="margin-top:8px"><label>Los precios están en <select id="pCur"></select></label>
+    <label><input type="checkbox" id="pReplace"> sustituir las líneas actuales</label></div>
+  <div class="row"><button class="primary" id="pOk">Añadir</button><button id="pCancel">Cancelar</button></div>
+</div></div>
+<div id="msg"></div>
+<div id="printArea"></div>
+
+<script src="vendor/xlsx.bundle.js"></script>
+<script src="i18n.js"></script>
+<script src="backoffice.js"></script>
+</body>
+</html>
