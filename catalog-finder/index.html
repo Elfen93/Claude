@@ -37,6 +37,21 @@
   @media (prefers-color-scheme: dark) { .chip.on { color:#111; } }
   .chip small { opacity:.7; }
   .lbl { color:var(--mute); font-size:12px; min-width:70px; }
+  .fbar { display:flex; flex-wrap:wrap; gap:6px; align-items:center; margin-top:4px; }
+  .fwrap { position:relative; }
+  .pill { border-radius:999px; padding:6px 13px; }
+  .pill::after { content:' ▾'; color:var(--mute); font-size:11px; }
+  .pill.on { background:var(--accsoft); border-color:var(--acc); font-weight:600; }
+  .pop { display:none; position:absolute; left:0; top:calc(100% + 6px); z-index:25; background:var(--card); border:1px solid var(--line); border-radius:12px; box-shadow:0 10px 30px #0003; padding:12px 14px; width:min(620px, 92vw); max-height:62vh; overflow:auto; }
+  .pop.open { display:block; }
+  .pop label { margin:4px 0; white-space:nowrap; }
+  .pop .chip { margin:0 4px 6px 0; }
+  .plbl { color:var(--mute); font-size:12px; margin:10px 0 6px; text-transform:uppercase; letter-spacing:.04em; }
+  .catchip { font-weight:600; }
+  .tokens { display:flex; flex-wrap:wrap; gap:6px; margin-top:10px; }
+  .tok { background:var(--acc); color:#fff; border:none; border-radius:999px; padding:3px 10px; font-size:13px; }
+  @media (prefers-color-scheme: dark) { .tok { color:#111; } }
+  .tok.clear { background:none; color:var(--mute); text-decoration:underline; }
   .reply { white-space:pre-line; background:var(--accsoft); border-radius:8px; padding:8px 12px; margin-top:8px; }
   details { margin-top:6px; } summary { cursor:pointer; color:var(--mute); }
   details .row { margin-top:8px; }
@@ -136,28 +151,32 @@
     <div id="reply" class="reply" style="display:none"></div>
 
     <div style="margin-top:14px">
-      <div class="row"><span class="lbl" id="priceLbl">Precio</span>
-        <input id="pmin" type="text" placeholder="mín" style="width:80px"> – <input id="pmax" type="text" placeholder="máx" style="width:80px">
-        <span id="pchips"></span></div>
-      <div class="row"><span class="lbl">Estado</span><span id="gchips"></span>
-        <select id="frank" title="Atajo: marca de golpe todos los grados desde SA hasta el elegido">
+      <div class="row">
+        <input id="q" type="text" placeholder="buscar: código, palabra… (ej. black, tote, lizard)" style="flex:1;min-width:240px">
+        <select id="sort"><option value="">Orden original</option><option value="brand">Marca</option><option value="pa">Precio ↑</option><option value="pd">Precio ↓</option><option value="old">Alta: antiguo → nuevo</option><option value="new">Alta: nuevo → antiguo</option><option value="buyer">Buyer</option><option value="disc">Mayor rebaja desde el alta</option></select>
+      </div>
+      <div class="fbar" id="fbar">
+        <span class="fwrap" id="catWrap"><button class="pill" data-pop="cat">Categoría</button><div class="pop" id="pop-cat"><div id="catchips"></div><div id="tRow"><div class="plbl">Tipo</div><div id="tchips"></div></div></div></span>
+        <span class="fwrap"><button class="pill" data-pop="brand">Marca</button><div class="pop" id="pop-brand"><input id="bFind" type="text" placeholder="buscar marca…" style="width:100%;margin-bottom:8px"><div id="bchips"></div></div></span>
+        <span class="fwrap"><button class="pill" data-pop="grade">Estado</button><div class="pop" id="pop-grade"><div id="gchips"></div>
+          <div class="row" style="margin-top:8px"><select id="frank" title="Atajo: marca de golpe todos los grados desde SA hasta el elegido">
           <option value="0">atajo: "o mejor"…</option><option value="2">SA o mejor</option><option value="3">S o mejor</option><option value="4">A o mejor</option>
           <option value="5">AB o mejor</option><option value="6">B+ o mejor</option><option value="7">B o mejor</option><option value="8">B- o mejor</option><option value="9">BC o mejor</option>
-        </select></div>
-      <div class="row"><span class="lbl">Marcas</span><span id="bchips"></span>
-        <input id="bAdd" list="bList" type="text" placeholder="otra marca…" style="width:150px"><datalist id="bList"></datalist></div>
-      <div class="row" id="eRow"><span class="lbl">Entity</span><span id="echips"></span></div>
-      <div class="row" id="tRow" style="display:none"><span class="lbl">Tipo</span><span id="tchips"></span></div>
-      <div class="row" id="cRow" style="display:none"><span class="lbl">Canal</span><span id="cchips"></span></div>
-      <div class="row" id="oRow" style="display:none"><span class="lbl">Owner</span><span id="ochips"></span></div>
-      <div class="row" id="yRow" style="display:none"><span class="lbl">Buyer</span><span id="ychips"></span></div>
-      <div class="row" id="aRow" style="display:none"><span class="lbl">Antigüedad</span><span id="achips"></span></div>
-      <div class="row"><span class="lbl">Texto</span>
-        <input id="q" type="text" placeholder="código, palabra… (ej. black, tote, lizard)" style="min-width:260px">
-        <select id="sort"><option value="">Orden original</option><option value="brand">Marca</option><option value="pa">Precio ↑</option><option value="pd">Precio ↓</option><option value="old">Alta: antiguo → nuevo</option><option value="new">Alta: nuevo → antiguo</option><option value="buyer">Buyer</option><option value="disc">Mayor rebaja desde el alta</option></select>
-        <label><input type="checkbox" id="onlyImg"> solo con fotos</label>
-        <label title="Artículos en una invoice guardada o reservados"><input type="checkbox" id="hideSold"> ocultar vendidos y reservados</label>
-        <label id="noRepeatL" title="Oculta lo que ya está en un Excel enviado al cliente elegido"><input type="checkbox" id="noRepeat"> <span id="noRepeatT">no repetir lo ya enviado</span></label></div>
+          </select></div></div></span>
+        <span class="fwrap"><button class="pill" data-pop="price" id="pricePill">Precio</button><div class="pop" id="pop-price">
+          <div class="row"><span class="lbl" id="priceLbl">Precio</span><input id="pmin" type="text" placeholder="mín" style="width:90px"> – <input id="pmax" type="text" placeholder="máx" style="width:90px"></div><div id="pchips"></div></div></span>
+        <span class="fwrap" id="aRow" style="display:none"><button class="pill" data-pop="age">Antigüedad</button><div class="pop" id="pop-age"><div id="achips"></div></div></span>
+        <span class="fwrap" id="origWrap"><button class="pill" data-pop="orig">Origen</button><div class="pop" id="pop-orig">
+          <div id="cRow"><div class="plbl">Canal</div><div id="cchips"></div></div>
+          <div id="eRow"><div class="plbl">Entity</div><div id="echips"></div></div>
+          <div id="oRow"><div class="plbl">Owner</div><div id="ochips"></div></div>
+          <div id="yRow"><div class="plbl">Buyer</div><div id="ychips"></div></div></div></span>
+        <span class="fwrap"><button class="pill" data-pop="opt">⚙ Opciones</button><div class="pop" id="pop-opt" style="width:auto">
+          <label><input type="checkbox" id="onlyImg"> solo con fotos</label>
+          <label title="Artículos en una invoice guardada o reservados"><input type="checkbox" id="hideSold"> ocultar vendidos y reservados</label>
+          <label id="noRepeatL" title="Oculta lo que ya está en un Excel enviado al cliente elegido"><input type="checkbox" id="noRepeat"> <span id="noRepeatT">no repetir lo ya enviado</span></label></div></span>
+      </div>
+      <div class="tokens" id="tokens"></div>
     </div>
   </div>
 
@@ -325,7 +344,8 @@ function prep() { // precalcula por fila: texto de búsqueda, detalle de grading
   dateOrder = detectDateOrder();
   for (const r of rows) {
     r._added = map.added ? parseDate(get(r, 'added')) : null;
-    r._cw = curWarn(r); // moneda cambiada sin convertir el importe (p. ej. 2.835 HKD → «2.835 元»)
+    r._cw = curWarn(r);
+    r._cat = map.type ? catOf(r) : ''; // moneda cambiada sin convertir el importe (p. ej. 2.835 HKD → «2.835 元»)
     const vals = Object.entries(r).filter(([k]) => k[0] !== '_').map(([, v]) => v);
     r._detail = vals.find(v => /GRADING:/i.test(v)) || '';
     let m = r._detail.match(GRADE_RE) || (get(r, 'grade') || '').trim().match(GRADE_ONLY);
@@ -381,6 +401,10 @@ function usdOf(r) {
   if (c === 'USD') return a;
   return rates[c] ? a / rates[c] : NaN;
 }
+const CATS = [['Bolsos', /\bbag|backpack|briefcase|luggage|pouch|tote|clutch|satchel|boston|handbag/i], ['Pequeña marroquinería', /wallet|small leather|coin|key|card|cigarette|purse/i],
+  ['Joyería y relojes', /jewel|charm|ring|necklace|bracelet|earring|watch|brooch/i], ['Accesorios', /accessor|scarf|sunglass|strap|textile|belt|hat|glove|\btie\b|stole|shawl/i],
+  ['Ropa y calzado', /cloth|footwear|shoe|apparel|dress|coat|jacket/i]]; // el resto → «Otros»
+const catOf = r => { const t = typeOf(r); if (!t) return ''; const c = CATS.find(([, re]) => re.test(t)); return c ? c[0] : 'Otros'; };
 const typeOf = r => get(r, 'type').replace(/\s*\((?:used|new|unused|nuevo|usado)[^)]*\)\s*$/i, '').trim(); // «Crossbody bag (used)» → «Crossbody bag»
 function initUSD(r) { // precio inicial (PAT - Initial) en USD, en su propia moneda
   if (!map.priceInit) return NaN; const a = priceNum(get(r, 'priceInit')); if (isNaN(a) || !rates) return NaN;
@@ -649,11 +673,11 @@ $('loaded').style.cursor = 'pointer'; $('loaded').title = tl('Clic para cambiar 
 /* ============ filtros ============ */
 let sold = {}, offers = {}; // código → estado (vendido/reservado) · código → { cliente: fecha en que se le envió }
 async function loadSold() { if (!store.online) return; try { const r = await fetch('/api/status', { headers: API_H }); if (r.ok) { const d = await r.json(); sold = d.status || {}; offers = d.offers || {}; if (rows.length) refresh(false); } } catch {} }
-const F = { types: new Set(), channels: new Set(), owners: new Set(), buyers: new Set(), ageMin: null, ageMax: null, grades: new Set(), rankMin: 0, onlySel: false, loose: false, catalog: null, q: '', brands: new Set(), entities: new Set(), min: null, max: null, rank: 0, groups: [], exclude: [], excludeName: [], sort: '', onlyImg: false };
+const F = { cats: new Set(), types: new Set(), channels: new Set(), owners: new Set(), buyers: new Set(), ageMin: null, ageMax: null, grades: new Set(), rankMin: 0, onlySel: false, loose: false, catalog: null, q: '', brands: new Set(), entities: new Set(), min: null, max: null, rank: 0, groups: [], exclude: [], excludeName: [], sort: '', onlyImg: false };
 function resetFilters(redraw = true, keepCatalog = false) {
   const cat = F.catalog;
   F.grades.clear();
-  Object.assign(F, { rankMin: 0, onlySel: false, loose: false, catalog: keepCatalog ? cat : null, q: '', min: null, max: null, rank: 0, groups: [], exclude: [], excludeName: [], sort: '', onlyImg: false, ageMin: null, ageMax: null }); F.brands.clear(); F.entities.clear(); F.buyers.clear(); F.types.clear(); F.channels.clear(); F.owners.clear();
+  Object.assign(F, { rankMin: 0, onlySel: false, loose: false, catalog: keepCatalog ? cat : null, q: '', min: null, max: null, rank: 0, groups: [], exclude: [], excludeName: [], sort: '', onlyImg: false, ageMin: null, ageMax: null }); F.brands.clear(); F.entities.clear(); F.buyers.clear(); F.types.clear(); F.channels.clear(); F.owners.clear(); F.cats.clear();
   $('q').value = ''; $('pmin').value = $('pmax').value = ''; $('frank').value = '0'; $('sort').value = ''; $('onlyImg').checked = false; $('onlySel').checked = false;
   if (redraw) refresh(false);
 }
@@ -665,6 +689,7 @@ function matches(r, skip, f = F) {
   if (skip !== 'brands' && f.brands.size && !f.brands.has(get(r, 'brand'))) return false;
   if (skip !== 'entities' && f.entities.size && !f.entities.has(get(r, 'entity'))) return false;
   if (skip !== 'buyers' && f.buyers?.size && !f.buyers.has(get(r, 'buyer'))) return false;
+  if (skip !== 'cats' && f.cats?.size && !f.cats.has(r._cat)) return false;
   if (skip !== 'types' && f.types?.size && !f.types.has(typeOf(r))) return false;
   if (skip !== 'channels' && f.channels?.size && !f.channels.has(get(r, 'channel'))) return false;
   if (skip !== 'owners' && f.owners?.size && !f.owners.has(get(r, 'owner'))) return false;
@@ -680,11 +705,36 @@ function matches(r, skip, f = F) {
   for (const w of f.excludeName || []) if (hit(r._core, w)) return false; // solo nombre/descripción
   return true;
 }
-function chips(el, facet, set, max) {
-  const list = [...facet.entries()].sort((a, b) => b[1] - a[1]), shownL = list.slice(0, max);
+function chips(el, facet, set, max, keepOrder, label = x => x) {
+  const list = keepOrder ? [...facet.entries()] : [...facet.entries()].sort((a, b) => b[1] - a[1]), shownL = list.slice(0, max);
   for (const s of set) if (!shownL.some(x => x[0] === s)) shownL.push([s, facet.get(s) || 0]);
   el.innerHTML = '';
-  shownL.forEach(([name, n]) => { const b = document.createElement('button'); b.className = 'chip' + (set.has(name) ? ' on' : ''); b.innerHTML = `${esc(name)} <small>${n}</small>`; b.onclick = () => { set.has(name) ? set.delete(name) : set.add(name); refresh(false); }; el.append(b); });
+  shownL.forEach(([name, n]) => { const b = document.createElement('button'); b.className = 'chip' + (set.has(name) ? ' on' : ''); b.innerHTML = `${esc(label(name))} <small>${n}</small>`; b.onclick = () => { set.has(name) ? set.delete(name) : set.add(name); refresh(false); }; el.append(b); });
+  if (list.length > max) { const m = document.createElement('span'); m.className = 'mute'; m.style.fontSize = '12px'; m.textContent = tl('+{n} más (usa el buscador)', { n: list.length - max }); el.append(m); }
+}
+/* ---------- barra de filtros: botones desplegables y etiquetas de lo activo ---------- */
+document.querySelectorAll('#fbar .pill').forEach(p => p.onclick = e => { e.stopPropagation(); const pop = $('pop-' + p.dataset.pop), open = pop.classList.contains('open'); document.querySelectorAll('.pop.open').forEach(x => x.classList.remove('open')); if (!open) { pop.classList.add('open'); const r = pop.getBoundingClientRect(); if (r.right > innerWidth - 8) pop.style.left = Math.min(0, innerWidth - 8 - r.right) + 'px'; } });
+document.querySelectorAll('.pop').forEach(p => p.onclick = e => e.stopPropagation());
+document.addEventListener('click', () => document.querySelectorAll('.pop.open').forEach(x => x.classList.remove('open')));
+document.addEventListener('keydown', e => { if (e.key === 'Escape') document.querySelectorAll('.pop.open').forEach(x => x.classList.remove('open')); });
+function pillsAndTokens() {
+  const pill = (k, base, items) => { const p = document.querySelector(`#fbar .pill[data-pop="${k}"]`); p.classList.toggle('on', items.length > 0); p.textContent = tl(base) + (items.length === 1 ? ': ' + items[0] : items.length ? ` · ${items.length}` : ''); };
+  const toks = [], add = (label, off) => toks.push([label, off]);
+  F.cats.forEach(c => add(tl(c), () => F.cats.delete(c))); F.types.forEach(c => add(c, () => F.types.delete(c)));
+  pill('cat', 'Categoría', [...[...F.cats].map(c => tl(c)), ...F.types]);
+  F.brands.forEach(b => add(b, () => F.brands.delete(b))); pill('brand', 'Marca', [...F.brands]);
+  const gl = [...F.grades].sort((a, b) => a - b).map(gradeLbl); if (gl.length) add(tl('Estado: ') + gl.join(', '), () => F.grades.clear()); pill('grade', 'Estado', gl);
+  const pr = F.min != null || F.max != null ? [(F.min != null ? fmtMoney(fromUSD(F.min)) : '') + '–' + (F.max != null ? fmtMoney(fromUSD(F.max)) : '')] : []; if (pr.length) add(pr[0], () => { F.min = F.max = null; }); pill('price', 'Precio', pr);
+  const ag = AGES.find(([, lo, hi]) => F.ageMin === lo && F.ageMax === hi); const agL = ag ? [tl(ag[0])] : F.ageMin != null || F.ageMax != null ? [tl('personalizada')] : []; if (agL.length) add(tl('Antigüedad: ') + agL[0], () => { F.ageMin = F.ageMax = null; }); pill('age', 'Antigüedad', agL);
+  const orig = [...F.channels, ...F.entities, ...F.owners, ...F.buyers];
+  F.channels.forEach(x => add(x, () => F.channels.delete(x))); F.entities.forEach(x => add(x, () => F.entities.delete(x))); F.owners.forEach(x => add(x, () => F.owners.delete(x))); F.buyers.forEach(x => add('buyer ' + x, () => F.buyers.delete(x)));
+  pill('orig', 'Origen', orig);
+  const opts = [F.onlyImg && tl('solo con fotos'), hideSold && tl('sin vendidos'), noRepeat && prof()?.id && tl('sin repetir')].filter(Boolean);
+  const op = document.querySelector('#fbar .pill[data-pop="opt"]'); op.textContent = '⚙ ' + tl('Opciones') + (opts.length ? ' · ' + opts.length : '');
+  if (F.q) add('“' + F.q + '”', () => { F.q = ''; $('q').value = ''; });
+  if (F.onlyImg) add(tl('solo con fotos'), () => { F.onlyImg = false; $('onlyImg').checked = false; });
+  $('tokens').innerHTML = ''; toks.forEach(([l, off]) => { const b = document.createElement('button'); b.className = 'tok'; b.textContent = l + ' ✕'; b.onclick = () => { off(); refresh(false); }; $('tokens').append(b); });
+  if (toks.length > 1) { const b = document.createElement('button'); b.className = 'tok clear'; b.textContent = tl('Quitar todos los filtros'); b.onclick = () => resetFilters(true, true); $('tokens').append(b); }
 }
 const gradeLbl = k => (k === 1 || k === 0) ? tl(GRADE_LABEL[k]) : GRADE_LABEL[k];
 const GRADE_LABEL = { 1: 'SA c/etiq.', 2: 'SA', 3: 'S', 4: 'A', 5: 'AB', 6: 'B+', 7: 'B', 8: 'B-', 9: 'BC', 10: 'C', 0: 'sin grado' };
@@ -697,8 +747,9 @@ function gradeSet(sp) { // grados aceptados por una petición: lista exacta o ra
 const AGES = [['< 1 mes', null, 30], ['> 3 meses', 91, null], ['> 6 meses', 182, null], ['> 1 año', 365, null], ['> 2 años', 730, null]]; // [etiqueta, días mín, días máx]
 function facets() {
   const fb = new Map(), fe = new Map(), fg = new Map(), fy = new Map(), fa = new Map(), ft = new Map(), fc = new Map(), fo = new Map();
-  const cnt = (m, v) => { if (v) m.set(v, (m.get(v) || 0) + 1); };
+  const cnt = (m, v) => { if (v) m.set(v, (m.get(v) || 0) + 1); }, fk = new Map();
   for (const r of rows) {
+    if (map.type && matches(r, 'cats')) cnt(fk, r._cat);
     if (map.type && matches(r, 'types')) cnt(ft, typeOf(r));
     if (map.channel && matches(r, 'channels')) cnt(fc, get(r, 'channel'));
     if (map.owner && matches(r, 'owners')) cnt(fo, get(r, 'owner'));
@@ -708,16 +759,21 @@ function facets() {
     if (matches(r, 'brands')) { const b = get(r, 'brand'); if (b) fb.set(b, (fb.get(b) || 0) + 1); }
     if (matches(r, 'entities')) { const e = get(r, 'entity'); if (e) fe.set(e, (fe.get(e) || 0) + 1); }
   }
-  chips($('bchips'), fb, F.brands, 14); chips($('echips'), fe, F.entities, 10); chips($('ychips'), fy, F.buyers, 14);
+  chips($('echips'), fe, F.entities, 20); chips($('ychips'), fy, F.buyers, 40);
   $('yRow').style.display = fy.size || F.buyers.size ? '' : 'none';
-  chips($('tchips'), ft, F.types, 16); chips($('cchips'), fc, F.channels, 12); chips($('ochips'), fo, F.owners, 12);
+  const order = [...CATS.map(c => c[0]), 'Otros'], fkS = new Map([...fk].sort((a, b) => order.indexOf(a[0]) - order.indexOf(b[0])));
+  chips($('catchips'), fkS, F.cats, 10, true, k => tl(k)); $('catchips').querySelectorAll('.chip').forEach(c => c.classList.add('catchip'));
+  chips($('tchips'), ft, F.types, 60); chips($('cchips'), fc, F.channels, 20); chips($('ochips'), fo, F.owners, 30);
+  const bq = strip($('bFind').value); chips($('bchips'), bq ? new Map([...fb].filter(([k]) => strip(k).includes(bq))) : fb, F.brands, bq ? 200 : 60);
+  $('catWrap').style.display = fk.size || F.cats.size || F.types.size ? '' : 'none';
   $('tRow').style.display = ft.size || F.types.size ? '' : 'none'; $('cRow').style.display = fc.size > 1 || F.channels.size ? '' : 'none'; $('oRow').style.display = fo.size > 1 || F.owners.size ? '' : 'none';
+  $('origWrap').style.display = ['cRow', 'eRow', 'oRow', 'yRow'].some(id => $(id).style.display !== 'none') ? '' : 'none';
+  pillsAndTokens();
   $('aRow').style.display = map.added && (fa.size || F.ageMin != null || F.ageMax != null) ? '' : 'none';
   const ac = $('achips'); ac.innerHTML = '';
   AGES.forEach(([k, lo, hi]) => { const on = F.ageMin === lo && F.ageMax === hi, b = document.createElement('button'); b.className = 'chip' + (on ? ' on' : ''); b.innerHTML = `${esc(tl(k))} <small>${fa.get(k) || 0}</small>`;
     b.onclick = () => { F.ageMin = on ? null : lo; F.ageMax = on ? null : hi; refresh(false); }; ac.append(b); });
   $('eRow').style.display = fe.size || F.entities.size ? '' : 'none';
-  $('bList').innerHTML = [...fb.keys()].sort().map(b => `<option value="${esc(b)}">`).join('');
   const gl = $('gchips'); gl.innerHTML = '';
   [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 0].filter(k => fg.get(k) || F.grades.has(k)).forEach(k => {
     const b = document.createElement('button'); b.className = 'chip' + (F.grades.has(k) ? ' on' : '');
@@ -765,13 +821,28 @@ function stats() {
   }
   updateBar(); setStatus('');
 }
+let imgScan = null; // «solo con fotos»: se comprueba poco a poco, solo lo que se va mostrando (no los 21.000 de golpe)
 async function onlyWithPhotos() {
-  const me = runId, items = [...view], keep = new Set(); let done = 0;
-  $('grid').innerHTML = ''; shown = 0; stats();
-  await pool(items, async r => { if (me !== runId) return; const id = code(r); if (id && (await findImages(id)).length) keep.add(r); if (++done % 25 === 0) setStatus(tl('Comprobando fotos… {a}/{b}', { a: done, b: items.length })); });
-  if (me !== runId) return; view = items.filter(r => keep.has(r)); draw();
+  imgScan = { items: [...view], i: 0, me: runId }; view = []; $('grid').innerHTML = ''; shown = 0; stats(); await fillPhotos(PAGE);
 }
-function more() { const slice = view.slice(shown, shown + PAGE); shown += slice.length; slice.forEach(addCard); $('more').style.display = shown < view.length ? '' : 'none'; }
+async function fillPhotos(n) {
+  const q = imgScan; if (!q || q.busy) return; q.busy = true; let added = 0;
+  try {
+    while (q.i < q.items.length && added < n) {
+      const batch = q.items.slice(q.i, q.i + 32); q.i += batch.length;
+      const ok = await Promise.all(batch.map(async r => !!code(r) && (await findImages(code(r))).length > 0));
+      if (q.me !== runId) return;
+      batch.forEach((r, j) => { if (ok[j]) { view.push(r); addCard(r); shown++; added++; } });
+      setStatus(tl('Comprobando fotos… {a} con fotos ({b} de {c} revisados)', { a: view.length, b: q.i, c: q.items.length }));
+    }
+    stats(); if (q.i < q.items.length) setStatus(tl('{a} con fotos entre los {b} primeros · pulsa «Mostrar más» para seguir', { a: view.length, b: q.i }));
+    $('more').style.display = q.i < q.items.length ? '' : 'none';
+  } finally { q.busy = false; }
+}
+function more() {
+  if (F.onlyImg && imgScan && imgScan.me === runId && imgScan.i < imgScan.items.length) return fillPhotos(PAGE);
+  const slice = view.slice(shown, shown + PAGE); shown += slice.length; slice.forEach(addCard); $('more').style.display = shown < view.length ? '' : 'none';
+}
 $('more').onclick = more;
 const bind = (id, ev, f) => $(id).addEventListener(ev, f);
 bind('q', 'input', debounce(() => { F.q = strip($('q').value); refresh(false); }, 200));
@@ -784,7 +855,7 @@ function updateNoRepeat() { const p = prof(); $('noRepeatL').style.display = p?.
 bind('hideSold', 'change', () => { hideSold = $('hideSold').checked; store.set('hideSold', hideSold ? '1' : '0'); refresh(false); });
 bind('frank', 'change', () => { const n = +$('frank').value; if (n) F.grades = new Set(Array.from({ length: n }, (_, i) => i + 1)); $('frank').value = '0'; refresh(false); });
 ['pmin', 'pmax'].forEach(id => bind(id, 'change', () => { const v = k => { const n = parseFloat($(k).value.replace(',', '.')); return isNaN(n) ? null : n; }; F.min = toUSD(v('pmin'), outCur); F.max = toUSD(v('pmax'), outCur); refresh(false); }));
-bind('bAdd', 'change', () => { const v = strip($('bAdd').value), hit = rows.map(r => get(r, 'brand')).find(b => strip(b) === v); if (hit) { F.brands.add(hit); $('bAdd').value = ''; refresh(false); } });
+bind('bFind', 'input', debounce(() => facets(), 150));
 $('reset').onclick = () => resetFilters(true, true); // quita los filtros pero conserva el catálogo montado y la selección
 
 /* ============ tarjetas ============ */
