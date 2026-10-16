@@ -760,7 +760,7 @@ async function askGo() {
           body: JSON.stringify({ lang, query: text, brands: [...cnt].sort((a, b) => b[1] - a[1]).slice(0, 400).map(([b, n]) => `${b} (${n})`), entities: ents, total: rows.length }) });
         if (!r.ok) throw new Error(await r.text());
         const s = await r.json(); store.set(pk, JSON.stringify(s)); return await applySpec(s, s.reply);
-      } catch (e) { setStatus(tl('La IA falló ({e})', { e: e.message.slice(0, 160) }) + (multi ? '' : tl('. Uso el modo básico.')), true); if (multi) return; }
+      } catch (e) { setStatus(aiErr(e) + (multi ? '' : tl('. Uso el modo básico.')), true); if (multi) { const r = $('reply'); r.style.display = ''; r.textContent = aiErr(e); return; } }
     }
     await applySpec(basicParse(text), '');
   } finally { $('askGo').disabled = false; $('askGo').textContent = tl('Buscar'); }
@@ -813,6 +813,7 @@ async function callPlan(body) {
 async function planGo() {
   const brief = $('ask').value.trim(); if (!brief || !rows.length) return;
   const rep = $('reply'), btn = $('planGo'); rep.style.display = '';
+  await aiStatus(); if (serverOld) { rep.textContent = oldServerMsg(); return; }
   if (!aiOn) { rep.textContent = tl('Crear el prompt necesita la IA. Pulsa "Activar IA…" y pega tu clave.'); return; }
   btn.disabled = true; $('askGo').disabled = true;
   try {
@@ -832,7 +833,7 @@ async function planGo() {
     rep.textContent = (fin.reply ? fin.reply + '\n' : '') + tl('Prompt creado. Revísalo, edítalo si quieres y pulsa Buscar.') + '\n'
       + rd.map(d => `${mark(d)} ${d.label}: ${tl('{n} candidatos', { n: d.strict })}${d.loose ? tl(' (+{n} solo en notas)', { n: d.loose }) : ''}${d.missingBrands.length ? ' · ' + tl('marca no encontrada: {b}', { b: d.missingBrands.join(', ') }) : ''}`).join('\n')
       + ((fin.assumptions || []).length ? '\n' + tl('Supuestos:') + '\n' + fin.assumptions.map(a => '• ' + a).join('\n') : '');
-  } catch (e) { rep.textContent = tl('La IA falló ({e})', { e: String(e.message).slice(0, 160) }); }
+  } catch (e) { rep.textContent = aiErr(e); }
   finally { btn.disabled = false; $('askGo').disabled = false; }
 }
 $('planGo').onclick = planGo;
@@ -848,10 +849,15 @@ function renderAiState() {
   };
   if ($('keyOff')) $('keyOff').onclick = async () => { await fetch('/ai-key', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Catalog-Finder': '1' }, body: JSON.stringify({ key: '' }) }); aiStatus(); };
 }
+const APP_VERSION = '2026-10-16.3'; // igual que APP_VERSION en server.py
+let serverOld = false;
+const oldServerMsg = () => tl('⚠ El programa que está en marcha (la ventana negra) es una versión antigua. Cierra TODAS las ventanas negras de Catalog Finder y vuelve a abrirlo; luego recarga esta página.');
 async function aiStatus() {
-  try { aiOn = (await (await fetch('/ai-status')).json()).configured; } catch { aiOn = false; }
+  try { const st = await (await fetch('/ai-status')).json(); aiOn = st.configured; serverOld = st.version !== APP_VERSION; } catch { aiOn = false; }
   renderAiState();
+  if (serverOld) setStatus(oldServerMsg(), true);
 }
+const aiErr = e => (serverOld ? oldServerMsg() + '\n' : '') + tl('La IA falló ({e})', { e: String(e.message || e).slice(0, 600) });
 
 /* ============ detailed grading en lenguaje natural ============ */
 const NON_EN = /[^\x00-\x7F\u00C0-\u017F\u2018-\u201D\u2013\u2014\u00B0\u00BD]/;

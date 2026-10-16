@@ -7,7 +7,7 @@ Uso:  python3 server.py [puerto]
 Sirve index.html y un proxy /fetch?url=... para descargar el CSV de Google Sheets
 (el navegador no puede hacerlo directamente por CORS).
 """
-import concurrent.futures, io, hashlib, http.client, http.server, json, os, re, ssl, sys, threading, time, urllib.error, urllib.parse, urllib.request, webbrowser
+import concurrent.futures, io, hashlib, http.client, http.server, json, os, re, socket, ssl, sys, threading, time, urllib.error, urllib.parse, urllib.request, webbrowser
 
 ROOT = os.path.dirname(os.path.abspath(__file__))
 KEY_FILE = os.path.join(ROOT, ".api_key")
@@ -231,6 +231,7 @@ def api_key():
     if not k and os.path.exists(KEY_FILE):
         k = open(KEY_FILE).read().strip()
     return k
+APP_VERSION = "2026-10-16.3"  # igual que APP_VERSION en index.html: si no coinciden, la app avisa de que el servidor es viejo
 PORT = int(sys.argv[1]) if len(sys.argv) > 1 else 8765
 RATE_SOURCES = (
     ("https://open.er-api.com/v6/latest/USD", lambda d: (d["rates"], d.get("time_last_update_utc", ""))),
@@ -253,7 +254,7 @@ class Handler(http.server.SimpleHTTPRequestHandler):
 
     def do_POST(self):
         path = urllib.parse.urlparse(self.path).path
-        if path not in ("/ai", "/ai-key", "/describe", "/plan") or not self._local_only():
+        if path not in ("/ai", "/ai-key", "/describe", "/plan", "/shutdown") or not self._local_only():
             return self._err(403, self.m("Prohibido", "Forbidden", "Interdit"))
         try:
             data = json.loads(self.rfile.read(int(self.headers.get("Content-Length") or 0)) or b"{}")
@@ -272,9 +273,12 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             return self._describe(data)
         if path == "/plan":
             return self._plan(data)
+        if path == "/shutdown":  # una version nueva arrancando pide a esta que deje libre el puerto
+            self._json({"ok": True})
+            return threading.Thread(target=self.server.shutdown, daemon=True).start()
         return self._ai(data)
 
-    _NO_FORCE = set()  # modelos que rechazan tool_choice forzado (se recuerda para no repetir la llamada fallida)
+    _NO_FORCE = {"claude-sonnet-5-5", "claude-opus-5-5", "claude-fable-5-1", "claude-mythos-5-1"}  # rechazan tool_choice forzado
 
     def _post_api(self, payload, timeout=120):
         def call(p):
@@ -287,28 +291,38 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             return urllib.error.HTTPError(e.url, e.code, e.msg, e.headers, io.BytesIO(body.encode()))
 
         forced = payload.get("tool_choice", {}).get("type") in ("tool", "any")
-        if forced and payload.get("model") not in self._NO_FORCE:
+        if not forced:
+            return call(payload)
+        model = payload.get("model", "")
+        if model not in self._NO_FORCE:
             try:
                 return call(payload)
             except urllib.error.HTTPError as e:
                 body = e.read().decode("utf-8", "replace")
                 if e.code != 400 or "tool_choice" not in body:
                     raise fail(e, body)
-                self._NO_FORCE.add(payload.get("model"))
-        if not forced:
-            return call(payload)
-        # modelos nuevos (Sonnet 5.5...) no admiten tool_choice forzado ni temperature: tool_choice automatico + instruccion
-        p = {k: v for k, v in payload.items() if k != "temperature"}
+                self._NO_FORCE.add(model)  # se recuerda para no repetir la llamada fallida
+        # modelos nuevos (Sonnet 5.5...): sin tool_choice forzado ni temperature -> tool_choice automatico + instruccion.
+        # Para que no piense de mas: Sonnet 5.5 usa thinking "between_tools"; "disabled" ya no existe ahi.
         name = payload["tool_choice"].get("name")
+        p = {k: v for k, v in payload.items() if k not in ("temperature", "thinking")}
         p["tool_choice"] = {"type": "auto"}
-        p["system"] = (p.get("system") or "") + f"\n\nYou MUST answer by calling the tool {name} exactly once; do not write plain text."
-        try:
-            return call(dict(p, thinking={"type": "between_tools"}))  # sin razonamiento largo = mas barato y rapido
-        except urllib.error.HTTPError as e:
-            body = e.read().decode("utf-8", "replace")
-            if e.code != 400 or "thinking" not in body:
-                raise fail(e, body)
-        return call(p)
+        p["system"] = (p.get("system") or "") + f"\n\nAnswer ONLY by calling the tool {name} exactly once. Do not write plain text."
+        variants = [dict(p, thinking={"type": "between_tools"}), dict(p, max_tokens=max(p.get("max_tokens", 4000), 16000))]
+        if model != "claude-sonnet-5-5":
+            variants.reverse()  # between_tools solo existe en Sonnet 5.5
+        resp = None
+        for i, v in enumerate(variants):
+            try:
+                resp = call(v)
+                break
+            except urllib.error.HTTPError as e:
+                body = e.read().decode("utf-8", "replace")
+                if i == len(variants) - 1 or e.code != 400 or "thinking" not in body:
+                    raise fail(e, body)
+        if not self._tool_input(resp):  # con tool_choice automatico la llamada no esta garantizada: un reintento
+            resp = call(v)
+        return resp
 
     @staticmethod
     def _tool_input(resp):
@@ -428,11 +442,11 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         if d.get("draft"):
             msgs += [{"role": "assistant", "content": [{"type": "tool_use", "id": "toolu_draft", "name": "write_plan", "input": d["draft"]}]},
                      {"role": "user", "content": [{"type": "tool_result", "tool_use_id": "toolu_draft", "content": "Dry-run feedback from the app:\n" + str(d.get("feedback", ""))[:20000] + "\n\nRevise the plan now (probe_keywords empty)."}]}]
-        payload = {"model": PLAN_MODEL, "max_tokens": 8000,
+        payload = {"model": PLAN_MODEL, "max_tokens": 12000,
                    "system": PLAN_SYSTEM + f"\n\nUI language: {LANG_NAMES.get(str(d.get('lang', 'es'))[:2], 'espanol')} (assumptions and reply). prompt_text and keywords in English.",
                    "tools": [PLAN_TOOL], "tool_choice": {"type": "tool", "name": "write_plan"}, "messages": msgs}
         try:
-            out = self._tool_input(self._post_api(payload, timeout=120))
+            out = self._tool_input(self._post_api(payload, timeout=300))
         except urllib.error.HTTPError as e:
             return self._err(502, self.m("La API respondio", "The API responded", "L’API a répondu") + f" {e.code}: {e.read().decode('utf-8', 'replace')[:300]}")
         except Exception as e:  # noqa: BLE001
@@ -478,7 +492,7 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         if u.path == "/photos":
             return self._photos(urllib.parse.parse_qs(u.query))
         if u.path == "/ai-status":
-            return self._json({"configured": bool(api_key())})
+            return self._json({"configured": bool(api_key()), "version": APP_VERSION})
         if u.path == "/rates":
             return self._rates()
         if u.path != "/fetch":
@@ -535,13 +549,41 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         pass
 
 
-if __name__ == "__main__":
+class Server(http.server.ThreadingHTTPServer):
+    # En Windows SO_REUSEADDR deja que DOS servidores usen el mismo puerto (y contesta el viejo): uso exclusivo
+    allow_reuse_address = sys.platform != "win32"
+
+    def server_bind(self):
+        if sys.platform == "win32" and hasattr(socket, "SO_EXCLUSIVEADDRUSE"):
+            self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_EXCLUSIVEADDRUSE, 1)
+        super().server_bind()
+
+
+def start_server():
     try:
-        srv = http.server.ThreadingHTTPServer(("127.0.0.1", PORT), Handler)
+        return Server(("127.0.0.1", PORT), Handler)
     except OSError:
-        sys.exit({"es": f"\nEl puerto {PORT} ya esta ocupado: seguramente hay otra copia de Catalog Finder abierta.\nCierrala (Ctrl+C en su terminal) y vuelve a ejecutar, o usa otro puerto: python server.py {PORT + 1}\n",
-                  "en": f"\nPort {PORT} is already in use: another copy of Catalog Finder is probably open.\nClose it (Ctrl+C in its terminal) and run again, or use another port: python server.py {PORT + 1}\n",
-                  "fr": f"\nLe port {PORT} est déjà utilisé : une autre copie de Catalog Finder est probablement ouverte.\nFermez-la (Ctrl+C dans son terminal) et relancez, ou utilisez un autre port : python server.py {PORT + 1}\n"}[term_lang()])
+        pass
+    try:  # otra copia abierta: si es una version con /shutdown, se le pide que se cierre
+        c = http.client.HTTPConnection("127.0.0.1", PORT, timeout=3)  # directo, sin proxies del sistema
+        c.request("POST", "/shutdown", body=b"{}", headers={"X-Catalog-Finder": "1", "Content-Type": "application/json"})
+        if c.getresponse().status != 200:
+            raise OSError("old version")
+        for _ in range(20):
+            time.sleep(0.25)
+            try:
+                return Server(("127.0.0.1", PORT), Handler)
+            except OSError:
+                pass
+    except Exception:  # noqa: BLE001
+        pass
+    sys.exit({"es": f"\nEl puerto {PORT} ya esta ocupado: hay otra copia (antigua) de Catalog Finder abierta.\nCierra TODAS las ventanas negras de Catalog Finder (o Ctrl+C en ellas) y vuelve a ejecutar.\n",
+              "en": f"\nPort {PORT} is already in use: another (older) copy of Catalog Finder is open.\nClose ALL Catalog Finder terminal windows (or Ctrl+C in them) and run again.\n",
+              "fr": f"\nLe port {PORT} est déjà utilisé : une autre copie (ancienne) de Catalog Finder est ouverte.\nFermez TOUTES les fenêtres de terminal de Catalog Finder (ou Ctrl+C) et relancez.\n"}[term_lang()])
+
+
+if __name__ == "__main__":
+    srv = start_server()
     url = f"http://127.0.0.1:{PORT}/"
     print({"es": f"Catalog Finder en {url}  (Ctrl+C para salir)", "en": f"Catalog Finder at {url}  (Ctrl+C to quit)", "fr": f"Catalog Finder sur {url}  (Ctrl+C pour quitter)"}[term_lang()])
     try:
@@ -552,3 +594,4 @@ if __name__ == "__main__":
         srv.serve_forever()
     except KeyboardInterrupt:
         pass
+    srv.server_close()

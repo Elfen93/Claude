@@ -7,6 +7,8 @@ App local para buscar artículos en tu hoja de Google Sheets, ver sus fotos y de
 ## Arrancar
 `python server.py` (Windows) o `python3 server.py`. Solo necesita Python 3. Se abre en http://127.0.0.1:8765
 
+Al actualizar: la versión nueva cierra sola la copia anterior que siga abierta. Si la app avisa de que «el programa que está en marcha es una versión antigua», cierra todas las ventanas negras de Catalog Finder y vuelve a abrirlo.
+
 ## Los 3 pasos
 1. **Carga tu hoja**: pega el enlace CSV publicado de Google Sheets, o sube el `.csv` descargado.
 2. **¿Qué buscas?**: escribe en una frase (`carteras Chanel o Hermès en estado A o mejor entre $300 y $1500, elige 40 variadas`) y pulsa Buscar. O ajusta a mano: rango de precio, estado, marcas, entity, texto, orden, solo con fotos.

@@ -5,6 +5,8 @@ Local app to search your items in a Google Sheets/CSV, see their photos and down
 ## Run
 `python server.py` (Windows) or `python3 server.py`. Python 3 only, nothing to install. Opens at http://127.0.0.1:8765. Pick the language (Español / English / Français) with the 🌐 selector at the top; it is remembered. Terminal messages follow `CATALOG_LANG=en|fr|es` (or your system language).
 
+When updating: the new version closes any older copy still running by itself. If the app warns that "the program that is running is an old version", close all Catalog Finder black windows and open it again.
+
 ## The 3 steps
 1. **Load your sheet**: paste the published CSV link of Google Sheets, or upload the `.csv`. The header row is detected even if the sheet has title rows above it; English, Spanish and French column names are recognised (`MARQUE`, `PRIX`, `C-tag`…).
 2. **What are you looking for?** Type it like you would tell a person (English, French or Spanish): *"black wallets under 300 euros, pick 5 varied"*. Or filter by hand: price range, grade, brands, entity, text, order, only with photos.

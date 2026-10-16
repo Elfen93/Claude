@@ -5,6 +5,8 @@ Application locale pour chercher vos articles dans une feuille Google Sheets/CSV
 ## Lancer
 `python server.py` (Windows) ou `python3 server.py`. Seulement Python 3, rien à installer. S’ouvre sur http://127.0.0.1:8765. Choisissez la langue (Español / English / Français) avec le sélecteur 🌐 en haut ; elle est mémorisée. Les messages du terminal suivent `CATALOG_LANG=fr|en|es` (ou la langue du système).
 
+Lors d’une mise à jour : la nouvelle version ferme d’elle-même l’ancienne copie encore ouverte. Si l’app signale que « le programme en cours est une ancienne version », fermez toutes les fenêtres noires de Catalog Finder et rouvrez-le.
+
 ## Les 3 étapes
 1. **Chargez votre feuille** : collez le lien CSV publié de Google Sheets, ou importez le `.csv`. La ligne d’en-têtes est détectée même s’il y a des titres au-dessus ; les colonnes en anglais, espagnol et français sont reconnues (`MARQUE`, `PRIX`, `C-tag`…).
 2. **Que cherchez-vous ?** Écrivez-le comme à une personne (français, anglais ou espagnol) : *« sacs noirs à moins de 500 euros, choisis 5 variés »*. Ou filtrez à la main : tranche de prix, état, marques, entity, texte, ordre, uniquement avec photos.

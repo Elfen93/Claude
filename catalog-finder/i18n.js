@@ -177,4 +177,5 @@ window.I18N = {
   ' (+{n} solo en notas)': { en: ' (+{n} only in notes)', fr: ' (+{n} seulement dans les notes)' },
   'marca no encontrada: {b}': { en: 'brand not found: {b}', fr: 'marque introuvable : {b}' },
   'Supuestos:': { en: 'Assumptions:', fr: 'Hypothèses :' },
+  '⚠ El programa que está en marcha (la ventana negra) es una versión antigua. Cierra TODAS las ventanas negras de Catalog Finder y vuelve a abrirlo; luego recarga esta página.': { en: '⚠ The program that is running (the black window) is an old version. Close ALL Catalog Finder black windows, open it again, then reload this page.', fr: '⚠ Le programme en cours (la fenêtre noire) est une ancienne version. Fermez TOUTES les fenêtres noires de Catalog Finder, rouvrez-le, puis rechargez cette page.' },
 };
