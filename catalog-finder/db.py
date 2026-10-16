@@ -48,7 +48,17 @@ def init():
             CREATE TABLE IF NOT EXISTS offers(code TEXT, client_id INTEGER, catalog_id INTEGER, at REAL);
             CREATE INDEX IF NOT EXISTS offers_code ON offers(code);
             CREATE INDEX IF NOT EXISTS offers_client ON offers(client_id);
+            CREATE TABLE IF NOT EXISTS sales(code TEXT, sold_date TEXT, channel TEXT, brand TEXT, type TEXT, descr TEXT, entity TEXT, owner TEXT, buyer TEXT,
+                                             grade TEXT, pat REAL, pat_cur TEXT, pat_init REAL, pat_init_cur TEXT, added TEXT, sold REAL, sold_cur TEXT,
+                                             src TEXT, imported REAL, PRIMARY KEY(code, sold_date));
+            CREATE INDEX IF NOT EXISTS sales_date ON sales(sold_date);
+            CREATE TABLE IF NOT EXISTS fx(date TEXT, cur TEXT, rate REAL, PRIMARY KEY(date, cur));
+            CREATE TABLE IF NOT EXISTS imports(id INTEGER PRIMARY KEY AUTOINCREMENT, kind TEXT, src TEXT, at REAL, n INTEGER, added INTEGER, updated INTEGER, info TEXT);
         """)
+        icols = {r[1] for r in c.execute("PRAGMA table_info(items)")}
+        for col in ("type", "channel", "owner", "buyer", "added"):
+            if col not in icols:
+                c.execute(f"ALTER TABLE items ADD COLUMN {col} TEXT")
         cols = {r[1] for r in c.execute("PRAGMA table_info(status)")}
         for col, ty in (("client_id", "INTEGER"), ("note", "TEXT")):
             if col not in cols:
@@ -114,7 +124,10 @@ def snapshot(source, items):
                     up += 1
             clean.append((code, it, price))
         gone = [k for k in old if k not in cur_codes]
-        if prev and not (new or gone or down or up):  # misma hoja: se repiten las novedades de la ultima carga con cambios
+        ex = lambda it, i: (str(it[i]) if it[i] is not None else None) if len(it) > i else None
+        extra = [(ex(it, 7), ex(it, 8), ex(it, 9), ex(it, 10), ex(it, 11), source, code) for code, it, price in clean]
+        if prev and not (new or gone or down or up):
+            c.executemany("UPDATE items SET type=?, channel=?, owner=?, buyer=?, added=? WHERE source=? AND code=?", extra)  # misma hoja: se repiten las novedades de la ultima carga con cambios
             last = c.execute("SELECT id, at FROM loads WHERE source=? AND (new>0 OR gone>0 OR down>0) ORDER BY id DESC LIMIT 1", (source,)).fetchone()
             if not last:
                 return {"first": False, "unchanged": True, "load": prev["id"], "n": len(cur_codes), "new": [], "gone": [], "down": [], "up": 0, "since": prev["at"]}
@@ -134,6 +147,7 @@ def snapshot(source, items):
         c.executemany("INSERT INTO load_items(load, code, kind, old, new) VALUES(?,?,?,?,?)",
                       [(lid, k, "new", None, None) for k in new] + [(lid, k, "gone", old[k][0], None) for k in gone]
                       + [(lid, d["c"], "down", d["old"], d["new"]) for d in down])
+        c.executemany("UPDATE items SET type=?, channel=?, owner=?, buyer=?, added=? WHERE source=? AND code=?", extra)
         return {"first": not prev, "load": lid, "n": len(cur_codes), "new": new, "gone": gone, "down": down, "up": up, "since": prev and prev["at"], "at": now}
 
 
@@ -333,3 +347,80 @@ def migrate_profiles():
         if p.get("name") == active:
             active_id = cid
     kv_set({"_profiles_migrated": "1", "profileId": str(active_id) if active_id else ""})
+
+
+# ---------- ventas (snapshot de vendidos, se importa cada mes) ----------
+SALE_COLS = ("code", "sold_date", "channel", "brand", "type", "descr", "entity", "owner", "buyer", "grade",
+             "pat", "pat_cur", "pat_init", "pat_init_cur", "added", "sold", "sold_cur")
+
+
+def sales_import(rows, src=""):
+    """Añade o actualiza ventas; la clave es (CTag, fecha de venta), así reimportar un mes no duplica nada."""
+    now = time.time()
+    data = []
+    for r in rows:
+        code, day = str(r.get("code") or "").strip(), str(r.get("sold_date") or "").strip()[:19]
+        if code and day:
+            data.append(tuple([code, day] + [r.get(k) for k in SALE_COLS[2:]] + [src, now]))
+    upd = ", ".join(f"{k}=excluded.{k}" for k in SALE_COLS[2:] if k != "grade") + ", grade=COALESCE(excluded.grade, sales.grade), src=excluded.src, imported=excluded.imported"
+    with _lock, _conn() as c:
+        before = c.execute("SELECT COUNT(*) FROM sales").fetchone()[0]
+        c.executemany(f"INSERT INTO sales({', '.join(SALE_COLS)}, src, imported) VALUES({', '.join('?' * (len(SALE_COLS) + 2))}) "
+                      f"ON CONFLICT(code, sold_date) DO UPDATE SET {upd}", data)
+        total = c.execute("SELECT COUNT(*) FROM sales").fetchone()[0]
+    return {"added": total - before, "updated": len(data) - (total - before), "total": total}
+
+
+def sales_grades(pairs):
+    """Grado por CTag (hoja «grading»): se aplica a todas sus ventas."""
+    with _lock, _conn() as c:
+        c.executemany("UPDATE sales SET grade=? WHERE code=?", [(g, str(k).strip()) for k, g in pairs if g])
+
+
+def log_import(kind, src, n, added, updated, info):
+    with _lock, _conn() as c:
+        c.execute("INSERT INTO imports(kind, src, at, n, added, updated, info) VALUES(?,?,?,?,?,?,?)", (kind, src, time.time(), n, added, updated, json.dumps(info, ensure_ascii=False)))
+
+
+def sales_all():
+    with _conn() as c:
+        rows = [list(r) for r in c.execute(f"SELECT {', '.join(SALE_COLS)} FROM sales ORDER BY sold_date")]
+        imps = [dict(r) for r in c.execute("SELECT * FROM imports WHERE kind='sales' ORDER BY id DESC LIMIT 12")]
+    for i in imps:
+        try:
+            i["info"] = json.loads(i["info"] or "{}")
+        except ValueError:
+            i["info"] = {}
+    return {"cols": list(SALE_COLS), "rows": rows, "imports": imps}
+
+
+def sales_clear():
+    with _lock, _conn() as c:
+        c.execute("DELETE FROM sales")
+        c.execute("DELETE FROM imports WHERE kind='sales'")
+
+
+def fx_all():
+    out = {}
+    with _conn() as c:
+        for r in c.execute("SELECT date, cur, rate FROM fx"):
+            out.setdefault(r["date"], {})[r["cur"]] = r["rate"]
+    return out
+
+
+def fx_put(by_date):
+    with _lock, _conn() as c:
+        c.executemany("INSERT INTO fx(date, cur, rate) VALUES(?,?,?) ON CONFLICT(date, cur) DO UPDATE SET rate=excluded.rate",
+                      [(d, cur, float(v)) for d, rs in by_date.items() for cur, v in rs.items() if v])
+
+
+def stock_latest():
+    """El stock de la última hoja cargada en el buscador (con tipo, canal, owner, buyer y fecha de alta)."""
+    with _conn() as c:
+        last = c.execute("SELECT source FROM loads ORDER BY id DESC LIMIT 1").fetchone()
+        if not last:
+            return {"source": None, "at": None, "rows": []}
+        lid, at = c.execute("SELECT MAX(id), MAX(at) FROM loads WHERE source=?", (last["source"],)).fetchone()
+        rows = [list(r) for r in c.execute("SELECT code, brand, name, price, cur, entity, grade, type, channel, owner, buyer, added FROM items "
+                                           "WHERE source=? AND last_load=?", (last["source"], lid))]
+    return {"source": last["source"], "at": at, "rows": rows}

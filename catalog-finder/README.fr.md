@@ -12,7 +12,7 @@ Lors d’une mise à jour : la nouvelle version ferme d’elle-même l’ancienn
 2. **Que cherchez-vous ?** Écrivez-le comme à une personne (français, anglais ou espagnol) : *« sacs noirs à moins de 500 euros, choisis 5 variés »*. Ou filtrez à la main : tranche de prix, état, marques, entity, texte, ordre, uniquement avec photos.
 3. **Choisissez** : cochez les cartes, *Sélectionner tous les résultats* ou *les premiers N*. Puis **Télécharger Excel (.xlsx)**.
 
-## 🗂 Une seule app : Accueil · Recherche · Clients · Factures · Nouveautés · Entités
+## 🗂 Une seule app : Accueil · Recherche · Clients · Factures · 📊 Ventes · Nouveautés · Entités
 Tout est stocké dans **`catalog.db`**, un seul fichier dans le dossier (pas dans git) ; copiez-le pour sauvegarder. Les réglages du navigateur y sont copiés automatiquement la première fois.
 - **🏠 Accueil** (s’ouvre au démarrage). Met à jour la feuille en arrière-plan et affiche :
   - Les nouveautés avec photos.
@@ -45,6 +45,36 @@ Tout est stocké dans **`catalog.db`**, un seul fichier dans le dossier (pas dan
   - Case **Encaissée**.
   - PDF via l’impression du navigateur.
 - **🏢 Entités :** société, banque, mentions légales et logo ; `entidades.json` dans le dossier est importé au démarrage.
+
+## 📊 Ventes : analyse et rapport mensuel
+1. Chaque mois, exportez le **snapshot des ventes** (le xlsx avec tous les onglets) et cliquez sur **⬆ Importer les ventes**. Réimporter le même fichier met à jour les ventes répétées au lieu de les dupliquer.
+2. Facultatif : ajoutez à gauche un onglet **Grading** avec *Ctag* en colonne A et le texte du grading (comme les Public Notes) en colonne B. L’app lit le grade : « ITEM GRADING: AB », « GRADING: B+ »… (« N (New with Tags) » compte comme SA).
+- **Calcul :**
+  - Revenus = *Sold Price* (pour TRR et EBTH, ce que vous touchez).
+  - Coût = *PAT - Current* (prix TTC), avec sa devise.
+  - Bénéfice = revenus − coût, au **taux de change du jour de chaque vente**. Les taux de la BCE se téléchargent seuls et sont stockés dans `catalog.db` (internet nécessaire à l’import).
+  - Jours avant vente = de *Added Date* à *Sold Date*.
+- **Résumé :**
+  - Unités, revenus, bénéfice, marge, panier moyen, jours avant vente et ventes à perte.
+  - Comparé à la période précédente ou à la même période l’an dernier.
+  - Ventes par mois (ou semaine) et canal, histogramme des jours avant vente et tableau par canal.
+  - Les mois incomplets sont marqués « * », et « ⚠ Qualité des données » signale ce qui ne colle pas.
+- **Filtres :**
+  - Canal, entité, catégorie/type, marque, owner/buyer, grade et tranche de coût.
+  - Période : tout, 30/90 derniers jours, 6 ou 12 mois, mois en cours, mois précédent, cette année ou dates libres.
+  - Devise des montants : USD, JPY, EUR…
+- **Classements :** par marque, catégorie, type, canal, entité, owner, buyer, grade, mois ou tranche de coût. Cliquez sur une ligne pour filtrer.
+- **Stock et rotation** (utilise la dernière feuille chargée dans la recherche) :
+  - Mois de stock et taux d’écoulement par marque · catégorie (ou autre regroupement).
+  - Signaux : ▲ **Acheter plus** (se vend vite et avec marge), ▼ **Surstock**, ◆ **Lent**.
+  - **Pièces bloquées :** en stock depuis plus longtemps que le délai de vente de 90 % des pièces similaires. Avec le meilleur canal par marge et le plus rapide. *🔎 Voir dans la recherche* les ouvre filtrées.
+- **Pièces vendues :** chaque vente avec coût, vente, bénéfice et marge, avec des filtres comme « à perte » ou « sans PAT ».
+- **📄 Rapport mensuel :** choisissez le mois puis **🖨 PDF** ou **⬇ Excel**. Il contient :
+  - Un résumé par rapport au mois précédent et au même mois l’an dernier.
+  - Canaux, entités, principales marques et types, plus grosses ventes et pertes.
+  - Quoi acheter et ce qui est en trop.
+  - Une partie par buyer pour orienter les achats (ce n’est pas une mesure du travail de quiconque).
+- **⬇ Excel** (en haut) télécharge ce que vous voyez : période et filtres.
 
 ## Assistant
 - **Avec l’IA** : *Activer l’IA…* et collez une clé API Anthropic (stockée uniquement dans le fichier `.api_key` sur votre ordinateur ; ou la variable `ANTHROPIC_API_KEY`). Elle comprend des phrases libres et de longues demandes multi-lignes (modèles prêts dans `prompts/`), et répond dans votre langue.

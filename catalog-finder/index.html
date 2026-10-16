@@ -97,7 +97,7 @@
 <body>
 <div class="top">
   <h1>Catalog Finder</h1>
-  <nav class="nav"><a href="backoffice.html#home">🏠 Inicio</a><a href="index.html" class="on">🔎 Buscar</a><a href="backoffice.html#cli">👥 Clientes</a><a href="backoffice.html#inv">🧾 Invoices</a><a href="backoffice.html#news">🆕 Novedades</a><a href="backoffice.html#ent">🏢 Entidades</a></nav>
+  <nav class="nav"><a href="backoffice.html#home">🏠 Inicio</a><a href="index.html" class="on">🔎 Buscar</a><a href="backoffice.html#cli">👥 Clientes</a><a href="backoffice.html#inv">🧾 Invoices</a><a href="backoffice.html#sales">📊 Ventas</a><a href="backoffice.html#news">🆕 Novedades</a><a href="backoffice.html#ent">🏢 Entidades</a></nav>
   <span id="fx" class="mute"></span>
   <label title="Idioma / Language / Langue">🌐 <select id="langSel"></select></label>
   <label>Moneda <select id="outCurSel"></select></label>
@@ -316,9 +316,10 @@ function parseCSV(text) {
 }
 
 /* ============ grading → rank ============ */
-const RANKS = [['SA WITH TAGS', 1, 'SA'], ['SA', 2, 'SA'], ['S', 3, 'S'], ['A', 4, 'A'], ['AB', 5, 'AB'], ['B+', 6, 'B+'], ['B', 7, 'B'], ['B-', 8, 'B-'], ['BC', 9, 'BC'], ['C', 10, 'C']];
-const GRADE_RE = /GRADING:\s*(SA\s+with\s+tags|SA|S|AB|A|BC|B\+|B-|B|C)(?![A-Za-z])/i;
-const GRADE_ONLY = /^(SA\s+with\s+tags|SA|S|AB|A|BC|B\+|B-|B|C)(?![A-Za-z])/i;
+const RANKS = [['SA WITH TAGS', 1, 'SA'], ['SA', 2, 'SA'], ['S', 3, 'S'], ['A', 4, 'A'], ['AB', 5, 'AB'], ['B+', 6, 'B+'], ['B', 7, 'B'], ['B-', 8, 'B-'], ['BC', 9, 'BC'], ['C', 10, 'C'],
+  ['N', 1, 'SA'], ['B.C.', 9, 'BC'], ['B.C', 9, 'BC']]; // «N (New with Tags)» = nuevo con etiqueta, como «SA with tags»
+const GRADE_RE = /GRADING:\s*(B\+|B-|B\.C\.?|(?:SA\s+with\s+tags|SA|S|AB|A|BC|B|C|N)(?![A-Za-z]))/i;
+const GRADE_ONLY = /^(B\+|B-|B\.C\.?|(?:SA\s+with\s+tags|SA|S|AB|A|BC|B|C|N)(?![A-Za-z]))/i;
 const rankEntry = key => RANKS.find(x => x[0] === key.toUpperCase().replace(/\s+/g, ' '));
 /* ---------- fecha de alta: acepta 2026-03-14, 14/03/2026, 03/14/2026, 2026年3月14日, número de serie de Excel… ---------- */
 let dateOrder = 'mdy';
@@ -531,7 +532,23 @@ function findHeader(tbl) { // la fila de cabeceras puede no ser la primera (hoja
   return best < 2 ? 0 : hi;
 }
 const uniqH = hs => { const seen = {}; return hs.map(h => { h = String(h ?? '').trim(); const n = (seen[h] = (seen[h] || 0) + 1); return n > 1 ? `${h} (${n})` : h; }); }; // columnas repetidas («Cur» x4)
+function gradingMap(tbl) { // pestaña «Grading»: Ctag en una columna y el texto del grading (como Public Notes) en otra
+  const hi = tbl.findIndex(r => r.some(c => String(c ?? '').trim())); if (hi < 0) return null;
+  const hdr = tbl[hi].map(x => strip(x).trim()), body = tbl.slice(hi + 1);
+  let ci = hdr.findIndex(x => /^(c-?tag|tag number|tag no\.?|tag)$/.test(x)), gi = hdr.findIndex(x => /grad|public notes|notes/.test(x));
+  if (ci < 0) ci = hdr.findIndex((_, j) => body.filter(r => /^[a-z]{1,3}\d{3,}$/i.test(String(r[j] ?? '').trim())).length > body.length / 2);
+  if (ci < 0) return null; if (gi < 0 || gi === ci) gi = ci === 0 ? 1 : 0;
+  const m = new Map(); body.forEach(r => { const k = String(r[ci] ?? '').trim().toUpperCase(), g = String(r[gi] ?? '').trim(); if (k && g) m.set(k, g); });
+  return m;
+}
 function combineTables(parts) { // varias pestañas/hojas → una tabla con la columna «Canal» = nombre de la pestaña
+  const gp = parts.find(p => /^\s*grad/i.test(p.name || '')), gmap = gp ? gradingMap(gp.tbl) : null;
+  parts = parts.filter(p => p !== gp);
+  const t = combineTables_(parts);
+  if (gmap && gmap.size) { const ci = t[0].findIndex(x => /^c-?tag$/.test(strip(x))); if (ci >= 0) { t[0] = [...t[0], 'Grading']; for (let i = 1; i < t.length; i++) t[i] = [...t[i], gmap.get(String(t[i][ci] ?? '').trim().toUpperCase()) || '']; } }
+  return t;
+}
+function combineTables_(parts) {
   const sheets = [], union = [];
   for (const { name, tbl } of parts) {
     if (!tbl || tbl.length < 2) continue;
@@ -580,7 +597,9 @@ function ingest(input) {
 async function snapshotLoad() { // historial: compara esta carga con la anterior de la misma hoja
   if (!store.online) return;
   try {
-    const items = rows.map(r => [code(r), get(r, 'brand'), nameOf(r).slice(0, 200), priceNum(get(r, 'price')), curOf(r), get(r, 'entity'), r._letter]).filter(x => x[0]).map(x => (isNaN(x[3]) && (x[3] = null), x));
+    const iso = t => t == null ? null : new Date(t).toISOString().slice(0, 10);
+    const items = rows.map(r => [code(r), get(r, 'brand'), nameOf(r).slice(0, 200), priceNum(get(r, 'price')), curOf(r), get(r, 'entity'), r._letter,
+      get(r, 'type') || null, get(r, 'channel') || null, get(r, 'owner') || null, get(r, 'buyer') || null, iso(r._added)]).filter(x => x[0]).map(x => (isNaN(x[3]) && (x[3] = null), x));
     const r = await fetch('/api/snapshot', { method: 'POST', headers: API_H, body: JSON.stringify({ source: loadSource, items }) });
     if (r.ok) { news = await r.json(); computeAlerts(); renderNews(); }
   } catch {}
@@ -616,14 +635,18 @@ function showCodes(codes, tag) {
   F.catalog = lastCatalog = new Set(rows.filter(r => set.has(code(r)))); if (tag) F.catalog.forEach(r => r._tag = tag); refresh(false);
 }
 /* ---------- acciones que llegan desde el Inicio: #catalog=ID, #wish=ID, #new ---------- */
-let pendingAct = (location.hash.match(/^#(catalog|wish|new)(?:=(\d+))?/) || []).slice(1);
-addEventListener('hashchange', () => { pendingAct = (location.hash.match(/^#(catalog|wish|new)(?:=(\d+))?/) || []).slice(1); runPending(); });
+let pendingAct = (location.hash.match(/^#(catalog|wish|new|codes)(?:=(\d+))?/) || []).slice(1);
+addEventListener('hashchange', () => { pendingAct = (location.hash.match(/^#(catalog|wish|new|codes)(?:=(\d+))?/) || []).slice(1); runPending(); });
 function runPending() {
   if (!pendingAct.length || !rows.length || BG) return;
   const [act, id] = pendingAct; pendingAct = []; history.replaceState(null, '', location.pathname);
   const p = id ? profiles.find(x => x.id === id) : null;
   if (p) { activeProf = id; if (p.outCur) outCur = p.outCur; applyProfile(); }
   if (act === 'new' && news) showCodes(news.new, tl('🆕 nuevo'));
+  if (act === 'codes') { // lista enviada desde el panel de ventas (p. ej. piezas estancadas)
+    let list = []; try { list = JSON.parse(store.get('pendingCodes', '[]') || '[]'); } catch {} store.set('pendingCodes', '');
+    resetFilters(false); pasteScope = new Set(list); pasteMissing = 0; refresh(false); setStatus(tl('{n} artículos enviados desde Ventas', { n: list.length }));
+  }
   if (act === 'wish' && p) { const a = alerts.find(x => x.id === id); showCodes(a?.codes || [], tl('⭐ para {c}', { c: p.name })); setStatus(tl('{n} novedades para {c}', { n: a?.codes.length || 0, c: p.name })); }
   if (act === 'catalog' && p) {
     noRepeat = hideSold = true; $('noRepeat').checked = $('hideSold').checked = true; store.set('noRepeat', '1'); store.set('hideSold', '1'); updateNoRepeat();
@@ -1243,7 +1266,7 @@ function renderAiState() {
   };
   if ($('keyOff')) $('keyOff').onclick = async () => { await fetch('/ai-key', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Catalog-Finder': '1' }, body: JSON.stringify({ key: '' }) }); aiStatus(); };
 }
-const APP_VERSION = '2026-10-16.7'; // igual que APP_VERSION en server.py
+const APP_VERSION = '2026-10-16.8'; // igual que APP_VERSION en server.py
 let serverOld = false;
 const oldServerMsg = () => tl('⚠ El programa que está en marcha (la ventana negra) es una versión antigua. Cierra TODAS las ventanas negras de Catalog Finder y vuelve a abrirlo; luego recarga esta página.');
 async function aiStatus() {

@@ -243,7 +243,7 @@ def api_key():
     if not k and os.path.exists(KEY_FILE):
         k = open(KEY_FILE).read().strip()
     return k
-APP_VERSION = "2026-10-16.7"  # igual que APP_VERSION en index.html: si no coinciden, la app avisa de que el servidor es viejo
+APP_VERSION = "2026-10-16.8"  # igual que APP_VERSION en index.html: si no coinciden, la app avisa de que el servidor es viejo
 PORT = int(sys.argv[1]) if len(sys.argv) > 1 else 8765
 RATE_SOURCES = (
     ("https://open.er-api.com/v6/latest/USD", lambda d: (d["rates"], d.get("time_last_update_utc", ""))),
@@ -513,6 +513,12 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             return self._json(db.loads(int(q.get("limit", 20))))
         if p == "load":
             return self._json(db.load_detail(int(q.get("id", 0))))
+        if p == "sales":
+            return self._json(db.sales_all())
+        if p == "fx":
+            return self._json(db.fx_all())
+        if p == "stock":
+            return self._json(db.stock_latest())
         if p == "next-number":
             return self._json({"number": db.peek_number(json.loads(q.get("inv", "{}")))})
         if p == "clients":
@@ -533,6 +539,19 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             if p == "invoices/save":
                 did, number = db.save_invoice(d)
                 return self._json({"id": did, "number": number})
+            if p == "sales/import":
+                r = db.sales_import(d.get("rows") or [], d.get("src") or "")
+                if d.get("last"):
+                    db.log_import("sales", d.get("src") or "", d.get("n") or 0, d.get("added") or 0, d.get("updated") or 0, d.get("info") or {})
+                return self._json(r)
+            if p == "sales/grades":
+                db.sales_grades(d.get("pairs") or [])
+                return self._json({"ok": True})
+            if p == "sales/clear":
+                db.sales_clear()
+                return self._json({"ok": True})
+            if p == "fx/ensure":
+                return self._json(self._fx_ensure(d))
             if p == "status/set":
                 db.set_status(d.get("codes") or [], d.get("s") or "", d.get("client_id"), d.get("note") or "")
                 return self._json({"ok": True})
@@ -589,6 +608,46 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             self.wfile.write(body)
         except Exception as e:  # noqa: BLE001
             self._err(502, self.m("No se pudo descargar", "Download failed", "Téléchargement impossible") + f": {e}")
+
+    FX_SERIES = [os.environ.get("CATALOG_FX_URL") or "https://api.frankfurter.dev/v1/{a}..{b}?base=USD&symbols={s}",
+                 "https://api.frankfurter.app/{a}..{b}?from=USD&to={s}"]
+
+    ECB_CURS = {"EUR", "JPY", "GBP", "CHF", "HKD", "CNY", "AUD", "CAD", "SGD", "KRW", "NZD", "SEK", "NOK", "DKK", "PLN", "CZK", "HUF", "RON",
+                "TRY", "THB", "MYR", "IDR", "INR", "PHP", "MXN", "BRL", "ZAR", "ILS", "ISK", "BGN"}
+
+    def _fx_ensure(self, d):
+        """Tipos de cambio diarios (BCE, vía frankfurter) para las fechas de las ventas; se guardan en catalog.db."""
+        import datetime as _dt
+        try:
+            a = _dt.date.fromisoformat(str(d.get("from"))[:10]) - _dt.timedelta(days=7)
+            b = min(_dt.date.fromisoformat(str(d.get("to"))[:10]), _dt.date.today())
+        except ValueError:
+            return {"ok": False, "error": "fechas"}
+        # solo las monedas que publica el BCE (si se pide una que no tiene, frankfurter falla la petición entera); las demás usan el cambio de hoy
+        curs = sorted(({str(x).upper() for x in (d.get("curs") or [])} & self.ECB_CURS) | {"JPY", "HKD", "CNY", "GBP", "EUR"})
+        have = db.fx_all()
+        days = sorted(have)
+        covered = days and days[0] <= str(a + _dt.timedelta(days=6)) and days[-1] >= str(b - _dt.timedelta(days=5)) \
+            and all(cur in have[days[-1]] for cur in curs)
+        if covered:
+            return {"ok": True, "fetched": 0}
+        got, errs, start = {}, [], a
+        while start <= b:  # en tramos de 90 días
+            end = min(start + _dt.timedelta(days=89), b)
+            for tpl in self.FX_SERIES:
+                url = tpl.format(a=start.isoformat(), b=end.isoformat(), s=",".join(curs))
+                try:
+                    req = urllib.request.Request(url, headers={"User-Agent": "catalog-finder"})
+                    with urllib.request.urlopen(req, timeout=30, context=ssl.create_default_context()) as r:
+                        got.update(json.load(r).get("rates") or {})
+                    break
+                except Exception as e:  # noqa: BLE001
+                    errs.append(f"{url.split('?')[0]}: {e}")
+            start = end + _dt.timedelta(days=1)
+        if got:
+            db.fx_put(got)
+            return {"ok": True, "fetched": len(got)}
+        return {"ok": False, "error": " | ".join(errs[-2:])}
 
     def _rates(self):
         """Tipos de cambio actuales (unidades de cada moneda por 1 USD), cache 1h."""

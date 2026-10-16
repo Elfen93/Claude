@@ -47,11 +47,11 @@ const cliOf = id => clients.find(c => c.id === +id) || null;
 const isHK = e => (e?.template || '') === 'hk';
 
 /* ---------- pestañas ---------- */
-const TABS = ['home', 'inv', 'cli', 'news', 'ent'];
+const TABS = ['home', 'inv', 'cli', 'sales', 'news', 'ent'];
 function showTab(t) {
   document.querySelectorAll('#tabs a[data-t]').forEach(a => a.classList.toggle('on', a.dataset.t === t));
   TABS.forEach(k => $('t-' + k).style.display = k === t ? '' : 'none');
-  ({ home: renderHome, cli: renderClients, ent: renderEntForm, news: renderNews, inv: renderInvList })[t]?.();
+  ({ home: renderHome, cli: renderClients, ent: renderEntForm, news: renderNews, inv: renderInvList, sales: () => renderSales() })[t]?.();
 }
 function route() { // #home · #inv · #inv=12 · #inv=new:5 · #cli · #cli=5 · #news · #ent · #draft
   const [, t = 'home', arg = ''] = location.hash.match(/^#(\w+)(?:=(.+))?/) || [];

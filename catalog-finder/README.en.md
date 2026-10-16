@@ -12,7 +12,7 @@ When updating: the new version closes any older copy still running by itself. If
 2. **What are you looking for?** Type it like you would tell a person (English, French or Spanish): *"black wallets under 300 euros, pick 5 varied"*. Or filter by hand: price range, grade, brands, entity, text, order, only with photos.
 3. **Choose**: tick cards, *Select all results*, or *the first N*. Then **Download Excel (.xlsx)**.
 
-## 🗂 One app: Home · Search · Clients · Invoices · What's new · Entities
+## 🗂 One app: Home · Search · Clients · Invoices · 📊 Sales · What's new · Entities
 Everything is stored in **`catalog.db`**, a single file in the folder (not in git); copy it to back up. Settings from your browser are copied in automatically the first time.
 - **🏠 Home** (opens on start). Refreshes the sheet in the background and shows:
   - New items with photos.
@@ -45,6 +45,36 @@ Everything is stored in **`catalog.db`**, a single file in the folder (not in gi
   - **Paid** checkbox.
   - PDF via the browser's print dialog.
 - **🏢 Entities:** company, bank, legal texts and logo; `entidades.json` in the folder is imported on start.
+
+## 📊 Sales: analysis and monthly report
+1. Every month, export the **sold snapshot** (the xlsx with all tabs) and click **⬆ Import sold items**. Importing the same file again updates repeated sales instead of duplicating them.
+2. Optional: add a **Grading** tab on the left, with *Ctag* in column A and the grading text (like the Public Notes) in column B. The app reads the grade: «ITEM GRADING: AB», «GRADING: B+»… («N (New with Tags)» counts as SA).
+- **How it is calculated:**
+  - Revenue = *Sold Price* (for TRR and EBTH, what you receive).
+  - Cost = *PAT - Current* (price after tax), with its currency.
+  - Profit = revenue − cost, at the **exchange rate of each sale date**. ECB rates are downloaded automatically and stored in `catalog.db` (internet is needed when importing).
+  - Days to sell = from *Added Date* to *Sold Date*.
+- **Summary:**
+  - Units, revenue, profit, margin, average ticket, days to sell and sales at a loss.
+  - Compared with the previous period or the same period last year.
+  - Sales by month (or week) and channel, a days-to-sell histogram and a table by channel.
+  - Incomplete months are marked with «*», and «⚠ Data quality» flags what does not add up.
+- **Filters:**
+  - Channel, entity, category/type, brand, owner/buyer, grade and cost band.
+  - Period: all, last 30/90 days, 6 or 12 months, this month, last month, this year or custom dates.
+  - Currency of the amounts: USD, JPY, EUR…
+- **Rankings:** by brand, category, type, channel, entity, owner, buyer, grade, month or cost band. Click a row to filter by it.
+- **Stock & turnover** (uses the last sheet loaded in the search page):
+  - Months of stock and sell-through by brand · category (or another grouping).
+  - Signals: ▲ **Buy more** (sells fast and with margin), ▼ **Overstock**, ◆ **Slow**.
+  - **Stalled pieces:** in stock longer than it takes 90 % of similar pieces to sell. Includes the best channel by margin and the fastest one. *🔎 Show in search* opens them filtered.
+- **Sold pieces:** every sale with cost, sale, profit and margin, with filters such as «at a loss» or «no PAT».
+- **📄 Monthly report:** pick the month and click **🖨 PDF** or **⬇ Excel**. It contains:
+  - A summary versus the previous month and the same month last year.
+  - Channels, entities, top brands and types, the largest sales and the losses.
+  - What to buy and what is surplus.
+  - A by-buyer section to guide purchasing (it is not a measure of anyone's work).
+- **⬇ Excel** (top) downloads what you are viewing: period and filters.
 
 ## Assistant
 - **With AI**: *Activate AI…* and paste an Anthropic API key (stored only in the `.api_key` file on your computer; or use the `ANTHROPIC_API_KEY` variable). It understands free sentences and long multi-line requests (ready-made templates in `prompts/`), and answers in your language.

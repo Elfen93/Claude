@@ -14,7 +14,7 @@ Al actualizar: la versión nueva cierra sola la copia anterior que siga abierta.
 2. **¿Qué buscas?**: escribe en una frase (`carteras Chanel o Hermès en estado A o mejor entre $300 y $1500, elige 40 variadas`) y pulsa Buscar. O ajusta a mano: rango de precio, estado, marcas, entity, texto, orden, solo con fotos.
 3. **Elige**: casilla en cada tarjeta, **Seleccionar todos los resultados** (marca todos los filtrados, no solo los visibles), o **los primeros N** (con opción de variar marcas; solo cuenta artículos con fotos). Abajo, **Descargar Excel (.xlsx)**.
 
-## 🗂 Una sola app: Inicio · Buscar · Clientes · Invoices · Novedades · Entidades
+## 🗂 Una sola app: Inicio · Buscar · Clientes · Invoices · 📊 Ventas · Novedades · Entidades
 Todo se guarda en **`catalog.db`**, un solo archivo dentro de la carpeta (no va a git). Para hacer copia de seguridad o pasarlo a otro ordenador, copia ese archivo. Lo que tenías en el navegador (márgenes, plantillas, selección) se copia solo la primera vez.
 - **🏠 Inicio** (se abre al arrancar). Actualiza la hoja en segundo plano y muestra:
   - Novedades con foto.
@@ -47,6 +47,36 @@ Todo se guarda en **`catalog.db`**, un solo archivo dentro de la carpeta (no va 
   - Casilla **Cobrada**.
   - *🖨 PDF / imprimir* → «Guardar como PDF».
 - **🏢 Entidades:** datos de empresa, banco, textos legales y logo. Deja `entidades.json` en la carpeta y se importa solo.
+
+## 📊 Ventas: análisis e informe mensual
+1. Cada mes, exporta el **snapshot de vendidos** (el xlsx con todas las pestañas) y pulsa **⬆ Importar vendidos**. Puedes volver a importar el mismo archivo: lo repetido se actualiza, no se duplica.
+2. Opcional: pon a la izquierda una pestaña **Grading** con *Ctag* en la columna A y el texto del grading (como las Public Notes) en la B. La app lee la nota: «ITEM GRADING: AB», «GRADING: B+»… («N (New with Tags)» cuenta como SA).
+- **Cómo se calcula:**
+  - Ingresos = *Sold Price* (en TRR y EBTH, lo que os llega).
+  - Coste = *PAT - Current* (precio con impuestos), con su moneda.
+  - Beneficio = ingresos − coste, con el **tipo de cambio del día de cada venta**. Los tipos del BCE se descargan solos y se guardan en `catalog.db` (hace falta internet al importar).
+  - Días hasta vender = de *Added Date* a *Sold Date*.
+- **Resumen:**
+  - Unidades, ingresos, beneficio, margen, ticket medio, días hasta vender y ventas con pérdida.
+  - Comparado con el periodo anterior o con el mismo periodo del año pasado.
+  - Ventas por mes (o por semana) y canal, histograma de días hasta vender y tabla por canal.
+  - Los meses incompletos salen con «*», y «⚠ Calidad de datos» avisa de lo que no cuadra.
+- **Filtros:**
+  - Canal, entidad, categoría/tipo, marca, owner/buyer, grado y tramo de coste.
+  - Periodo: todo, últimos 30/90 días, 6 o 12 meses, mes en curso, mes anterior, este año o fechas a mano.
+  - Moneda de los importes: USD, JPY, EUR…
+- **Rankings:** por marca, categoría, tipo, canal, entidad, owner, buyer, grado, mes o tramo de coste. Pulsa una fila para filtrar por ella.
+- **Stock y rotación** (usa la última hoja cargada en el buscador):
+  - Meses de stock y sell-through por marca · categoría (u otra agrupación).
+  - Señales: ▲ **Compra más** (se vende rápido y con margen), ▼ **Sobrestock**, ◆ **Lento**.
+  - **Piezas estancadas:** llevan en stock más de lo que tarda en venderse el 90 % de lo suyo. Incluye el mejor canal por margen y el más rápido. *🔎 Ver en el buscador* las abre filtradas.
+- **Piezas vendidas:** cada venta con coste, venta, beneficio y margen, con filtros como «con pérdida» o «sin PAT».
+- **📄 Informe mensual:** elige el mes y pulsa **🖨 PDF** o **⬇ Excel**. Contiene:
+  - Resumen frente al mes anterior y al mismo mes del año pasado.
+  - Canales, entidades, las marcas y los tipos principales, las ventas más grandes y las pérdidas.
+  - Qué comprar y qué sobra.
+  - Un apartado por buyer para orientar compras (no es una medida del trabajo de nadie).
+- **⬇ Excel** (arriba) descarga lo que estás viendo: periodo y filtros.
 
 ## Asistente
 - **Con IA**: pulsa *Activar IA…* y pega una clave de API de Anthropic (console.anthropic.com; se paga aparte de la suscripción a Claude, fracciones de céntimo por búsqueda). La clave se guarda solo en tu ordenador, en `.api_key` (no se sube a git). También vale la variable `ANTHROPIC_API_KEY`. Modelo por defecto `claude-haiku-5-5`, cambiable con `CATALOG_MODEL`.
