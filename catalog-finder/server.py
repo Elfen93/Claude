@@ -155,6 +155,7 @@ Reglas:
 - Estado: si pide grados concretos ('solo BC', 'solo B+ y B', 'unicamente AB') usa grades con esos grados exactos; 'X o mejor' o un rango ('de AB a B-') puede usar worst/best_rank_allowed o grades.
 - Descartar por tipo de articulo (p.ej. 'sin bolsos'): usa exclude_name_keywords (solo nombre/descripcion). Usa exclude_keywords solo para defectos o palabras en notas/condicion. NO excluyas por condicion salvo que el usuario lo pida (p.ej. si dice que acepta piezas con strass faltantes, no excluyas 'missing').
 - Si el usuario da rangos en una moneda (EUR...), rellena price_currency; si habla de 'precio de compra/buying price/sourcing', usa price_basis=buying. 'Del grado AB al B-' => best_rank_allowed=5, worst_rank_allowed=8.
+- Antiguedad (fecha de alta / Added date): 'mas de 6 meses en stock', 'comprado hace mas de 2 anos' -> min_age_days; 'novedades del ultimo mes' -> max_age_days; 'los mas antiguos primero' -> sort=added_asc. Buyer (quien lo compro): usa buyers con nombres exactos de la lista Buyers.
 - reply: una frase corta, en el idioma indicado al final, diciendo que has entendido y aplicado. No inventes nada que el usuario no pidio."""
 _SEARCH_PROPS = {
     "label": {"type": "string", "description": "Nombre corto de la linea, p.ej. 'Hermes - Kelly'"},
@@ -171,7 +172,10 @@ _SEARCH_PROPS = {
     "grades": {"type": "array", "items": {"type": "string", "enum": ["SA with tags", "SA", "S", "A", "AB", "B+", "B", "B-", "BC", "C"]}, "description": "Grados EXACTOS aceptados (p.ej. solo BC => [\"BC\"]; AB, B+ y B => [\"AB\",\"B+\",\"B\"]). Tiene prioridad sobre best/worst_rank_allowed"},
     "price_currency": {"type": "string", "description": "Moneda en la que estan min_price/max_price (EUR, JPY, USD...). La app convierte con el cambio actual. Por defecto USD"},
     "price_basis": {"type": "string", "enum": ["shown", "buying"], "description": "buying = comparar con el PRECIO DE COMPRA (sin margen); shown = el precio que ve el cliente (con margen si esta activado)"},
-    "sort": {"type": "string", "enum": ["", "price_asc", "price_desc"], "description": "Orden dentro de esta busqueda (price_asc = los mas baratos primero)"},
+    "sort": {"type": "string", "enum": ["", "price_asc", "price_desc", "added_asc", "added_desc"], "description": "Orden dentro de esta busqueda (price_asc = los mas baratos primero; added_asc = los dados de alta hace mas tiempo primero; added_desc = los mas recientes primero)"},
+    "buyers": {"type": "array", "items": {"type": "string"}, "description": "Solo articulos de estos buyers (nombres exactos de la lista Buyers)"},
+    "min_age_days": {"type": "integer", "minimum": 0, "description": "Dados de alta hace AL MENOS estos dias (stock antiguo). 'mas de 3 meses' = 91, 'mas de 6 meses' = 182, 'mas de 1 ano' = 365, 'mas de 2 anos' = 730"},
+    "max_age_days": {"type": "integer", "minimum": 0, "description": "Dados de alta hace COMO MUCHO estos dias (novedades). 'ultimo mes' = 30"},
 }
 TOOL = {
     "name": "set_filters",
@@ -180,7 +184,7 @@ TOOL = {
         "type": "object",
         "properties": dict(
             _SEARCH_PROPS,
-            sort={"type": "string", "enum": ["", "price_asc", "price_desc", "brand"]},
+            sort={"type": "string", "enum": ["", "price_asc", "price_desc", "brand", "added_asc", "added_desc", "buyer"]},
             select_count={"type": "integer", "minimum": 0},
             diversify_brands={"type": "boolean"},
             searches={
@@ -205,6 +209,7 @@ Call write_plan ALWAYS. Fields:
 - prompt_text: the same plan as a readable English prompt, one line per search, in the style 'LINE: brand/model, grade range, price cap, how many, preferences, exclusions'. The user will read and edit it, and the app will be able to re-run it, so keep it faithful to `searches`.
 - assumptions: short bullet strings in the UI language listing what you assumed or could not know (e.g. a missing budget, a brand not in the catalog).
 - probe_keywords: up to 6 words you are unsure exist in this catalog's naming (e.g. a model or material); the app will report their counts/samples back to you in a second round. Empty when sure or when you are already revising.
+- Stock age and buyer: min_age_days (added at least N days ago, e.g. 'over 6 months' = 182), max_age_days (added within N days), sort added_asc/added_desc, buyers (exact names from the summary) - only if the summary says the data exists.
 - reply: one short sentence in the UI language.
 When you receive `feedback` (dry-run results for your draft, plus probe results), REVISE: fix lines with 0/very few matches (broaden or correct a keyword, drop a wrong hard filter), fix leaks seen in the removed/kept samples, keep what worked. Do not add commentary beyond the tool call."""
 PLAN_TOOL = {
@@ -233,7 +238,7 @@ def api_key():
     if not k and os.path.exists(KEY_FILE):
         k = open(KEY_FILE).read().strip()
     return k
-APP_VERSION = "2026-10-16.4"  # igual que APP_VERSION en index.html: si no coinciden, la app avisa de que el servidor es viejo
+APP_VERSION = "2026-10-16.5"  # igual que APP_VERSION en index.html: si no coinciden, la app avisa de que el servidor es viejo
 PORT = int(sys.argv[1]) if len(sys.argv) > 1 else 8765
 RATE_SOURCES = (
     ("https://open.er-api.com/v6/latest/USD", lambda d: (d["rates"], d.get("time_last_update_utc", ""))),
@@ -465,6 +470,8 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             return self._err(400, self.m("Falta la clave de API", "Missing API key", "Clé API manquante"))
         ctx = "Marcas (nombre (n.o de articulos)):\n" + "\n".join(d.get("brands", [])[:400]) \
             + "\n\nEntities:\n" + "\n".join(d.get("entities", [])[:100]) + f"\n\nArticulos en el catalogo: {d.get('total', '?')}" \
+            + ("\n\nBuyers:\n" + "\n".join(map(str, d.get("buyers", [])[:200])) if d.get("buyers") else "") \
+            + (f"\n\nLos articulos tienen fecha de alta. Hoy es {d.get('today', '')}." if d.get("hasAdded") else "\n\nLa hoja no tiene fecha de alta: no uses min_age_days/max_age_days.") \
             + f"\n\nIdioma: el usuario puede escribir en espanol, ingles o frances. Escribe el campo `reply` en {LANG_NAMES.get(str(d.get('lang', 'es'))[:2], 'espanol')}. Las palabras clave (keyword_groups) siempre en INGLES."
         payload = {
             "model": MODEL, "max_tokens": 6000, "system": SYSTEM + "\n\n" + ctx,
@@ -499,6 +506,8 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             return self._json(db.load_detail(int(q.get("id", 0))))
         if p == "next-number":
             return self._json({"number": db.peek_number(json.loads(q.get("inv", "{}")))})
+        if p == "clients":
+            db.migrate_profiles()  # los margenes que venian del navegador pasan a las fichas de cliente
         if p in db.KINDS:
             return self._json(db.docs(p))
         return self._err(404, "Not found")
@@ -515,6 +524,14 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             if p == "invoices/save":
                 did, number = db.save_invoice(d)
                 return self._json({"id": did, "number": number})
+            if p == "status/set":
+                db.set_status(d.get("codes") or [], d.get("s") or "", d.get("client_id"), d.get("note") or "")
+                return self._json({"ok": True})
+            if p == "catalogs/record":
+                return self._json({"id": db.record_catalog(d.get("client_id"), d.get("items") or [], d.get("label") or "")})
+            if p == "catalogs/delete":
+                db.delete_catalog(int(d.get("id")))
+                return self._json({"ok": True})
             if p == "entities/import":
                 return self._json({"n": db.import_entities(d.get("entities") or [])})
             kind, _, act = p.partition("/")
@@ -635,7 +652,7 @@ def start_server():
 if __name__ == "__main__":
     srv = start_server()
     db.init()
-    url = f"http://127.0.0.1:{PORT}/"
+    url = f"http://127.0.0.1:{PORT}/backoffice.html#home"  # la app abre en el Inicio
     print({"es": f"Catalog Finder en {url}  (Ctrl+C para salir)", "en": f"Catalog Finder at {url}  (Ctrl+C to quit)", "fr": f"Catalog Finder sur {url}  (Ctrl+C pour quitter)"}[term_lang()])
     try:
         webbrowser.open(url)

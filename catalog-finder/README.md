@@ -14,18 +14,33 @@ Al actualizar: la versión nueva cierra sola la copia anterior que siga abierta.
 2. **¿Qué buscas?**: escribe en una frase (`carteras Chanel o Hermès en estado A o mejor entre $300 y $1500, elige 40 variadas`) y pulsa Buscar. O ajusta a mano: rango de precio, estado, marcas, entity, texto, orden, solo con fotos.
 3. **Elige**: casilla en cada tarjeta, **Seleccionar todos los resultados** (marca todos los filtrados, no solo los visibles), o **los primeros N** (con opción de variar marcas; solo cuenta artículos con fotos). Abajo, **Descargar Excel (.xlsx)**.
 
-## 🗂 Back office: invoices, clientes e historial
-Todo se guarda en **`catalog.db`**, un solo archivo dentro de la carpeta (no va a git). Para hacer copia de seguridad o pasarlo a otro ordenador, copia ese archivo. Al abrir esta versión por primera vez, los clientes, márgenes y plantillas que tenías en el navegador se copian solos a `catalog.db`.
-- **Historial:** cada vez que cargas la hoja, la app la compara con la carga anterior y muestra junto al título «🆕 nuevos · 📉 bajan de precio · ya no están». Al pulsarlo, ves esos artículos. La pestaña *Novedades* del back office guarda el historial completo.
-- **Back office** (botón 🗂 arriba): pestañas Invoices, Clientes, Entidades y Novedades.
-- **Entidades** (UK, JP, HK): datos de empresa, registros, banco, textos legales, logo, moneda, plazo y numeración. Deja tu `entidades.json` en la carpeta y se importa solo al arrancar, o usa *Importar*.
-- **Clientes:** empresa, contacto, email, teléfono, dirección, VAT/Company No, entidad habitual y referencia para numerar (ALOPRINT 0003).
-- **Crear una invoice:**
-  - Desde el buscador, selecciona artículos y pulsa *🧾 Crear invoice*; el precio lleva el margen del cliente elegido.
-  - O pega una lista de CTag y precio, o importa un Excel/CSV.
-  - HK (subasta LBA): precio de martillo en HKD → yenes con el tipo de cambio, 5% de comisión por lote; las líneas sin precio salen como «Passed».
-- **Guardar** asigna el número: por cliente en UK, correlativo en JP, fecha y hora en HK. Los artículos quedan marcados como **vendidos**; el buscador los oculta (casilla *ocultar vendidos*) o los marca.
-- **PDF:** *🖨 PDF / imprimir* abre la impresión del navegador; elige «Guardar como PDF». La vista previa al lado es igual que el PDF.
+## 🗂 Una sola app: Inicio · Buscar · Clientes · Invoices · Novedades · Entidades
+Todo se guarda en **`catalog.db`**, un solo archivo dentro de la carpeta (no va a git). Para hacer copia de seguridad o pasarlo a otro ordenador, copia ese archivo. Lo que tenías en el navegador (márgenes, plantillas, selección) se copia solo la primera vez.
+- **🏠 Inicio** (se abre al arrancar). Actualiza la hoja en segundo plano y muestra:
+  - Novedades con foto.
+  - «⭐ Para tus clientes»: qué novedades encajan con la lista de deseos de cada uno, con el botón **📦 Catálogo mensual**.
+  - Invoices pendientes de cobro y vencidas.
+  - Ventas por mes y entidad.
+- **📦 Catálogo mensual:** abre el buscador con el margen del cliente, ejecuta su lista de deseos, oculta lo vendido, lo reservado y lo que ya se le envió, y deja todo seleccionado para descargar su Excel.
+- **👥 Clientes:** una sola ficha por cliente. Contiene datos de invoice, margen y moneda (los mismos del selector del buscador), lista de deseos, lo que ha comprado (con fotos), los catálogos enviados y los reservados.
+- **Estados de los artículos:**
+  - **Enviado:** cada Excel descargado con un cliente elegido queda registrado como catálogo enviado; con «no repetir lo ya enviado» no se le vuelve a ofrecer.
+  - **Reservado:** botón 🔖 en cada tarjeta, para un cliente, con nota.
+  - **Vendido:** al guardar una invoice.
+  - La casilla «ocultar vendidos y reservados» los quita de la búsqueda.
+- **Historial:** cada carga se compara con la anterior: nuevos, bajadas de precio y los que ya no están. Si la hoja no ha cambiado, se siguen mostrando las últimas novedades. Con «cargar al abrir», la hoja del enlace guardado se descarga sola.
+- **Added date y Buyer** (columnas opcionales de la hoja):
+  - Filtros por Buyer y por antigüedad: < 1 mes, > 3 meses, > 6 meses, > 1 año, > 2 años.
+  - Orden por fecha de alta, de antiguo a nuevo o al revés, y por Buyer.
+  - En cada tarjeta, la fecha de alta y cuánto tiempo hace.
+  - El asistente lo entiende: «bolsos de más de 6 meses», «lo comprado por Ken hace más de 2 años, los más antiguos primero».
+  - Las fechas tipo 03/04/2026 se leen solas; si hace falta, se fija el formato en *Ajustes avanzados → Fechas*.
+- **🧾 Invoices** (UK, JP, HK): desde la selección del buscador (*🧾 Crear invoice*), pegando CTag + precio o importando un Excel.
+  - HK: martillo en HKD → yenes, 5% de comisión, «Passed» sin precio.
+  - Numeración: por cliente en UK, correlativa en JP, fecha y hora en HK.
+  - Casilla **Cobrada**.
+  - *🖨 PDF / imprimir* → «Guardar como PDF».
+- **🏢 Entidades:** datos de empresa, banco, textos legales y logo. Deja `entidades.json` en la carpeta y se importa solo.
 
 ## Asistente
 - **Con IA**: pulsa *Activar IA…* y pega una clave de API de Anthropic (console.anthropic.com; se paga aparte de la suscripción a Claude, fracciones de céntimo por búsqueda). La clave se guarda solo en tu ordenador, en `.api_key` (no se sube a git). También vale la variable `ANTHROPIC_API_KEY`. Modelo por defecto `claude-haiku-5-5`, cambiable con `CATALOG_MODEL`.

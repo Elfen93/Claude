@@ -9,7 +9,8 @@ import json, os, sqlite3, threading, time
 ROOT = os.path.dirname(os.path.abspath(__file__))
 DB_FILE = os.environ.get("CATALOG_DB", os.path.join(ROOT, "catalog.db"))
 ENTITIES_FILE = os.path.join(ROOT, "entidades.json")
-KINDS = ("clients", "entities", "invoices")
+KINDS = ("clients", "entities", "invoices", "catalogs")
+MARGIN_KEYS = ("pct", "fee", "feeCur", "round", "outCur")
 _lock = threading.Lock()
 
 # Plantillas de partida (sin datos bancarios: se rellenan en Ajustes o importando entidades.json)
@@ -44,10 +45,18 @@ def init():
                                              first_load INTEGER, last_load INTEGER, prev_price REAL, PRIMARY KEY(source, code));
             CREATE INDEX IF NOT EXISTS items_code ON items(code);
             CREATE TABLE IF NOT EXISTS status(code TEXT PRIMARY KEY, s TEXT, invoice INTEGER, number TEXT, client TEXT, at REAL);
+            CREATE TABLE IF NOT EXISTS offers(code TEXT, client_id INTEGER, catalog_id INTEGER, at REAL);
+            CREATE INDEX IF NOT EXISTS offers_code ON offers(code);
+            CREATE INDEX IF NOT EXISTS offers_client ON offers(client_id);
         """)
+        cols = {r[1] for r in c.execute("PRAGMA table_info(status)")}
+        for col, ty in (("client_id", "INTEGER"), ("note", "TEXT")):
+            if col not in cols:
+                c.execute(f"ALTER TABLE status ADD COLUMN {col} {ty}")
         if not c.execute("SELECT 1 FROM docs WHERE kind='entities' LIMIT 1").fetchone():
             for e in SEED_ENTITIES:
                 c.execute("INSERT INTO docs(kind, data, updated) VALUES('entities', ?, ?)", (json.dumps(e, ensure_ascii=False), time.time()))
+    migrate_profiles()
     # entidades.json en la carpeta (datos completos de tus empresas): se importa al arrancar si es nuevo o ha cambiado
     if os.path.exists(ENTITIES_FILE):
         stamp = str(os.path.getmtime(ENTITIES_FILE))
@@ -77,17 +86,17 @@ def kv_set(items):
 
 # ---------- historial de cargas ----------
 def snapshot(source, items):
-    """items: [[code, brand, name, price, cur, entity, grade], ...]. Devuelve que ha cambiado desde la carga anterior."""
+    """items: [[code, brand, name, price, cur, entity, grade], ...]. Devuelve que ha cambiado desde la carga anterior.
+    Si la hoja no ha cambiado no se crea otra carga: se siguen mostrando las novedades de la ultima vez que cambio."""
     source = (source or "file")[:300]
     now = time.time()
     with _lock, _conn() as c:
-        prev = c.execute("SELECT id FROM loads WHERE source=? ORDER BY id DESC LIMIT 1", (source,)).fetchone()
+        prev = c.execute("SELECT id, at FROM loads WHERE source=? ORDER BY id DESC LIMIT 1", (source,)).fetchone()
         old = {}
         if prev:
             old = {r["code"]: (r["price"], r["cur"]) for r in c.execute("SELECT code, price, cur FROM items WHERE source=? AND last_load=?", (source, prev["id"]))}
-        lid = c.execute("INSERT INTO loads(source, at, n) VALUES(?, ?, ?)", (source, now, len(items))).lastrowid
-        cur_codes, new, down, up = set(), [], [], 0
-        rows = []
+        cur_codes, new, down, up, changed_at = set(), [], [], 0, {}
+        clean = []
         for it in items:
             code = str(it[0] or "").strip()
             if not code or code in cur_codes:
@@ -95,28 +104,37 @@ def snapshot(source, items):
             cur_codes.add(code)
             price = it[3] if isinstance(it[3], (int, float)) else None
             o = old.get(code)
-            changed = None
             if prev and o is None:
                 new.append(code)
             elif o and price is not None and o[0] is not None and (o[1] or "") == (it[4] or "") and abs(price - o[0]) > 1e-9:
-                changed = o[0]
+                changed_at[code] = o[0]
                 if price < o[0]:
                     down.append({"c": code, "old": o[0], "new": price})
                 else:
                     up += 1
-            rows.append((source, code, it[1], it[2], price, it[4], it[5], it[6], lid, lid, changed))
+            clean.append((code, it, price))
+        gone = [k for k in old if k not in cur_codes]
+        if prev and not (new or gone or down or up):  # misma hoja: se repiten las novedades de la ultima carga con cambios
+            last = c.execute("SELECT id, at FROM loads WHERE source=? AND (new>0 OR gone>0 OR down>0) ORDER BY id DESC LIMIT 1", (source,)).fetchone()
+            if not last:
+                return {"first": False, "unchanged": True, "load": prev["id"], "n": len(cur_codes), "new": [], "gone": [], "down": [], "up": 0, "since": prev["at"]}
+            det = c.execute("SELECT code, kind, old, new FROM load_items WHERE load=?", (last["id"],)).fetchall()
+            before = c.execute("SELECT at FROM loads WHERE source=? AND id<? ORDER BY id DESC LIMIT 1", (source, last["id"])).fetchone()
+            return {"first": False, "unchanged": True, "load": last["id"], "n": len(cur_codes), "up": 0, "since": before and before["at"], "at": last["at"],
+                    "new": [r["code"] for r in det if r["kind"] == "new" and r["code"] in cur_codes],
+                    "gone": [r["code"] for r in det if r["kind"] == "gone"],
+                    "down": [{"c": r["code"], "old": r["old"], "new": r["new"]} for r in det if r["kind"] == "down" and r["code"] in cur_codes]}
+        lid = c.execute("INSERT INTO loads(source, at, n, new, gone, down, up) VALUES(?,?,?,?,?,?,?)", (source, now, len(cur_codes), len(new), len(gone), len(down), up)).lastrowid
         c.executemany("""INSERT INTO items(source, code, brand, name, price, cur, entity, grade, first_load, last_load, prev_price)
                          VALUES(?,?,?,?,?,?,?,?,?,?,?)
                          ON CONFLICT(source, code) DO UPDATE SET brand=excluded.brand, name=excluded.name, price=excluded.price, cur=excluded.cur,
                            entity=excluded.entity, grade=excluded.grade, last_load=excluded.last_load,
-                           prev_price=COALESCE(excluded.prev_price, items.prev_price)""", rows)
-        gone = [k for k in old if k not in cur_codes]
+                           prev_price=COALESCE(excluded.prev_price, items.prev_price)""",
+                      [(source, code, it[1], it[2], price, it[4], it[5], it[6], lid, lid, changed_at.get(code)) for code, it, price in clean])
         c.executemany("INSERT INTO load_items(load, code, kind, old, new) VALUES(?,?,?,?,?)",
                       [(lid, k, "new", None, None) for k in new] + [(lid, k, "gone", old[k][0], None) for k in gone]
                       + [(lid, d["c"], "down", d["old"], d["new"]) for d in down])
-        c.execute("UPDATE loads SET new=?, gone=?, down=?, up=? WHERE id=?", (len(new), len(gone), len(down), up, lid))
-        return {"first": not prev, "load": lid, "n": len(cur_codes), "new": new, "gone": gone, "down": down, "up": up,
-                "since": prev and c.execute("SELECT at FROM loads WHERE id=?", (prev["id"],)).fetchone()["at"]}
+        return {"first": not prev, "load": lid, "n": len(cur_codes), "new": new, "gone": gone, "down": down, "up": up, "since": prev and prev["at"], "at": now}
 
 
 def loads(limit=20):
@@ -252,4 +270,66 @@ def save_invoice(inv):
 
 def status_all():
     with _conn() as c:
-        return {r["code"]: {"s": r["s"], "number": r["number"], "client": r["client"]} for r in c.execute("SELECT * FROM status")}
+        st = {r["code"]: {"s": r["s"], "number": r["number"], "client": r["client"], "client_id": r["client_id"], "note": r["note"], "at": r["at"]}
+              for r in c.execute("SELECT * FROM status")}
+        offers = {}
+        for r in c.execute("SELECT code, client_id, MAX(at) at FROM offers GROUP BY code, client_id"):
+            offers.setdefault(r["code"], {})[str(r["client_id"])] = r["at"]
+    return {"status": st, "offers": offers}
+
+
+def set_status(codes, s, client_id=None, note=""):
+    """Reservar a mano (s='reserved') o quitar la reserva (s=''). Lo vendido por invoice no se toca aqui."""
+    cli = doc("clients", client_id) if client_id else None
+    who = (cli or {}).get("company") or (cli or {}).get("name") or ""
+    with _lock, _conn() as c:
+        for code in codes:
+            code = str(code).strip()
+            cur = c.execute("SELECT s FROM status WHERE code=?", (code,)).fetchone()
+            if cur and cur["s"] == "sold":
+                continue
+            if not s:
+                c.execute("DELETE FROM status WHERE code=?", (code,))
+            else:
+                c.execute("INSERT INTO status(code, s, invoice, number, client, client_id, note, at) VALUES(?,?,?,?,?,?,?,?) ON CONFLICT(code) DO UPDATE SET "
+                          "s=excluded.s, client=excluded.client, client_id=excluded.client_id, note=excluded.note, at=excluded.at, invoice=NULL, number=NULL",
+                          (code, s, None, None, who, client_id, note, time.time()))
+
+
+def record_catalog(client_id, items, label=""):
+    """Catalogo enviado a un cliente: se guarda con sus articulos y cada uno queda como 'ofrecido' a ese cliente."""
+    now = time.time()
+    data = {"client_id": client_id, "at": now, "label": label, "n": len(items), "items": items}
+    cid = save("catalogs", data)
+    with _lock, _conn() as c:
+        c.executemany("INSERT INTO offers(code, client_id, catalog_id, at) VALUES(?,?,?,?)", [(str(i.get("code")), client_id, cid, now) for i in items if i.get("code")])
+    return cid
+
+
+def delete_catalog(cid):
+    with _lock, _conn() as c:
+        c.execute("DELETE FROM docs WHERE kind='catalogs' AND id=?", (cid,))
+        c.execute("DELETE FROM offers WHERE catalog_id=?", (cid,))
+
+
+def migrate_profiles():
+    """Los 'clientes' de margen del buscador pasan a ser fichas de cliente (una sola lista)."""
+    kv = kv_all()
+    if kv.get("_profiles_migrated") or not kv.get("profiles"):
+        return
+    try:
+        profiles = json.loads(kv["profiles"]) or []
+    except ValueError:
+        profiles = []
+    clients = docs("clients")
+    key = lambda x: (x or "").strip().lower()
+    active = kv.get("profile", "")
+    active_id = None
+    for p in profiles:
+        hit = next((c for c in clients if key(p.get("name")) in (key(c.get("name")), key(c.get("company")), key(c.get("ref")))), None)
+        body = dict(hit or {"name": p.get("name", "")})
+        body.update({k: p.get(k) for k in MARGIN_KEYS if p.get(k) is not None})
+        cid = save("clients", body)
+        if p.get("name") == active:
+            active_id = cid
+    kv_set({"_profiles_migrated": "1", "profileId": str(active_id) if active_id else ""})

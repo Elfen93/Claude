@@ -12,18 +12,33 @@ When updating: the new version closes any older copy still running by itself. If
 2. **What are you looking for?** Type it like you would tell a person (English, French or Spanish): *"black wallets under 300 euros, pick 5 varied"*. Or filter by hand: price range, grade, brands, entity, text, order, only with photos.
 3. **Choose**: tick cards, *Select all results*, or *the first N*. Then **Download Excel (.xlsx)**.
 
-## 🗂 Back office: invoices, clients and history
-Everything is stored in **`catalog.db`**, a single file in the folder (not in git). To back up or move to another computer, copy that file. The first time you open this version, the clients, margins and templates stored in your browser are copied into it automatically.
-- **History:** every time you load the sheet, the app compares it with the previous load and shows "🆕 new · 📉 price drops · gone" next to the title. Click to see those items. The *What's new* tab keeps the full history.
-- **Back office** (🗂 button): Invoices, Clients, Entities and What's new tabs.
-- **Entities** (UK, JP, HK): company details, registrations, bank, legal texts, logo, currency, due days and numbering. Put your `entidades.json` in the folder and it is imported on start, or use *Import*.
-- **Clients:** company, contact, email, phone, address, VAT/Company No, usual entity and numbering reference (ALOPRINT 0003).
-- **Creating an invoice:**
-  - From the search page, select items and click *🧾 Create invoice*; prices include the chosen client's margin.
-  - Or paste a CTag + price list, or import an Excel/CSV.
-  - HK (LBA auction): hammer price in HKD → yen with the exchange rate, 5% commission per lot; lines without a price print as "Passed".
-- **Saving** assigns the number: per client for UK, sequential for JP, date and time for HK. The items are marked **sold**; the search page hides them (*hide sold*) or labels them.
-- **PDF:** *🖨 PDF / print* opens the browser's print dialog; choose "Save as PDF". The preview next to the editor matches the PDF.
+## 🗂 One app: Home · Search · Clients · Invoices · What's new · Entities
+Everything is stored in **`catalog.db`**, a single file in the folder (not in git); copy it to back up. Settings from your browser are copied in automatically the first time.
+- **🏠 Home** (opens on start). Refreshes the sheet in the background and shows:
+  - New items with photos.
+  - “⭐ For your clients”: new items matching each client's wishlist, with a **📦 Monthly catalog** button.
+  - Invoices awaiting payment and overdue.
+  - Sales per month and entity.
+- **📦 Monthly catalog:** opens the search page with the client's margin, runs their wishlist, hides sold, reserved and already-sent items, and selects everything ready for their Excel.
+- **👥 Clients:** one record per client, with invoice details, margin and currency (the same as the search page selector), wishlist, what they bought (with photos), catalogs sent and reservations.
+- **Item status:**
+  - **Sent:** every Excel downloaded with a client selected is recorded as a sent catalog; “don't repeat what was sent” skips those items.
+  - **Reserved:** 🔖 on each card, for a client, with a note.
+  - **Sold:** when you save an invoice.
+  - “Hide sold and reserved” removes them from the search.
+- **History:** each load is compared with the previous one (new, price drops, gone). If the sheet has not changed, the last news stay. With “load on open”, the saved sheet link is downloaded automatically.
+- **Added date and Buyer** (optional sheet columns):
+  - Buyer filter and age filter: < 1 month, > 3 months, > 6 months, > 1 year, > 2 years.
+  - Sort by added date (old → new or new → old) and by Buyer.
+  - Each card shows the added date and how long ago it was.
+  - The assistant understands “bags older than 6 months”.
+  - Date format is detected automatically; if needed, set it in *Advanced settings → Dates*.
+- **🧾 Invoices** (UK, JP, HK): from the search selection, a pasted CTag + price list or an Excel.
+  - HK: hammer in HKD → yen, 5% commission, “Passed” when there is no price.
+  - Numbering: per client for UK, sequential for JP, date and time for HK.
+  - **Paid** checkbox.
+  - PDF via the browser's print dialog.
+- **🏢 Entities:** company, bank, legal texts and logo; `entidades.json` in the folder is imported on start.
 
 ## Assistant
 - **With AI**: *Activate AI…* and paste an Anthropic API key (stored only in the `.api_key` file on your computer; or use the `ANTHROPIC_API_KEY` variable). It understands free sentences and long multi-line requests (ready-made templates in `prompts/`), and answers in your language.

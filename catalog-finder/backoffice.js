@@ -10,7 +10,8 @@ const store = (() => { // los mismos ajustes que el buscador (catalog.db)
   const flush = keepalive => { clearTimeout(timer); timer = 0; const items = { ...pending }; for (const k in pending) delete pending[k]; if (!Object.keys(items).length) return Promise.resolve();
     return fetch('/api/kv', { method: 'POST', headers: API_H, body: JSON.stringify({ items }), keepalive }).catch(() => {}); };
   addEventListener('pagehide', () => flush(true));
-  return { get: (k, d) => k in srv ? srv[k] : d, set(k, v) { srv[k] = v == null ? v : String(v); pending[k] = srv[k]; if (!timer) timer = setTimeout(flush, 300); }, flush };
+  const reload = async () => { try { const r = await fetch('/api/kv', { headers: API_H }); if (r.ok) srv = await r.json(); } catch {} };
+  return { reload, get: (k, d) => k in srv ? srv[k] : d, set(k, v) { srv[k] = v == null ? v : String(v); pending[k] = srv[k]; if (!timer) timer = setTimeout(flush, 300); }, flush };
 })();
 let lang = store.get('lang', 'es'); if (!window.LANGS[lang]) lang = 'es';
 const tl = (k, v) => { const s = lang === 'es' ? k : (window.I18N[k]?.[lang] ?? k); return v ? s.replace(/\{(\w+)\}/g, (m, x) => x in v ? v[x] : m) : s; };
@@ -46,12 +47,21 @@ const cliOf = id => clients.find(c => c.id === +id) || null;
 const isHK = e => (e?.template || '') === 'hk';
 
 /* ---------- pestañas ---------- */
-document.querySelectorAll('#tabs button').forEach(b => b.onclick = () => showTab(b.dataset.t));
+const TABS = ['home', 'inv', 'cli', 'news', 'ent'];
 function showTab(t) {
-  document.querySelectorAll('#tabs button').forEach(b => b.classList.toggle('on', b.dataset.t === t));
-  ['inv', 'cli', 'ent', 'news'].forEach(k => $('t-' + k).style.display = k === t ? '' : 'none');
-  ({ cli: renderClients, ent: renderEntForm, news: renderNews, inv: renderInvList })[t]?.();
+  document.querySelectorAll('#tabs a[data-t]').forEach(a => a.classList.toggle('on', a.dataset.t === t));
+  TABS.forEach(k => $('t-' + k).style.display = k === t ? '' : 'none');
+  ({ home: renderHome, cli: renderClients, ent: renderEntForm, news: renderNews, inv: renderInvList })[t]?.();
 }
+function route() { // #home · #inv · #inv=12 · #inv=new:5 · #cli · #cli=5 · #news · #ent · #draft
+  const [, t = 'home', arg = ''] = location.hash.match(/^#(\w+)(?:=(.+))?/) || [];
+  if (t === 'draft') { showTab('inv'); useDraft(); history.replaceState(null, '', '#inv'); return; }
+  const tab = TABS.includes(t) ? t : 'home'; showTab(tab);
+  if (tab === 'cli' && arg) showClient(+arg);
+  if (tab === 'inv' && arg.startsWith('new')) { if (!dirty || confirm(tl('Hay cambios sin guardar. ¿Empezar otra invoice?'))) { const cid = +arg.split(':')[1] || null, c = cliOf(cid); inv = blank(c?.entity ? +c.entity : inv?.entity_id); if (c) { inv.client_id = c.id; if (c.commissionPct != null && c.commissionPct !== '') inv.comm = +c.commissionPct; } dirty = false; $('iState').textContent = ''; fillForm(); } history.replaceState(null, '', '#inv'); }
+  else if (tab === 'inv' && arg) openInvoice(+arg);
+}
+addEventListener('hashchange', route);
 
 /* ============ invoice en edición ============ */
 let inv = null, dirty = false;
@@ -76,6 +86,7 @@ function fillForm() {
   document.querySelectorAll('.sale').forEach(x => x.style.display = isHK(e) ? 'none' : '');
   $('invTitle').textContent = inv.id ? tl('Invoice') : tl('Invoice nueva');
   $('iDup').style.display = $('iDel').style.display = inv.id ? '' : 'none';
+  $('iSettled').checked = !!inv.settled; $('iSettled').parentElement.style.display = inv.id ? '' : 'none';
   renderLines(); update();
 }
 const cliName = c => c ? (c.company && c.name && c.company !== c.name ? `${c.company} (${c.name})` : c.company || c.name || '?') : '';
@@ -328,6 +339,7 @@ $('iDel').onclick = async () => {
   if (!confirm(tl('¿Eliminar la invoice {n}? Sus artículos dejan de estar marcados como vendidos.', { n: inv.number }))) return;
   await api('invoices/delete', { id: inv.id }); invoices = await api('invoices'); inv = blank(inv.entity_id); dirty = false; fillForm(); renderInvList();
 };
+$('iSettled').onchange = async () => { if (inv.id) { await setSettled(inv.id, $('iSettled').checked); renderInvList(); say($('iSettled').checked ? tl('Marcada como cobrada') : tl('Marcada como pendiente')); } };
 function openInvoice(id) {
   const x = invoices.find(i => i.id === id); if (!x) return;
   if (dirty && !confirm(tl('Hay cambios sin guardar. ¿Abrir otra invoice?'))) return;
@@ -337,15 +349,16 @@ function openInvoice(id) {
 function renderInvList() {
   const q = ($('invQ').value || '').toLowerCase();
   const list = [...invoices].reverse().filter(x => !q || JSON.stringify([x.number, x.client?.name, x.client?.company, (x.lines || []).map(l => l.code)]).toLowerCase().includes(q));
-  $('invList').innerHTML = `<tr><th>${esc(tl('Número'))}</th><th>${esc(tl('Fecha'))}</th><th>${esc(tl('Entidad'))}</th><th>${esc(tl('Cliente'))}</th><th>${esc(tl('Artículos'))}</th><th class="num">${esc(tl('Total'))}</th></tr>`
+  $('invList').innerHTML = `<tr><th>${esc(tl('Número'))}</th><th>${esc(tl('Fecha'))}</th><th>${esc(tl('Entidad'))}</th><th>${esc(tl('Cliente'))}</th><th>${esc(tl('Artículos'))}</th><th class="num">${esc(tl('Total'))}</th><th>${esc(tl('Cobro'))}</th></tr>`
     + (list.length ? list.map(x => `<tr class="clk" data-id="${x.id}"><td><b>${esc(x.number)}</b></td><td>${esc(x.date)}</td><td>${esc(x.entity?.code || entOf(x.entity_id)?.code || '')}</td><td>${esc(cliName(x.client))}</td>
-      <td>${x.totals?.n ?? (x.lines || []).length}</td><td class="num">${x.totals ? esc(fmtC(x.totals.payable, x.totals.cur)) : ''}</td></tr>`).join('') : `<tr><td colspan="6" class="mute">${esc(tl('Aún no hay invoices guardadas.'))}</td></tr>`);
-  $('invList').querySelectorAll('tr[data-id]').forEach(tr => tr.onclick = () => openInvoice(+tr.dataset.id));
+      <td>${x.totals?.n ?? (x.lines || []).length}</td><td class="num">${x.totals ? esc(fmtC(x.totals.payable, x.totals.cur)) : ''}</td>
+      <td>${x.settled ? `<span class="badge ok">${esc(tl('cobrada'))}</span>` : isOverdue(x) ? `<span class="badge bad">${esc(tl('vencida'))}</span>` : `<span class="badge">${esc(tl('pendiente'))}</span>`}</td></tr>`).join('') : `<tr><td colspan="6" class="mute">${esc(tl('Aún no hay invoices guardadas.'))}</td></tr>`);
+  $('invList').querySelectorAll('tr[data-id]').forEach(tr => tr.onclick = () => { location.hash = '#inv=' + tr.dataset.id; });
 }
 $('invQ').oninput = renderInvList;
 
 /* ---------- añadir artículos: pegar, Excel, selección del buscador ---------- */
-const CODE_RE = /^[A-Z]{0,3}\d{4,}$/i, LOT_RE = /^\d+-\d+(-\d+)?$/;
+const CODE_RE = /^(?:[A-Z]{1,3}\d+|\d{5,})$/i, LOT_RE = /^\d+-\d+(-\d+)?$/;
 function parseRows(rowsIn) { // [[celdas]] → [{code, lot, price}]
   const out = [];
   for (const cells of rowsIn) {
@@ -410,37 +423,158 @@ $('lnDraft').onclick = useDraft;
 /* ============ clientes ============ */
 const CF = [['company', 'Empresa / tienda'], ['name', 'Nombre de contacto'], ['ref', 'Referencia para la numeración (ej. ALOPRINT)'], ['email', 'Email'], ['phone', 'Teléfono'],
   ['address', 'Dirección (envío)', 'area'], ['country', 'País'], ['companyNo', 'Company No'], ['vatNo', 'VAT No'], ['regNo', 'Nº de registro'],
-  ['entity', 'Entidad habitual', 'ent'], ['commissionPct', 'Comisión % (HK, si no es la de la entidad)'], ['invStart', 'Empezar numeración en (si ya tenía invoices)'], ['notes', 'Notas', 'area']];
+  ['entity', 'Entidad habitual', 'ent'], ['commissionPct', 'Comisión % (HK, si no es la de la entidad)'], ['invStart', 'Empezar numeración en (si ya tenía invoices)'],
+  ['pct', 'Margen % (buscador y Excel)'], ['fee', '+ tarifa fija'], ['feeCur', 'Moneda de la tarifa', 'cur'], ['outCur', 'Moneda del cliente', 'cur'], ['round', 'Redondear a (0 = no)'],
+  ['wishlist', 'Lista de deseos (lo que busca; se usa para las alertas y el catálogo mensual)', 'area'], ['notes', 'Notas', 'area']];
 let editingCli = null;
 function openClient(c) {
   editingCli = c ? { ...c } : {};
   $('cDlgT').textContent = c ? tl('Cliente') : tl('Cliente nuevo'); $('cDel').style.display = c ? '' : 'none';
   $('cForm').innerHTML = CF.map(([k, lbl, ty]) => `<label class="col" ${ty === 'area' ? 'style="grid-column:1/-1"' : ''}>${esc(tl(lbl))}${
-    ty === 'area' ? `<textarea data-k="${k}" rows="3">${esc(editingCli[k] || '')}</textarea>`
+    ty === 'area' ? `<textarea data-k="${k}" rows="${k === 'wishlist' ? 5 : 3}">${esc(editingCli[k] || '')}</textarea>`
     : ty === 'ent' ? `<select data-k="${k}"><option value="">—</option>${ents.map(e => `<option value="${e.id}"${e.id === +editingCli[k] ? ' selected' : ''}>${esc(e.code)}</option>`).join('')}</select>`
+    : ty === 'cur' ? `<select data-k="${k}"><option value="">—</option>${curOptions(editingCli[k] || '')}</select>`
     : `<input data-k="${k}" value="${esc(editingCli[k] ?? '')}">`}</label>`).join('');
   $('cDlg').style.display = '';
 }
 $('cCancel').onclick = () => $('cDlg').style.display = 'none';
 $('cSave').onclick = async () => {
-  $('cForm').querySelectorAll('[data-k]').forEach(i => editingCli[i.dataset.k] = i.value.trim());
+  $('cForm').querySelectorAll('[data-k]').forEach(i => { const k = i.dataset.k, v = i.value.trim(); editingCli[k] = ['pct', 'fee', 'round', 'commissionPct', 'invStart'].includes(k) && v !== '' ? num(v) : v; });
   if (!editingCli.company && !editingCli.name) return say(tl('Pon al menos el nombre o la empresa'));
   const { id } = await api('clients/save', editingCli); clients = await api('clients'); $('cDlg').style.display = 'none';
-  renderClients();
-  if (inv && (!inv.client_id || inv.client_id === id)) { inv.client_id = id; const c = cliOf(id); if (!inv.id && c?.entity && +c.entity !== inv.entity_id && !inv.lines.length) { $('iEnt').value = c.entity; $('iEnt').onchange(); } }
-  if (inv) fillForm(); say(tl('Cliente guardado'));
+  if (inv && (!inv.client_id || inv.client_id === id) && $('t-inv').style.display !== 'none') { inv.client_id = id; const c = cliOf(id); if (!inv.id && c?.entity && +c.entity !== inv.entity_id && !inv.lines.length) { $('iEnt').value = c.entity; $('iEnt').onchange(); } }
+  if (inv) fillForm(); renderClients(); if ($('t-cli').style.display !== 'none') showClient(id); say(tl('Cliente guardado'));
 };
-$('cDel').onclick = async () => { if (!confirm(tl('¿Eliminar este cliente? Sus invoices guardadas se conservan.'))) return; await api('clients/delete', { id: editingCli.id }); clients = await api('clients'); $('cDlg').style.display = 'none'; renderClients(); fillForm(); };
+$('cDel').onclick = async () => { if (!confirm(tl('¿Eliminar este cliente? Sus invoices guardadas se conservan.'))) return; await api('clients/delete', { id: editingCli.id }); clients = await api('clients'); $('cDlg').style.display = 'none'; location.hash = '#cli'; renderClients(); $('cDetail').innerHTML = ''; fillForm(); };
 $('cNew').onclick = () => openClient(null); $('iCliNew').onclick = () => openClient(null); $('iCliEdit').onclick = () => openClient(cliOf(inv.client_id));
+let catalogs = [], statusAll = { status: {}, offers: {} }, curCli = null;
+async function loadCatalogs() { try { [catalogs, statusAll] = await Promise.all([api('catalogs'), api('status')]); } catch {} }
+const usdOf = (v, cur) => { const x = conv(v, cur, 'USD'); return isNaN(x) ? 0 : x; };
 function renderClients() {
-  const q = ($('cQ').value || '').toLowerCase(), list = clients.filter(c => !q || JSON.stringify(c).toLowerCase().includes(q));
-  const count = id => invoices.filter(i => i.client_id === id).length;
-  $('cList').innerHTML = `<tr><th>${esc(tl('Empresa / nombre'))}</th><th>Email</th><th>${esc(tl('Teléfono'))}</th><th>${esc(tl('País'))}</th><th>${esc(tl('Invoices'))}</th></tr>`
-    + (list.length ? list.map(c => `<tr class="clk" data-id="${c.id}"><td><b>${esc(cliName(c))}</b></td><td>${esc(c.email || '')}</td><td>${esc(c.phone || '')}</td><td>${esc(c.country || '')}</td><td>${count(c.id)}</td></tr>`).join('')
-      : `<tr><td colspan="6" class="mute">${esc(tl('Aún no hay clientes. Crea el primero con «＋ Cliente nuevo».'))}</td></tr>`);
-  $('cList').querySelectorAll('tr[data-id]').forEach(tr => tr.onclick = () => openClient(cliOf(tr.dataset.id)));
+  const q = ($('cQ').value || '').toLowerCase(), list = clients.filter(c => !q || JSON.stringify(c).toLowerCase().includes(q)).sort((a, b) => cliName(a).localeCompare(cliName(b)));
+  const nInv = id => invoices.filter(i => i.client_id === id).length;
+  $('cList').innerHTML = list.length ? list.map(c => `<div class="cli-item${c.id === curCli ? ' on' : ''}" data-id="${c.id}"><b>${esc(cliName(c))}</b>
+      <small>${esc([c.country, nInv(c.id) ? tl('{n} invoices', { n: nInv(c.id) }) : '', c.wishlist ? '⭐ ' + tl('lista de deseos') : '', c.pct != null && c.pct !== '' ? '+' + c.pct + '%' : ''].filter(Boolean).join(' · '))}</small></div>`).join('')
+    : `<p class="mute">${esc(tl('Aún no hay clientes. Crea el primero con «＋ Cliente nuevo».'))}</p>`;
+  $('cList').querySelectorAll('[data-id]').forEach(d => d.onclick = () => { location.hash = '#cli=' + d.dataset.id; });
 }
 $('cQ').oninput = renderClients;
+const card = (code, top, sub) => `<div class="pcard"><img src="${esc(photo(code))}" loading="lazy" onerror="this.style.visibility='hidden'"><div><b>${esc(top)}</b>${esc(sub)}<br><span class="mute">${esc(code)}</span></div></div>`;
+async function showClient(id) {
+  const c = cliOf(id); if (!c) return; curCli = c.id; renderClients();
+  await loadCatalogs();
+  const invs = invoices.filter(i => i.client_id === c.id).sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+  const bought = invs.flatMap(i => (i.lines || []).filter(l => l.code && l.status !== 'Passed').map(l => ({ ...l, inv: i })));
+  const spent = invs.reduce((a, i) => a + usdOf(i.totals?.payable || 0, i.totals?.cur || i.currency), 0);
+  const cats = catalogs.filter(k => k.client_id === c.id).sort((a, b) => b.at - a.at);
+  const reserved = Object.entries(statusAll.status).filter(([, v]) => v.s === 'reserved' && v.client_id === c.id);
+  const margin = c.pct != null && c.pct !== '' ? `+${c.pct}%${+c.fee ? ' + ' + c.fee + ' ' + (c.feeCur || '') : ''}${c.outCur ? ' · ' + c.outCur : ''}` : tl('sin margen definido');
+  const lineTotal = l => l.inv.entity?.template === 'hk' ? '' : fmtC(num(l.price), l.inv.currency);
+  $('cDetail').innerHTML = `<div class="panel" style="margin:0 0 14px">
+      <div class="row"><h2 style="margin:0;font-size:18px">${esc(cliName(c))}</h2><span class="badge">${esc(margin)}</span>
+        <span style="margin-left:auto"></span><button id="cdEdit">✎ ${esc(tl('Editar ficha'))}</button></div>
+      <div class="mute">${esc([c.email, c.phone, c.country].filter(Boolean).join(' · '))}</div>
+      ${c.address ? `<div class="mute" style="white-space:pre-line;margin-top:4px">${esc(c.address)}</div>` : ''}
+      <div class="row" style="margin-top:10px">
+        <a class="btn primary" href="index.html#catalog=${c.id}">📦 ${esc(tl('Catálogo mensual'))}</a>
+        <a class="btn" href="index.html" id="cdSearch">🔎 ${esc(tl('Buscar con su margen'))}</a>
+        <a class="btn" href="#inv=new:${c.id}">🧾 ${esc(tl('Nueva invoice'))}</a></div>
+      <div class="tiles" style="margin:12px 0 0">
+        <div class="tile"><div class="k">${esc(tl('Comprado (USD)'))}</div><div class="v">${esc(fmtC(spent, 'USD'))}</div><div class="s">${esc(tl('{n} invoices · {m} artículos', { n: invs.length, m: bought.length }))}</div></div>
+        <div class="tile"><div class="k">${esc(tl('Catálogos enviados'))}</div><div class="v">${cats.length}</div><div class="s">${cats[0] ? esc(tl('último: {d}', { d: new Date(cats[0].at * 1000).toLocaleDateString() })) : ''}</div></div>
+        <div class="tile"><div class="k">${esc(tl('Reservados'))}</div><div class="v">${reserved.length}</div></div></div></div>
+    <div class="panel"><h2>⭐ ${esc(tl('Lista de deseos'))}</h2>
+      <textarea id="cdWish" rows="5" placeholder="${esc(tl('Ej.: Hermès Birkin 25-30 en colores neutros, A o mejor, hasta 15.000 USD; Chanel Classic Flap negro…'))}">${esc(c.wishlist || '')}</textarea>
+      <div class="row" style="margin-top:6px"><button class="primary" id="cdWishSave">${esc(tl('Guardar lista de deseos'))}</button><span class="hint">${esc(tl('Con cada carga de la hoja, la app avisa en el Inicio de las novedades que encajan.'))}</span></div></div>
+    <div class="panel"><h2>🛍 ${esc(tl('Lo que ha comprado'))}</h2>${bought.length ? `<div class="pgrid">${bought.map(l => card(l.code, l.brand || l.desc || '', ` ${l.details || ''} · ${lineTotal(l)} · ${l.inv.date} · ${l.inv.number}`)).join('')}</div>` : `<p class="mute">${esc(tl('Todavía nada.'))}</p>`}</div>
+    <div class="panel"><h2>📦 ${esc(tl('Catálogos enviados'))}</h2>${cats.length ? cats.map(k => `<details style="border-bottom:1px solid var(--line);padding:6px 0"><summary><b>${esc(new Date(k.at * 1000).toLocaleDateString())}</b> · ${esc(tl('{n} artículos', { n: k.n }))}${k.label ? ' · <span class="mute">' + esc(k.label.slice(0, 80)) + '</span>' : ''}
+        <button data-delcat="${k.id}" style="float:right" title="${esc(tl('Borrar: esos artículos dejan de contar como enviados'))}">✕</button></summary>
+        <div class="pgrid" style="margin-top:8px">${(k.items || []).map(i => card(i.code, i.brand || '', ` ${i.name || ''}${i.price != null ? ' · ' + fmtC(i.price, i.cur || 'USD') : ''}`)).join('')}</div></details>`).join('') : `<p class="mute">${esc(tl('Se registran solos cuando descargas un Excel en el buscador con este cliente elegido.'))}</p>`}</div>
+    ${reserved.length ? `<div class="panel"><h2>🔖 ${esc(tl('Reservados'))}</h2><div class="pgrid">${reserved.map(([code, v]) => card(code, v.note || tl('Reservado'), ' ' + new Date(v.at * 1000).toLocaleDateString())).join('')}</div></div>` : ''}`;
+  $('cdEdit').onclick = () => openClient(c);
+  $('cdSearch').onclick = () => { store.set('profileId', String(c.id)); if (c.outCur) store.set('outCur', c.outCur); store.flush(); };
+  $('cdWishSave').onclick = async () => { await api('clients/save', { ...c, wishlist: $('cdWish').value.trim() }); clients = await api('clients'); say(tl('Lista de deseos guardada. Las alertas se recalculan en la próxima carga de la hoja.'), 4000); renderClients(); };
+  $('cDetail').querySelectorAll('[data-delcat]').forEach(b => b.onclick = async e => { e.preventDefault(); if (!confirm(tl('¿Borrar este catálogo? Sus artículos dejarán de contar como enviados a este cliente.'))) return; await api('catalogs/delete', { id: +b.dataset.delcat }); showClient(c.id); });
+}
+
+/* ============ inicio ============ */
+let bgStarted = false;
+function startBg() { // actualiza la hoja en segundo plano (historial y alertas) sin salir del Inicio
+  if (bgStarted || !store.get('url', '') || store.get('autoLoad', '1') !== '1') return;
+  bgStarted = true; $('hUpd').textContent = tl('· actualizando catálogo…'); $('bgLoad').src = 'index.html?bg=1';
+}
+addEventListener('message', async e => {
+  if (e.origin !== location.origin || e.data?.cf !== 'loaded') return;
+  await store.reload(); $('hUpd').textContent = tl('· catálogo actualizado'); if ($('t-home').style.display !== 'none') renderHome();
+});
+const isOverdue = i => !i.settled && i.due && i.due < today();
+async function renderHome() {
+  startBg(); await loadCatalogs();
+  const alertsD = JSON.parse(store.get('alerts', 'null') || 'null'), ln = JSON.parse(store.get('lastNews', 'null') || 'null');
+  const pend = invoices.filter(i => !i.settled), over = pend.filter(isOverdue);
+  const pendUSD = pend.reduce((a, i) => a + usdOf(i.totals?.payable || 0, i.totals?.cur || i.currency), 0);
+  const month = today().slice(0, 7), soldM = invoices.filter(i => (i.date || '').startsWith(month)).reduce((a, i) => a + usdOf(i.totals?.payable || 0, i.totals?.cur || i.currency), 0);
+  const withAlerts = (alertsD?.list || []).filter(a => a.codes.length);
+  const tile = (k, v, sub, href, bad) => `<a class="tile" href="${href}" style="text-decoration:none;color:inherit"><div class="k">${esc(k)}</div><div class="v${bad ? ' bad' : ''}">${esc(v)}</div><div class="s">${esc(sub)}</div></a>`;
+  $('hTiles').innerHTML = tile(tl('Novedades'), ln ? String(ln.new) : '—', ln ? tl('{d} bajan de precio · {g} ya no están', { d: ln.down, g: ln.gone }) : tl('carga la hoja en el buscador'), 'index.html#new')
+    + tile(tl('Para tus clientes'), String(withAlerts.reduce((a, x) => a + x.codes.length, 0)), tl('{n} clientes con novedades', { n: withAlerts.length }), '#cli')
+    + tile(tl('Pendiente de cobro'), fmtC(pendUSD, 'USD'), over.length ? tl('{n} invoices · {m} vencidas', { n: pend.length, m: over.length }) : tl('{n} invoices', { n: pend.length }), '#inv', over.length)
+    + tile(tl('Vendido este mes'), fmtC(soldM, 'USD'), tl('{n} invoices en total', { n: invoices.length }), '#inv');
+  // alertas y catálogos mensuales
+  const wish = clients.filter(c => (c.wishlist || '').trim()), lastCat = id => catalogs.filter(k => k.client_id === id).sort((a, b) => b.at - a.at)[0];
+  $('hAlerts').innerHTML = wish.length ? wish.map(c => {
+    const a = (alertsD?.list || []).find(x => +x.id === c.id), lc = lastCat(c.id);
+    const info = a?.needsPlan ? `<span class="hint">${esc(tl('Pulsa «Catálogo mensual» una vez para que la IA entienda su lista'))}</span>`
+      : a?.codes.length ? `<span class="badge ok">${esc(tl('{n} nuevos', { n: a.codes.length }))}</span><span class="thumbs">${a.codes.slice(0, 6).map(k => `<img class="thumb" src="${esc(photo(k))}" onerror="this.style.visibility='hidden'">`).join('')}</span>`
+      : `<span class="mute">${esc(tl('sin novedades'))}</span>`;
+    return `<div class="alert"><span class="who"><a href="#cli=${c.id}" style="color:inherit">${esc(cliName(c))}</a><br><small class="mute">${lc ? esc(tl('último envío {d}', { d: new Date(lc.at * 1000).toLocaleDateString() })) : esc(tl('nunca enviado'))}</small></span>${info}
+      <span style="margin-left:auto;display:flex;gap:6px">${a?.codes.length ? `<a class="btn" href="index.html#wish=${c.id}">${esc(tl('Ver'))}</a>` : ''}<a class="btn primary" href="index.html#catalog=${c.id}">📦 ${esc(tl('Catálogo mensual'))}</a></span></div>`;
+  }).join('') : `<p class="mute">${esc(tl('Escribe la lista de deseos en la ficha de cada cliente y aquí verás qué novedades encajan con cada uno.'))}</p>`;
+  // novedades con foto
+  if (ln?.load && ln.new) {
+    const det = (await api('load?id=' + ln.load)).filter(r => r.kind === 'new').slice(0, 12);
+    $('hNew').innerHTML = `<div class="pgrid">${det.map(r => card(r.code, r.brand || '', ` ${(r.name || '').slice(0, 40)}${r.price != null ? ' · ' + fmtN(r.price, r.cur) + ' ' + (r.cur || '') : ''}`)).join('')}</div>
+      <div class="row" style="margin-top:8px"><a class="btn" href="index.html#new">${esc(tl('Ver los {n} en el buscador', { n: ln.new }))}</a><span class="hint">${ln.since ? esc(tl('desde la carga del {d}', { d: new Date(ln.since * 1000).toLocaleDateString() })) : ''}</span></div>`;
+  } else $('hNew').innerHTML = `<p class="mute">${esc(ln ? tl('Sin novedades en la última carga.') : tl('Carga la hoja en el buscador: desde la segunda carga verás aquí lo nuevo.'))}</p>`;
+  // cobros
+  $('hDue').innerHTML = pend.length ? `<table class="list">${pend.sort((a, b) => (a.due || '').localeCompare(b.due || '')).map(i => `<tr class="clk" data-id="${i.id}"><td><b>${esc(i.number)}</b><br><small class="mute">${esc(cliName(i.client))}</small></td>
+      <td>${isOverdue(i) ? `<span class="badge bad">${esc(tl('vencida {d}', { d: i.due }))}</span>` : `<span class="badge">${esc(tl('vence {d}', { d: i.due || '—' }))}</span>`}</td>
+      <td class="num">${esc(fmtC(i.totals?.payable || 0, i.totals?.cur || i.currency))}</td><td><button data-paid="${i.id}" title="${esc(tl('Marcar como cobrada'))}">✓</button></td></tr>`).join('')}</table>`
+    : `<p class="mute">${esc(tl('Todo cobrado. 🎉'))}</p>`;
+  $('hDue').querySelectorAll('tr[data-id]').forEach(tr => tr.onclick = e => { if (!e.target.dataset.paid) location.hash = '#inv=' + tr.dataset.id; });
+  $('hDue').querySelectorAll('[data-paid]').forEach(b => b.onclick = async e => { e.stopPropagation(); await setSettled(+b.dataset.paid, true); renderHome(); });
+  renderChart();
+}
+async function setSettled(id, on) {
+  const x = invoices.find(i => i.id === id); if (!x) return;
+  await api('invoices/save', { ...x, settled: on, settledAt: on ? today() : null }); invoices = await api('invoices');
+  if (inv?.id === id) { inv.settled = on; inv.settledAt = on ? today() : null; $('iSettled').checked = on; }
+}
+function renderChart() { // ventas por mes y entidad, últimos 12 meses, en USD (barras apiladas)
+  const months = [...Array(12)].map((_, i) => { const d = new Date(); d.setUTCDate(1); d.setUTCMonth(d.getUTCMonth() - 11 + i); return d.toISOString().slice(0, 7); });
+  const codes = [...new Set(ents.map(e => e.code))].slice(0, 3), col = i => `var(--series-${i + 1})`;
+  const data = months.map(m => { const o = { m }; codes.forEach(c => o[c] = 0); invoices.filter(i => (i.date || '').startsWith(m)).forEach(i => { const c = i.entity?.code || entOf(i.entity_id)?.code; if (c in o) o[c] += usdOf(i.totals?.payable || 0, i.totals?.cur || i.currency); }); o.t = codes.reduce((a, c) => a + o[c], 0); return o; });
+  const max = Math.max(...data.map(d => d.t)), W = 560, H = 190, P = { l: 46, r: 6, t: 8, b: 22 }, bw = (W - P.l - P.r) / 12, iw = bw - 8;
+  if (!max) { $('hChart').innerHTML = `<p class="mute">${esc(tl('Las ventas aparecerán aquí cuando guardes invoices.'))}</p>`; return; }
+  const nice = v => { const p = 10 ** Math.floor(Math.log10(v)), n = v / p; return (n <= 1 ? 1 : n <= 2 ? 2 : n <= 5 ? 5 : 10) * p; }, top = nice(max), y = v => P.t + (H - P.t - P.b) * (1 - v / top);
+  const short = v => v >= 1e6 ? (v / 1e6).toFixed(1).replace('.0', '') + 'M' : v >= 1e3 ? (v / 1e3).toFixed(v >= 1e4 ? 0 : 1).replace('.0', '') + 'k' : String(Math.round(v));
+  let svg = [0, .5, 1].map(f => `<line x1="${P.l}" x2="${W - P.r}" y1="${y(top * f)}" y2="${y(top * f)}" stroke="var(--grid)" stroke-width="1"/><text x="${P.l - 6}" y="${y(top * f) + 4}" text-anchor="end">$${short(top * f)}</text>`).join('');
+  data.forEach((d, i) => {
+    const x = P.l + i * bw + 4; let base = 0; const segs = codes.map((c, k) => ({ c, k, v: d[c] })).filter(s => s.v > 0);
+    segs.forEach((s, j) => { const y0 = y(base), y1 = y(base + s.v), h = Math.max(1, y0 - y1 - (j ? 2 : 0)), r = j === segs.length - 1 ? 4 : 0;
+      svg += `<path d="M${x},${y0 - (j ? 2 : 0)} v${-(h - r)} ${r ? `q0,-${r} ${r},-${r} h${iw - 2 * r} q${r},0 ${r},${r}` : `h${iw}`} v${h - r} z" fill="${col(s.k)}"/>`; base += s.v; });
+    svg += `<rect x="${P.l + i * bw}" y="${P.t}" width="${bw}" height="${H - P.t - P.b}" fill="transparent" data-i="${i}"/><text x="${x + iw / 2}" y="${H - 6}" text-anchor="middle">${d.m.slice(5)}</text>`;
+  });
+  $('hChart').innerHTML = `<div class="legend">${codes.map((c, k) => `<span><i style="background:${col(k)}"></i>${esc(c)}</span>`).join('')}</div>
+    <svg viewBox="0 0 ${W} ${H}" width="100%" role="img" aria-label="${esc(tl('Ventas por mes (USD)'))}">${svg}</svg>
+    <details><summary class="hint">${esc(tl('Ver tabla'))}</summary><table class="list"><tr><th>${esc(tl('Mes'))}</th>${codes.map(c => `<th class="num">${esc(c)}</th>`).join('')}<th class="num">${esc(tl('Total'))}</th></tr>
+    ${data.filter(d => d.t).map(d => `<tr><td>${d.m}</td>${codes.map(c => `<td class="num">${esc(fmtC(d[c], 'USD'))}</td>`).join('')}<td class="num"><b>${esc(fmtC(d.t, 'USD'))}</b></td></tr>`).join('')}</table></details>`;
+  const tip = $('vtip');
+  $('hChart').querySelectorAll('rect[data-i]').forEach(r => { r.onmousemove = e => { const d = data[+r.dataset.i];
+      tip.innerHTML = `<b>${d.m}</b><br>` + codes.filter(c => d[c]).map((c, k) => `<i style="display:inline-block;width:8px;height:8px;border-radius:2px;background:${col(codes.indexOf(c))};margin-right:5px"></i>${esc(c)}: ${esc(fmtC(d[c], 'USD'))}`).join('<br>') + `<br><b>${esc(tl('Total'))}: ${esc(fmtC(d.t, 'USD'))}</b>`;
+      tip.style.display = 'block'; tip.style.left = Math.min(e.clientX + 12, innerWidth - 200) + 'px'; tip.style.top = e.clientY + 12 + 'px'; };
+    r.onmouseleave = () => tip.style.display = 'none'; });
+}
 
 /* ============ entidades ============ */
 const EF = [['code', 'Código (UK, JP, HK…)'], ['template', 'Plantilla', 'tpl'], ['name', 'Nombre de la empresa'], ['title', 'Título del documento'], ['address', 'Dirección', 'area'],
@@ -514,7 +648,7 @@ function applyI18n() {
   document.documentElement.lang = lang;
 }
 $('langSel').innerHTML = Object.entries(window.LANGS).map(([k, v]) => `<option value="${k}">${v}</option>`).join(''); $('langSel').value = lang;
-$('langSel').onchange = () => { lang = $('langSel').value; store.set('lang', lang); applyI18n(); fillForm(); renderInvList(); const t = document.querySelector('#tabs .on')?.dataset.t; if (t && t !== 'inv') showTab(t); };
+$('langSel').onchange = () => { lang = $('langSel').value; store.set('lang', lang); applyI18n(); fillForm(); renderInvList(); route(); };
 
 /* ============ arranque ============ */
 (async () => {
@@ -522,9 +656,7 @@ $('langSel').onchange = () => { lang = $('langSel').value; store.set('lang', lan
   try { const r = await fetch('/rates'); if (r.ok) rates = (await r.json()).rates; } catch {}
   try { await loadAll(); }
   catch (e) { document.querySelector('.wrap').innerHTML = `<div class="panel err">${esc(tl('El back office necesita la app abierta con python server.py ({e})', { e: e.message }))}</div>`; return; }
-  inv = blank(); fillForm(); renderInvList();
-  const d = checkDraft();
-  if (location.hash === '#draft' && d) { useDraft(); history.replaceState(null, '', location.pathname); }
+  inv = blank(); fillForm(); checkDraft(); route();
   addEventListener('focus', () => { checkDraft(); });
   addEventListener('beforeunload', ev => { if (dirty && !inv.id && inv.lines.length) { ev.preventDefault(); ev.returnValue = ''; } });
 })();

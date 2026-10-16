@@ -19,10 +19,44 @@
   .mute { color:var(--mute); } .err { color:var(--warn); } .ok { color:var(--acc); }
   .top { display:flex; flex-wrap:wrap; gap:10px; align-items:center; padding:10px 16px; border-bottom:1px solid var(--line); }
   .top h1 { font-size:16px; margin:0; }
-  .tabs { display:flex; gap:4px; flex-wrap:wrap; margin-right:auto; }
-  .tabs button { border-radius:999px; }
-  .tabs button.on { background:var(--acc); color:#fff; border-color:var(--acc); }
-  @media (prefers-color-scheme: dark) { .tabs button.on { color:#111; } }
+  .nav { display:flex; flex-wrap:wrap; gap:2px; margin-right:auto; }
+  .nav a { color:var(--ink); text-decoration:none; padding:5px 11px; border-radius:999px; font-size:14px; }
+  .nav a:hover { background:var(--accsoft); }
+  .nav a.on { background:var(--acc); color:#fff; }
+  @media (prefers-color-scheme: dark) { .nav a.on { color:#111; } }
+  /* inicio */
+  .tiles { display:grid; grid-template-columns:repeat(auto-fit,minmax(200px,1fr)); gap:12px; margin:14px 0; }
+  .tile { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:12px 16px; cursor:pointer; }
+  .tile .k { color:var(--mute); font-size:12px; } .tile .v { font-size:24px; font-weight:700; margin-top:2px; font-variant-numeric:tabular-nums; } .tile .s { color:var(--mute); font-size:12px; margin-top:2px; }
+  .tile .v.bad { color:var(--warn); }
+  .dash { display:grid; grid-template-columns:repeat(auto-fit,minmax(440px,1fr)); gap:0 14px; }
+  @media (max-width:520px) { .dash { grid-template-columns:1fr; } }
+  .dash .panel { margin:0 0 14px; }
+  .alert { display:flex; gap:10px; align-items:center; padding:8px 0; border-bottom:1px solid var(--line); flex-wrap:wrap; }
+  .alert:last-child { border-bottom:none; }
+  .alert .who { font-weight:600; min-width:140px; }
+  .thumbs { display:flex; gap:4px; flex-wrap:wrap; }
+  .pgrid { display:grid; grid-template-columns:repeat(auto-fill,minmax(130px,1fr)); gap:10px; }
+  .pcard { border:1px solid var(--line); border-radius:8px; overflow:hidden; background:var(--card); font-size:12px; }
+  .pcard img { width:100%; aspect-ratio:1; object-fit:cover; display:block; background:var(--line); }
+  .pcard div { padding:5px 7px; } .pcard b { display:block; font-size:12px; }
+  a.btn { text-decoration:none; color:var(--ink); border:1px solid var(--line); border-radius:6px; padding:5px 9px; background:var(--card); font-size:13px; white-space:nowrap; }
+  a.btn.primary { background:var(--acc); color:#fff; border-color:var(--acc); }
+  @media (prefers-color-scheme: dark) { a.btn.primary { color:#111; } }
+  .cli-layout { display:grid; grid-template-columns:minmax(260px,340px) 1fr; gap:14px; align-items:start; }
+  @media (max-width:900px) { .cli-layout { grid-template-columns:1fr; } }
+  .cli-item { padding:8px 10px; border-radius:8px; cursor:pointer; } .cli-item:hover, .cli-item.on { background:var(--accsoft); }
+  .cli-item small { color:var(--mute); display:block; }
+  .badge { display:inline-block; font-size:11px; padding:1px 7px; border-radius:999px; background:var(--accsoft); color:var(--ink); }
+  .badge.bad { background:#fde2e1; color:#a1201a; } .badge.ok { background:#dff3e6; color:#1f6b3a; }
+  @media (prefers-color-scheme: dark) { .badge.bad { background:#4a1f1d; color:#ffb4ab; } .badge.ok { background:#1f3a2a; color:#9fe0b5; } }
+  /* gráfico (colores de la paleta de referencia validada: 3 primeros huecos) */
+  .viz-root { --surface-1:var(--card); --text-primary:var(--ink); --text-secondary:var(--mute); --grid:var(--line); --series-1:#2a78d6; --series-2:#eb6834; --series-3:#1baf7a; }
+  @media (prefers-color-scheme: dark) { .viz-root { --series-1:#3987e5; --series-2:#d95926; --series-3:#199e70; } }
+  .viz-root svg text { fill:var(--text-secondary); font-size:11px; }
+  .legend { display:flex; gap:14px; font-size:12px; color:var(--text-primary); margin-bottom:6px; flex-wrap:wrap; }
+  .legend i { display:inline-block; width:10px; height:10px; border-radius:2px; margin-right:5px; vertical-align:-1px; }
+  .vtip { position:fixed; pointer-events:none; background:var(--card); color:var(--ink); border:1px solid var(--line); border-radius:8px; padding:6px 9px; font-size:12px; box-shadow:0 4px 14px #0002; display:none; z-index:60; white-space:nowrap; }
   .wrap { max-width:1500px; margin:0 auto; padding:0 16px; }
   .panel { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:14px 16px; margin:14px 0; }
   .panel h2 { font-size:15px; margin:0 0 10px; }
@@ -86,20 +120,28 @@
 </head>
 <body>
 <div class="top">
-  <h1>🗂 Back office</h1>
-  <div class="tabs" id="tabs">
-    <button data-t="inv" class="on">🧾 Invoices</button>
-    <button data-t="cli">👥 Clientes</button>
-    <button data-t="ent">🏢 Entidades</button>
-    <button data-t="news">🆕 Novedades</button>
-  </div>
+  <h1>Catalog Finder</h1>
+  <nav class="nav" id="tabs"><a href="#home" data-t="home">🏠 Inicio</a><a href="index.html">🔎 Buscar</a><a href="#cli" data-t="cli">👥 Clientes</a><a href="#inv" data-t="inv">🧾 Invoices</a><a href="#news" data-t="news">🆕 Novedades</a><a href="#ent" data-t="ent">🏢 Entidades</a></nav>
   <label title="Idioma / Language / Langue">🌐 <select id="langSel"></select></label>
-  <a href="index.html" class="chip" style="text-decoration:none">🔎 Buscador</a>
 </div>
 
 <div class="wrap">
+  <!-- ================= INICIO ================= -->
+  <section id="t-home" style="display:none">
+    <div class="row" style="margin-top:16px"><h2 style="margin:0;font-size:18px" id="hHello">Inicio</h2><span id="hUpd" class="mute"></span>
+      <span style="margin-left:auto"></span><a class="btn" href="index.html">🔎 Buscar</a><a class="btn primary" href="#inv=new">🧾 Nueva invoice</a></div>
+    <div class="tiles" id="hTiles"></div>
+    <div class="dash">
+      <div class="panel"><h2>⭐ Para tus clientes</h2><div id="hAlerts"></div></div>
+      <div class="panel"><h2>🆕 Novedades del catálogo</h2><div id="hNew"></div></div>
+      <div class="panel"><h2>⏳ Pendiente de cobro</h2><div id="hDue"></div></div>
+      <div class="panel viz-root"><h2>📈 Ventas por mes (USD)</h2><div id="hChart"></div></div>
+    </div>
+    <iframe id="bgLoad" title="bg" style="display:none"></iframe>
+  </section>
+
   <!-- ================= INVOICES ================= -->
-  <section id="t-inv">
+  <section id="t-inv" style="display:none">
     <div class="editor">
       <div>
         <div class="panel">
@@ -148,6 +190,7 @@
             <button id="iNew">Nueva</button>
             <button id="iDup" style="display:none">Duplicar</button>
             <button id="iDel" style="display:none">Eliminar</button>
+            <label title="Marca la invoice como cobrada"><input type="checkbox" id="iSettled"> Cobrada</label>
             <span id="iState" class="mute"></span>
           </div>
         </div>
@@ -167,9 +210,12 @@
 
   <!-- ================= CLIENTES ================= -->
   <section id="t-cli" style="display:none">
-    <div class="panel">
-      <div class="row"><h2 style="margin:0">Clientes</h2><button class="primary" id="cNew">＋ Cliente nuevo</button><input id="cQ" type="text" placeholder="buscar…" style="margin-left:auto"></div>
-      <table class="list" id="cList"></table>
+    <div class="cli-layout" style="margin-top:14px">
+      <div class="panel" style="margin:0">
+        <div class="row"><input id="cQ" type="text" placeholder="buscar…" style="flex:1"><button class="primary" id="cNew">＋ Cliente nuevo</button></div>
+        <div id="cList"></div>
+      </div>
+      <div id="cDetail"></div>
     </div>
   </section>
 
@@ -211,6 +257,7 @@
   <div class="row"><button class="primary" id="pOk">Añadir</button><button id="pCancel">Cancelar</button></div>
 </div></div>
 <div id="msg"></div>
+<div class="vtip" id="vtip"></div>
 <div id="printArea"></div>
 
 <script src="vendor/xlsx.bundle.js"></script>

@@ -12,18 +12,33 @@ Lors d’une mise à jour : la nouvelle version ferme d’elle-même l’ancienn
 2. **Que cherchez-vous ?** Écrivez-le comme à une personne (français, anglais ou espagnol) : *« sacs noirs à moins de 500 euros, choisis 5 variés »*. Ou filtrez à la main : tranche de prix, état, marques, entity, texte, ordre, uniquement avec photos.
 3. **Choisissez** : cochez les cartes, *Sélectionner tous les résultats* ou *les premiers N*. Puis **Télécharger Excel (.xlsx)**.
 
-## 🗂 Back office : factures, clients et historique
-Tout est stocké dans **`catalog.db`**, un seul fichier dans le dossier (pas dans git). Pour sauvegarder ou changer d’ordinateur, copiez ce fichier. À la première ouverture de cette version, les clients, marges et modèles enregistrés dans votre navigateur y sont copiés automatiquement.
-- **Historique :** à chaque chargement de la feuille, l’app la compare au chargement précédent et affiche « 🆕 nouveaux · 📉 baisses de prix · disparus » à côté du titre. Cliquez pour voir ces articles. L’onglet *Nouveautés* garde l’historique complet.
-- **Back office** (bouton 🗂) : onglets Factures, Clients, Entités et Nouveautés.
-- **Entités** (UK, JP, HK) : données de société, immatriculations, banque, mentions légales, logo, devise, échéance et numérotation. Déposez votre `entidades.json` dans le dossier et il est importé au démarrage, ou utilisez *Importer*.
-- **Clients :** société, contact, e-mail, téléphone, adresse, TVA/n° de société, entité habituelle et référence de numérotation (ALOPRINT 0003).
-- **Créer une facture :**
-  - Depuis la recherche, sélectionnez des articles puis *🧾 Créer une facture* ; les prix incluent la marge du client choisi.
-  - Ou collez une liste CTag + prix, ou importez un Excel/CSV.
-  - HK (enchère LBA) : prix d’adjudication en HKD → yens avec le taux de change, 5 % de commission par lot ; les lignes sans prix sortent en « Passed ».
-- **Enregistrer** attribue le numéro : par client pour UK, séquentiel pour JP, date et heure pour HK. Les articles sont marqués **vendus** ; la recherche les masque (*masquer les vendus*) ou les signale.
-- **PDF :** *🖨 PDF / imprimer* ouvre l’impression du navigateur ; choisissez « Enregistrer en PDF ». L’aperçu à côté de l’éditeur correspond au PDF.
+## 🗂 Une seule app : Accueil · Recherche · Clients · Factures · Nouveautés · Entités
+Tout est stocké dans **`catalog.db`**, un seul fichier dans le dossier (pas dans git) ; copiez-le pour sauvegarder. Les réglages du navigateur y sont copiés automatiquement la première fois.
+- **🏠 Accueil** (s’ouvre au démarrage). Met à jour la feuille en arrière-plan et affiche :
+  - Les nouveautés avec photos.
+  - « ⭐ Pour vos clients » : les nouveautés qui correspondent à la liste de souhaits de chacun, avec un bouton **📦 Catalogue mensuel**.
+  - Les factures en attente de paiement et en retard.
+  - Les ventes par mois et par entité.
+- **📦 Catalogue mensuel :** ouvre la recherche avec la marge du client, lance sa liste de souhaits, masque le vendu, le réservé et ce qui lui a déjà été envoyé, et sélectionne tout pour son Excel.
+- **👥 Clients :** une seule fiche par client, avec données de facture, marge et devise (les mêmes que le sélecteur de la recherche), liste de souhaits, achats (avec photos), catalogues envoyés et réservations.
+- **États des articles :**
+  - **Envoyé :** chaque Excel téléchargé avec un client choisi est enregistré comme catalogue envoyé ; « ne pas répéter ce qui a été envoyé » les écarte.
+  - **Réservé :** 🔖 sur chaque carte, pour un client, avec une note.
+  - **Vendu :** à l’enregistrement d’une facture.
+  - « Masquer vendus et réservés » les retire de la recherche.
+- **Historique :** chaque chargement est comparé au précédent (nouveaux, baisses de prix, disparus). Si la feuille n’a pas changé, les dernières nouveautés restent affichées. Avec « charger à l’ouverture », la feuille du lien enregistré est téléchargée automatiquement.
+- **Added date et Buyer** (colonnes facultatives de la feuille) :
+  - Filtre par Buyer et par ancienneté : < 1 mois, > 3 mois, > 6 mois, > 1 an, > 2 ans.
+  - Tri par date d’ajout (ancien → récent ou l’inverse) et par Buyer.
+  - Chaque carte affiche la date d’ajout et depuis combien de temps.
+  - L’assistant comprend « sacs de plus de 6 mois ».
+  - Le format de date est détecté automatiquement ; si besoin, réglez-le dans *Réglages avancés → Dates*.
+- **🧾 Factures** (UK, JP, HK) : depuis la sélection de la recherche, une liste CTag + prix collée ou un Excel.
+  - HK : adjudication en HKD → yens, 5 % de commission, « Passed » sans prix.
+  - Numérotation : par client pour UK, séquentielle pour JP, date et heure pour HK.
+  - Case **Encaissée**.
+  - PDF via l’impression du navigateur.
+- **🏢 Entités :** société, banque, mentions légales et logo ; `entidades.json` dans le dossier est importé au démarrage.
 
 ## Assistant
 - **Avec l’IA** : *Activer l’IA…* et collez une clé API Anthropic (stockée uniquement dans le fichier `.api_key` sur votre ordinateur ; ou la variable `ANTHROPIC_API_KEY`). Elle comprend des phrases libres et de longues demandes multi-lignes (modèles prêts dans `prompts/`), et répond dans votre langue.

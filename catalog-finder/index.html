@@ -17,7 +17,12 @@
   @media (prefers-color-scheme: dark) { button.primary { color:#111; } }
   .mute { color:var(--mute); } .err { color:var(--warn); }
   .top { display:flex; flex-wrap:wrap; gap:10px; align-items:center; padding:10px 16px; border-bottom:1px solid var(--line); }
-  .top h1 { font-size:16px; margin:0; margin-right:auto; }
+  .top h1 { font-size:16px; margin:0; }
+  .nav { display:flex; flex-wrap:wrap; gap:2px; margin-right:auto; }
+  .nav a { color:var(--ink); text-decoration:none; padding:5px 11px; border-radius:999px; font-size:14px; }
+  .nav a:hover { background:var(--accsoft); }
+  .nav a.on { background:var(--acc); color:#fff; }
+  @media (prefers-color-scheme: dark) { .nav a.on { color:#111; } }
   .wrap { max-width:1500px; margin:0 auto; padding:0 16px; }
   .step { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:14px 16px; margin:14px 0; }
   .step > h2 { font-size:14px; margin:0 0 10px; display:flex; gap:8px; align-items:center; }
@@ -53,6 +58,10 @@
   .desc { margin-top:4px; font-size:13px; }
   .notes { margin-top:4px; font-size:12px; }
   .price { margin-top:6px; font-weight:600; font-size:15px; }
+  .info { position:relative; }
+  .rsv { position:absolute; right:8px; top:8px; border:none; background:none; padding:0 2px; opacity:.45; font-size:14px; }
+  .rsv:hover { opacity:1; }
+  .notes.warn { color:#b26a00; }
   #more { display:block; margin:0 auto 30px; }
   #bar { position:fixed; left:0; right:0; bottom:0; z-index:10; background:var(--card); border-top:1px solid var(--line); padding:10px 16px; display:flex; flex-wrap:wrap; gap:10px; align-items:center; }
   #bar .sp { margin-right:auto; }
@@ -73,12 +82,12 @@
 <body>
 <div class="top">
   <h1>Catalog Finder</h1>
+  <nav class="nav"><a href="backoffice.html#home">🏠 Inicio</a><a href="index.html" class="on">🔎 Buscar</a><a href="backoffice.html#cli">👥 Clientes</a><a href="backoffice.html#inv">🧾 Invoices</a><a href="backoffice.html#news">🆕 Novedades</a><a href="backoffice.html#ent">🏢 Entidades</a></nav>
   <span id="fx" class="mute"></span>
   <label title="Idioma / Language / Langue">🌐 <select id="langSel"></select></label>
   <label>Moneda <select id="outCurSel"></select></label>
   <label>Cliente <select id="profSel" title="Cada cliente tiene su margen, tarifa fija y moneda"></select></label>
   <button id="profEdit" title="Editar el cliente elegido o crear uno nuevo">✎ Margen</button>
-  <a href="backoffice.html" target="_blank" class="chip" style="text-decoration:none">🗂 Back office</a>
 </div>
 
 <div class="wrap">
@@ -91,6 +100,7 @@
         <button class="primary" id="load">Cargar</button>
         <span class="mute">o sube el archivo</span>
         <input id="file" type="file" accept=".csv,.tsv,text/csv">
+        <label title="Al abrir la app se descarga la hoja del enlace guardado"><input type="checkbox" id="autoLoad"> cargar al abrir</label>
       </div>
     </div>
     <details id="settings">
@@ -101,6 +111,7 @@
         <label>Tamaño <input id="size" type="text" style="width:80px"></label>
         <label>Prefijo código <input id="prefix" type="text" style="width:60px" placeholder="ej. C"></label>
         <label>Máx. fotos <input id="maxn" type="text" style="width:50px"></label>
+        <label title="Cómo leer fechas como 03/04/2026">Fechas <select id="dateOrder"><option value="auto">automático</option><option value="dmy">día/mes/año</option><option value="mdy">mes/día/año</option></select></label>
       </div>
       <div class="row">
         <label><input type="checkbox" id="natural" checked> Detailed grading en lenguaje natural</label>
@@ -136,11 +147,14 @@
       <div class="row"><span class="lbl">Marcas</span><span id="bchips"></span>
         <input id="bAdd" list="bList" type="text" placeholder="otra marca…" style="width:150px"><datalist id="bList"></datalist></div>
       <div class="row" id="eRow"><span class="lbl">Entity</span><span id="echips"></span></div>
+      <div class="row" id="yRow" style="display:none"><span class="lbl">Buyer</span><span id="ychips"></span></div>
+      <div class="row" id="aRow" style="display:none"><span class="lbl">Antigüedad</span><span id="achips"></span></div>
       <div class="row"><span class="lbl">Texto</span>
         <input id="q" type="text" placeholder="código, palabra… (ej. black, tote, lizard)" style="min-width:260px">
-        <select id="sort"><option value="">Orden original</option><option value="brand">Marca</option><option value="pa">Precio ↑</option><option value="pd">Precio ↓</option></select>
+        <select id="sort"><option value="">Orden original</option><option value="brand">Marca</option><option value="pa">Precio ↑</option><option value="pd">Precio ↓</option><option value="old">Alta: antiguo → nuevo</option><option value="new">Alta: nuevo → antiguo</option><option value="buyer">Buyer</option></select>
         <label><input type="checkbox" id="onlyImg"> solo con fotos</label>
-        <label title="Artículos que ya están en una invoice guardada"><input type="checkbox" id="hideSold"> ocultar vendidos</label></div>
+        <label title="Artículos en una invoice guardada o reservados"><input type="checkbox" id="hideSold"> ocultar vendidos y reservados</label>
+        <label id="noRepeatL" title="Oculta lo que ya está en un Excel enviado al cliente elegido"><input type="checkbox" id="noRepeat"> <span id="noRepeatT">no repetir lo ya enviado</span></label></div>
     </div>
   </div>
 
@@ -180,6 +194,12 @@
   <p class="mute" style="margin-bottom:10px">Precio final = precio de compra × (1 + margen %) + tarifa fija. <span id="pPreview"></span></p>
   <div class="row"><button class="primary" id="pSave">Guardar</button><button id="pDel">Eliminar</button><button id="pCancel">Cancelar</button></div>
 </div></div>
+<div id="rdlg" class="overlay" style="display:none"><div class="box" style="min-width:340px">
+  <p><b id="rTitle"></b></p>
+  <div class="row"><label>Reservado para <select id="rCli"></select></label></div>
+  <div class="row"><label>Nota <input id="rNote" type="text" style="width:240px"></label></div>
+  <div class="row"><button class="primary" id="rSave">🔖 Reservar</button><button id="rClear">Quitar reserva</button><button id="rCancel">Cancelar</button></div>
+</div></div>
 <div id="dlg" class="overlay" style="display:none"><div class="box"><p id="dlgMsg"></p><div class="row" id="dlgBtns"></div></div></div>
 <div id="lb"><div class="cap"></div><img><div class="thumbs"></div></div>
 
@@ -197,8 +217,11 @@ const FIELDS = {
   price:  { label:'Precio',        alias:['price after tax','original price','price','precio','prix'] },
   cur:    { label:'Moneda',        alias:['currency','moneda','curr','devise'] },
   entity: { label:'Entity',        alias:['entity','entidad','entite','owner','seller','vendor','company'] },
+  added:  { label:'Fecha de alta (Added date)', alias:['added date','date added','added','added on','fecha de alta','fecha alta','fecha','date ajout','date d ajout',"date d'ajout",'created','created at','listing date','date'] },
+  buyer:  { label:'Buyer (comprador)', alias:['buyer','buyer name','comprador','compradora','acheteur','acheteuse','purchaser','bought by'] },
 };
 const $ = id => document.getElementById(id);
+const BG = new URLSearchParams(location.search).has('bg'); // cargado en segundo plano por el Inicio (solo actualiza historial y alertas)
 const API_H = { 'Content-Type': 'application/json', 'X-Catalog-Finder': '1' };
 const store = (() => { // ajustes guardados en catalog.db (en la carpeta de la app); el navegador solo guarda una copia
   let srv = null; const pending = {}; let timer = 0;
@@ -207,7 +230,8 @@ const store = (() => { // ajustes guardados en catalog.db (en la carpeta de la a
     return fetch('/api/kv', { method: 'POST', headers: API_H, body: JSON.stringify({ items }), keepalive }).catch(() => {}); };
   if (srv && !srv._migrated) { // primera vez con base de datos: se copian los ajustes que había en este navegador
     try { for (let i = 0; i < localStorage.length; i++) { const k = localStorage.key(i); if (!(k in srv)) srv[k] = pending[k] = localStorage.getItem(k); } } catch {}
-    srv._migrated = pending._migrated = '1'; flush();
+    srv._migrated = pending._migrated = '1'; const items = { ...pending }; for (const k in pending) delete pending[k];
+    try { const x = new XMLHttpRequest(); x.open('POST', '/api/kv', false); x.setRequestHeader('X-Catalog-Finder', '1'); x.setRequestHeader('Content-Type', 'application/json'); x.send(JSON.stringify({ items })); } catch {} // síncrono: los clientes se leen justo después
   }
   addEventListener('pagehide', () => flush(true));
   return {
@@ -267,8 +291,32 @@ const RANKS = [['SA WITH TAGS', 1, 'SA'], ['SA', 2, 'SA'], ['S', 3, 'S'], ['A', 
 const GRADE_RE = /GRADING:\s*(SA\s+with\s+tags|SA|S|AB|A|BC|B\+|B-|B|C)(?![A-Za-z])/i;
 const GRADE_ONLY = /^(SA\s+with\s+tags|SA|S|AB|A|BC|B\+|B-|B|C)(?![A-Za-z])/i;
 const rankEntry = key => RANKS.find(x => x[0] === key.toUpperCase().replace(/\s+/g, ' '));
+/* ---------- fecha de alta: acepta 2026-03-14, 14/03/2026, 03/14/2026, 2026年3月14日, número de serie de Excel… ---------- */
+let dateOrder = 'mdy';
+function detectDateOrder() { // en «a/b/aaaa», si a > 12 es día/mes; si b > 12 es mes/día; si no, lo que digan los Ajustes (por defecto mes/día, como Google Sheets en inglés)
+  const set = store.get('dateOrder', 'auto'); if (set !== 'auto') return set;
+  let dmy = 0, mdy = 0;
+  for (const r of rows) { const m = String(get(r, 'added')).match(/^\s*(\d{1,2})[\/.\-](\d{1,2})[\/.\-](\d{2,4})/); if (m) { if (+m[1] > 12) dmy++; if (+m[2] > 12) mdy++; } }
+  return dmy > mdy ? 'dmy' : 'mdy';
+}
+function parseDate(v) {
+  v = String(v ?? '').trim(); if (!v) return null; let m;
+  if (/^\d{5}(\.\d+)?$/.test(v)) { const n = +v; if (n > 20000 && n < 80000) return (n - 25569) * 86400000; } // serie de Excel/Sheets
+  if ((m = v.match(/^(\d{4})[\/.\-年](\d{1,2})[\/.\-月](\d{1,2})/))) return Date.UTC(+m[1], +m[2] - 1, +m[3]);
+  if ((m = v.match(/^(\d{1,2})[\/.\-](\d{1,2})[\/.\-](\d{2,4})/))) { let [a, b, y] = [+m[1], +m[2], +m[3]]; if (y < 100) y += 2000; const [d, mo] = dateOrder === 'dmy' ? [a, b] : [b, a]; return mo >= 1 && mo <= 12 && d >= 1 && d <= 31 ? Date.UTC(y, mo - 1, d) : null; }
+  const t = Date.parse(v); return isNaN(t) ? null : t;
+}
+const DAY = 86400000, ageDays = r => r._added == null ? null : (Date.now() - r._added) / DAY;
+function ageText(r) {
+  const d = ageDays(r); if (d == null) return '';
+  const when = new Date(r._added).toLocaleDateString(LOC(), { timeZone: 'UTC' });
+  const ago = d < 1 ? tl('hoy') : d < 60 ? tl('hace {n} días', { n: Math.floor(d) }) : d < 730 ? tl('hace {n} meses', { n: Math.floor(d / 30.44) }) : tl('hace {n} años', { n: (d / 365.25).toFixed(1).replace('.0', '') });
+  return tl('alta {d} ({a})', { d: when, a: ago });
+}
 function prep() { // precalcula por fila: texto de búsqueda, detalle de grading, rank
+  dateOrder = detectDateOrder();
   for (const r of rows) {
+    r._added = map.added ? parseDate(get(r, 'added')) : null;
     const vals = Object.entries(r).filter(([k]) => k[0] !== '_').map(([, v]) => v);
     r._detail = vals.find(v => /GRADING:/i.test(v)) || '';
     let m = r._detail.match(GRADE_RE) || (get(r, 'grade') || '').trim().match(GRADE_ONLY);
@@ -286,10 +334,18 @@ const rankText = r => r._rank ? `${r._rank} - ${r._letter} RANK` + (labels()[r._
 
 /* ============ divisas → USD ============ */
 let rates = null, ratesDate = '';
-let profiles = JSON.parse(store.get('profiles', 'null') || 'null') || [{ name: 'Estándar', pct: parseFloat(store.get('pct', '35')) || 0, fee: parseFloat(store.get('fee', '2500')) || 0, feeCur: 'JPY', round: 0, outCur: 'USD' }];
-let activeProf = store.get('profile', store.get('markupOn', '0') === '1' ? profiles[0].name : ''); // '' = sin margen
+// clientes = fichas del back office (catalog.db): cada una con su margen, moneda y lista de deseos
+function syncGet(path) { try { const x = new XMLHttpRequest(); x.open('GET', path, false); x.setRequestHeader('X-Catalog-Finder', '1'); x.send(); return x.status === 200 ? JSON.parse(x.responseText) : null; } catch { return null; } }
+const cliLabel = c => c.company && c.name && c.company !== c.name ? `${c.company} (${c.name})` : c.company || c.name || '?';
+const toProf = c => ({ id: String(c.id), name: cliLabel(c), pct: +c.pct || 0, fee: +c.fee || 0, feeCur: c.feeCur || 'JPY', round: +c.round || 0, outCur: c.outCur || '', wishlist: c.wishlist || '', margin: c.pct != null && c.pct !== '' });
+let clientDocs = store.online ? syncGet('/api/clients') || [] : null;
+let profiles = clientDocs ? clientDocs.map(toProf) : JSON.parse(store.get('profiles', 'null') || 'null') || [{ name: 'Estándar', pct: parseFloat(store.get('pct', '35')) || 0, fee: parseFloat(store.get('fee', '2500')) || 0, feeCur: 'JPY', round: 0, outCur: 'USD' }];
+const pkey = p => p.id ?? p.name;
+if (clientDocs && !store.get('profileId', '') && store.get('profile', '')) { const p = profiles.find(x => x.name === store.get('profile', '')); if (p) store.set('profileId', p.id); } // margen elegido antes de unificar clientes
+let activeProf = clientDocs ? store.get('profileId', '') : store.get('profile', store.get('markupOn', '0') === '1' ? profiles[0].name : ''); // '' = sin margen
+async function reloadClients() { if (!clientDocs) return; try { clientDocs = await (await fetch('/api/clients', { headers: API_H })).json(); profiles = clientDocs.map(toProf); } catch {} }
 let outCur = store.get('outCur', 'USD');
-const prof = () => profiles.find(p => p.name === activeProf) || null;
+const prof = () => profiles.find(p => pkey(p) === activeProf) || null;
 const rate = c => { c = String(c || 'USD').toUpperCase(); return c === 'USD' ? 1 : (rates && rates[c]) || 0; }; // unidades de cada moneda por 1 USD
 const fromUSD = v => { const r = rate(outCur); return r ? v * r : NaN; };
 const roundTo = (v, step) => step > 0 ? Math.round(v / step) * step : v;
@@ -336,11 +392,11 @@ function curOptions(sel, cur) { // monedas disponibles (las habituales primero)
 }
 function buildCurSelects() { if (rates && !rate(outCur)) outCur = 'USD'; curOptions($('outCurSel'), outCur); buildProfSel(); }
 function buildProfSel() {
-  $('profSel').innerHTML = '<option value="">' + esc(tl('Sin margen')) + '</option>' + profiles.map(p => `<option value="${esc(p.name)}">${esc(p.name)} (+${p.pct}%${p.fee ? ' + ' + p.fee + ' ' + p.feeCur : ''})</option>`).join('') + '<option value="__new">' + esc(tl('+ Nuevo cliente…')) + '</option>';
+  $('profSel').innerHTML = '<option value="">' + esc(tl('Sin margen')) + '</option>' + [...profiles].sort((a, b) => a.name.localeCompare(b.name)).map(p => `<option value="${esc(pkey(p))}">${esc(p.name)} ${p.margin === false ? '· ' + esc(tl('sin margen')) : `(+${p.pct}%${p.fee ? ' + ' + p.fee + ' ' + p.feeCur : ''})`}</option>`).join('') + '<option value="__new">' + esc(tl('+ Nuevo cliente…')) + '</option>';
   $('profSel').value = prof() ? activeProf : '';
   $('bnMode').textContent = prof() ? tl('con margen: {p} · {c}', { p: profLabel(), c: outCur }) : tl('sin margen · {c}', { c: outCur });
 }
-function applyProfile() { store.set('profile', activeProf); store.set('outCur', outCur); store.set('profiles', JSON.stringify(profiles)); buildCurSelects(); if (rows.length) refresh(false); }
+function applyProfile() { if (clientDocs) store.set('profileId', activeProf); else { store.set('profile', activeProf); store.set('profiles', JSON.stringify(profiles)); } store.set('outCur', outCur); buildCurSelects(); updateNoRepeat(); if (rows.length) refresh(false); }
 $('outCurSel').onchange = () => { outCur = $('outCurSel').value; applyProfile(); };
 $('profSel').onchange = () => {
   const v = $('profSel').value;
@@ -349,10 +405,10 @@ $('profSel').onchange = () => {
 };
 $('profEdit').onclick = () => editProfile(!prof());
 function editProfile(isNew) {
-  const p = isNew ? { name: '', pct: 35, fee: 0, feeCur: outCur, round: 0, outCur } : prof(); editing = isNew ? null : p.name;
-  $('pTitle').textContent = isNew ? tl('Nuevo cliente') : tl('Editar cliente'); $('pName').value = p.name; $('pPct').value = p.pct; $('pFee').value = p.fee;
-  curOptions($('pFeeCur'), p.feeCur); curOptions($('pOut'), p.outCur); $('pRound').value = String(p.round || 0);
-  $('pDel').style.display = isNew ? 'none' : ''; $('pdlg').style.display = ''; pPreview();
+  const p = isNew ? { name: '', pct: 35, fee: 0, feeCur: outCur, round: 0, outCur } : prof(); editing = isNew ? null : pkey(p);
+  $('pTitle').textContent = isNew ? tl('Nuevo cliente') : tl('Editar cliente'); $('pName').value = clientDocs && !isNew ? (clientDocs.find(c => String(c.id) === pkey(p))?.company || clientDocs.find(c => String(c.id) === pkey(p))?.name || p.name) : p.name; $('pPct').value = p.pct; $('pFee').value = p.fee;
+  curOptions($('pFeeCur'), p.feeCur); curOptions($('pOut'), p.outCur || outCur); $('pRound').value = String(p.round || 0);
+  $('pDel').style.display = isNew || clientDocs ? 'none' : ''; $('pdlg').style.display = ''; pPreview();
 }
 let editing = null;
 function pPreview() { // ejemplo con lo que se está escribiendo
@@ -362,11 +418,17 @@ function pPreview() { // ejemplo con lo que se está escribiendo
 }
 ['pName', 'pPct', 'pFee'].forEach(id => $(id).addEventListener('input', pPreview)); ['pFeeCur', 'pOut', 'pRound'].forEach(id => $(id).addEventListener('change', pPreview));
 $('pCancel').onclick = () => { $('pdlg').style.display = 'none'; buildProfSel(); };
-$('pSave').onclick = () => {
+$('pSave').onclick = async () => {
   const name = $('pName').value.trim(); if (!name) { $('pName').focus(); return; }
   const np = { name, pct: parseFloat($('pPct').value.replace(',', '.')) || 0, fee: parseFloat($('pFee').value.replace(',', '.')) || 0, feeCur: $('pFeeCur').value, round: +$('pRound').value, outCur: $('pOut').value };
-  const i = profiles.findIndex(p => p.name === (editing ?? name)); if (i >= 0) profiles[i] = np; else profiles.push(np);
-  activeProf = name; outCur = np.outCur; $('pdlg').style.display = 'none'; applyProfile();
+  if (clientDocs) { // se guarda en la ficha del cliente (la misma que usan las invoices)
+    const doc = clientDocs.find(c => String(c.id) === editing) || {};
+    const body = { ...doc, pct: np.pct, fee: np.fee, feeCur: np.feeCur, round: np.round, outCur: np.outCur };
+    if (doc.company) body.company = name; else body.name = name;
+    const r = await fetch('/api/clients/save', { method: 'POST', headers: API_H, body: JSON.stringify(body) }); const { id } = await r.json();
+    await reloadClients(); activeProf = String(id);
+  } else { const i = profiles.findIndex(p => p.name === (editing ?? name)); if (i >= 0) profiles[i] = np; else profiles.push(np); activeProf = name; }
+  outCur = np.outCur; $('pdlg').style.display = 'none'; applyProfile();
 };
 $('pDel').onclick = () => { profiles = profiles.filter(p => p.name !== editing); activeProf = ''; $('pdlg').style.display = 'none'; applyProfile(); };
 
@@ -427,17 +489,66 @@ function ingest(text) {
   { const have = new Set(rows.map(code)); [...selected].forEach(c => { if (!have.has(c)) selected.delete(c); }); }
   $('s2').style.display = $('s3').style.display = $('bar').style.display = '';
   loadedN = rows.length; setLoaded();
-  $('loadBox').style.display = 'none'; resetFilters(false); refresh(true);
+  $('loadBox').style.display = 'none'; resetFilters(false); if (!BG) refresh(true);
   if (!map.id) setStatus(tl('⚠ No encuentro la columna del código (CTag). Elígela en Ajustes avanzados.'), true);
   else snapshotLoad();
+  if (!store.online) runPending();
 }
 async function snapshotLoad() { // historial: compara esta carga con la anterior de la misma hoja
   if (!store.online) return;
   try {
     const items = rows.map(r => [code(r), get(r, 'brand'), nameOf(r).slice(0, 200), priceNum(get(r, 'price')), curOf(r), get(r, 'entity'), r._letter]).filter(x => x[0]).map(x => (isNaN(x[3]) && (x[3] = null), x));
     const r = await fetch('/api/snapshot', { method: 'POST', headers: API_H, body: JSON.stringify({ source: loadSource, items }) });
-    if (r.ok) { news = await r.json(); renderNews(); }
+    if (r.ok) { news = await r.json(); computeAlerts(); renderNews(); }
   } catch {}
+  runPending();
+  if (BG && parent !== window) { await store.flush(); parent.postMessage({ cf: 'loaded' }, location.origin); }
+}
+/* ---------- listas de deseos: qué novedades encajan con cada cliente ---------- */
+let alerts = [];
+function wishSpec(p) { // el plan guardado de su lista de deseos (IA o modo básico); sin plan, solo frases cortas
+  const t = (p.wishlist || '').trim(); if (!t) return null;
+  const saved = store.get(planKey(t), ''); if (saved) { try { return JSON.parse(saved); } catch {} }
+  return t.split(/\n/).filter(l => l.trim()).length >= 3 ? null : basicParse(t);
+}
+function computeAlerts() {
+  if (!news || news.first || !clientDocs) return;
+  const by = new Map(rows.map(r => [code(r), r])), pool = news.new.map(c => by.get(c)).filter(Boolean), keep = [activeProf, outCur], list = [];
+  for (const p of profiles) {
+    if (!(p.wishlist || '').trim()) continue;
+    const spec = wishSpec(p);
+    if (!spec) { list.push({ id: p.id, name: p.name, codes: [], needsPlan: true }); continue; }
+    activeProf = p.id; if (p.outCur) outCur = p.outCur; // precios y margen de ESE cliente
+    const hits = new Set();
+    for (const s of spec.searches?.length ? spec.searches : [spec]) { const f = { ...searchFilter(s), client: p.id, hideStatus: true }; pool.forEach(r => { if (matches(r, null, f)) hits.add(code(r)); }); }
+    [activeProf, outCur] = keep;
+    list.push({ id: p.id, name: p.name, codes: [...hits] });
+  }
+  alerts = list;
+  store.set('alerts', JSON.stringify({ at: Date.now(), load: news.load, since: news.since, list }));
+  store.set('lastNews', JSON.stringify({ load: news.load, since: news.since, at: news.at, n: news.n, new: news.new.length, down: news.down.length, gone: news.gone.length }));
+}
+function showCodes(codes, tag) {
+  const set = new Set(codes); resetFilters(false); rows.forEach(r => delete r._tag);
+  F.catalog = lastCatalog = new Set(rows.filter(r => set.has(code(r)))); if (tag) F.catalog.forEach(r => r._tag = tag); refresh(false);
+}
+/* ---------- acciones que llegan desde el Inicio: #catalog=ID, #wish=ID, #new ---------- */
+let pendingAct = (location.hash.match(/^#(catalog|wish|new)(?:=(\d+))?/) || []).slice(1);
+addEventListener('hashchange', () => { pendingAct = (location.hash.match(/^#(catalog|wish|new)(?:=(\d+))?/) || []).slice(1); runPending(); });
+function runPending() {
+  if (!pendingAct.length || !rows.length || BG) return;
+  const [act, id] = pendingAct; pendingAct = []; history.replaceState(null, '', location.pathname);
+  const p = id ? profiles.find(x => x.id === id) : null;
+  if (p) { activeProf = id; if (p.outCur) outCur = p.outCur; applyProfile(); }
+  if (act === 'new' && news) showCodes(news.new, tl('🆕 nuevo'));
+  if (act === 'wish' && p) { const a = alerts.find(x => x.id === id); showCodes(a?.codes || [], tl('⭐ para {c}', { c: p.name })); setStatus(tl('{n} novedades para {c}', { n: a?.codes.length || 0, c: p.name })); }
+  if (act === 'catalog' && p) {
+    noRepeat = hideSold = true; $('noRepeat').checked = $('hideSold').checked = true; store.set('noRepeat', '1'); store.set('hideSold', '1'); updateNoRepeat();
+    if (!(p.wishlist || '').trim()) { const r = $('reply'); r.style.display = ''; r.textContent = tl('{c} no tiene lista de deseos. Escríbela en su ficha (Clientes) y vuelve a pulsar «Catálogo mensual».', { c: p.name }); return; }
+    $('ask').value = p.wishlist;
+    askGo().then(() => { if (!F.catalog) { selected.clear(); view.forEach(r => code(r) && selected.add(code(r))); saveSel(); syncChecks(); } // listo para descargar su Excel
+      setStatus(tl('Catálogo de {c} listo: {n} artículos seleccionados, sin repetir lo ya enviado. Pulsa «Descargar Excel».', { c: p.name, n: selected.size })); });
+  }
 }
 function renderNews() {
   const el = $('news'); if (!news) { el.innerHTML = ''; return; }
@@ -448,8 +559,9 @@ function renderNews() {
   if (news.new.length) parts.push(`<button class="chip" data-k="new">${esc(tl('🆕 {n} nuevos', { n: news.new.length }))}</button>`);
   if (news.down.length) parts.push(`<button class="chip" data-k="down">${esc(tl('📉 {n} bajan de precio', { n: news.down.length }))}</button>`);
   if (news.gone.length) parts.push(`<span class="mute">${esc(tl('{n} ya no están', { n: news.gone.length }))}</span>`);
+  alerts.filter(a => a.codes.length).forEach(a => parts.push(`<button class="chip" data-a="${esc(a.id)}">${esc(tl('⭐ {n} para {c}', { n: a.codes.length, c: a.name }))}</button>`));
   el.innerHTML = parts.length ? esc(tl('· desde la carga del {d}:', { d: since })) + ' ' + parts.join(' ') : esc(tl('· sin cambios desde la carga del {d}', { d: since }));
-  el.querySelectorAll('button').forEach(b => b.onclick = e => { e.stopPropagation(); resetFilters(false); F.catalog = lastCatalog = pick(b.dataset.k === 'new' ? news.new : news.down.map(d => d.c)); rows.forEach(r => delete r._tag); refresh(false); });
+  el.querySelectorAll('button').forEach(b => b.onclick = e => { e.stopPropagation(); if (b.dataset.a) { const a = alerts.find(x => x.id === b.dataset.a); return showCodes(a.codes, tl('⭐ para {c}', { c: a.name })); } showCodes(b.dataset.k === 'new' ? news.new : news.down.map(d => d.c)); });
 }
 function buildMapping() {
   $('mapping').innerHTML = '';
@@ -474,22 +586,25 @@ $('loaded').onclick = () => { if (rows.length) $('loadBox').style.display = $('l
 $('loaded').style.cursor = 'pointer'; $('loaded').title = tl('Clic para cambiar de hoja');
 
 /* ============ filtros ============ */
-let sold = {}; // código → { number, client } de las invoices guardadas
-async function loadSold() { if (!store.online) return; try { const r = await fetch('/api/status', { headers: API_H }); if (r.ok) { sold = await r.json(); if (rows.length) refresh(false); } } catch {} }
-const F = { grades: new Set(), rankMin: 0, onlySel: false, loose: false, catalog: null, q: '', brands: new Set(), entities: new Set(), min: null, max: null, rank: 0, groups: [], exclude: [], excludeName: [], sort: '', onlyImg: false };
+let sold = {}, offers = {}; // código → estado (vendido/reservado) · código → { cliente: fecha en que se le envió }
+async function loadSold() { if (!store.online) return; try { const r = await fetch('/api/status', { headers: API_H }); if (r.ok) { const d = await r.json(); sold = d.status || {}; offers = d.offers || {}; if (rows.length) refresh(false); } } catch {} }
+const F = { buyers: new Set(), ageMin: null, ageMax: null, grades: new Set(), rankMin: 0, onlySel: false, loose: false, catalog: null, q: '', brands: new Set(), entities: new Set(), min: null, max: null, rank: 0, groups: [], exclude: [], excludeName: [], sort: '', onlyImg: false };
 function resetFilters(redraw = true, keepCatalog = false) {
   const cat = F.catalog;
   F.grades.clear();
-  Object.assign(F, { rankMin: 0, onlySel: false, loose: false, catalog: keepCatalog ? cat : null, q: '', min: null, max: null, rank: 0, groups: [], exclude: [], excludeName: [], sort: '', onlyImg: false }); F.brands.clear(); F.entities.clear();
+  Object.assign(F, { rankMin: 0, onlySel: false, loose: false, catalog: keepCatalog ? cat : null, q: '', min: null, max: null, rank: 0, groups: [], exclude: [], excludeName: [], sort: '', onlyImg: false, ageMin: null, ageMax: null }); F.brands.clear(); F.entities.clear(); F.buyers.clear();
   $('q').value = ''; $('pmin').value = $('pmax').value = ''; $('frank').value = '0'; $('sort').value = ''; $('onlyImg').checked = false; $('onlySel').checked = false;
   if (redraw) refresh(false);
 }
 function matches(r, skip, f = F) {
-  if (hideSold && sold[code(r)]) return false;
+  if ((hideSold || f.hideStatus) && sold[code(r)]) return false;
+  { const cid = f.client !== undefined ? f.client : (noRepeat ? activeProf : ''); if (cid && offers[code(r)]?.[cid]) return false; }
   if (f.catalog && !f.catalog.has(r)) return false;
   if (f.onlySel && !selected.has(code(r))) return false;
   if (skip !== 'brands' && f.brands.size && !f.brands.has(get(r, 'brand'))) return false;
   if (skip !== 'entities' && f.entities.size && !f.entities.has(get(r, 'entity'))) return false;
+  if (skip !== 'buyers' && f.buyers?.size && !f.buyers.has(get(r, 'buyer'))) return false;
+  if (skip !== 'age' && (f.ageMin != null || f.ageMax != null)) { const d = ageDays(r); if (d == null || (f.ageMin != null && d < f.ageMin) || (f.ageMax != null && d > f.ageMax)) return false; }
   if (f.rank && !(r._rank && r._rank <= f.rank)) return false;
   if (f.rankMin && !(r._rank && r._rank >= f.rankMin)) return false;
   if (skip !== 'grades' && f.grades && f.grades.size && !f.grades.has(r._rank || 0)) return false;
@@ -515,14 +630,22 @@ function gradeSet(sp) { // grados aceptados por una petición: lista exacta o ra
   else if (sp.best_rank_allowed || sp.worst_rank_allowed) for (let r = sp.best_rank_allowed || 1; r <= (sp.worst_rank_allowed || 10); r++) set.add(r);
   return set;
 }
+const AGES = [['< 1 mes', null, 30], ['> 3 meses', 91, null], ['> 6 meses', 182, null], ['> 1 año', 365, null], ['> 2 años', 730, null]]; // [etiqueta, días mín, días máx]
 function facets() {
-  const fb = new Map(), fe = new Map(), fg = new Map();
+  const fb = new Map(), fe = new Map(), fg = new Map(), fy = new Map(), fa = new Map();
   for (const r of rows) {
+    if (map.buyer && matches(r, 'buyers')) { const y = get(r, 'buyer'); if (y) fy.set(y, (fy.get(y) || 0) + 1); }
+    if (map.added && matches(r, 'age')) { const d = ageDays(r); if (d != null) AGES.forEach(([k, lo, hi]) => { if ((lo == null || d >= lo) && (hi == null || d <= hi)) fa.set(k, (fa.get(k) || 0) + 1); }); }
     if (matches(r, 'grades')) { const k = r._rank || 0; fg.set(k, (fg.get(k) || 0) + 1); }
     if (matches(r, 'brands')) { const b = get(r, 'brand'); if (b) fb.set(b, (fb.get(b) || 0) + 1); }
     if (matches(r, 'entities')) { const e = get(r, 'entity'); if (e) fe.set(e, (fe.get(e) || 0) + 1); }
   }
-  chips($('bchips'), fb, F.brands, 14); chips($('echips'), fe, F.entities, 10);
+  chips($('bchips'), fb, F.brands, 14); chips($('echips'), fe, F.entities, 10); chips($('ychips'), fy, F.buyers, 14);
+  $('yRow').style.display = fy.size || F.buyers.size ? '' : 'none';
+  $('aRow').style.display = map.added && (fa.size || F.ageMin != null || F.ageMax != null) ? '' : 'none';
+  const ac = $('achips'); ac.innerHTML = '';
+  AGES.forEach(([k, lo, hi]) => { const on = F.ageMin === lo && F.ageMax === hi, b = document.createElement('button'); b.className = 'chip' + (on ? ' on' : ''); b.innerHTML = `${esc(tl(k))} <small>${fa.get(k) || 0}</small>`;
+    b.onclick = () => { F.ageMin = on ? null : lo; F.ageMax = on ? null : hi; refresh(false); }; ac.append(b); });
   $('eRow').style.display = fe.size || F.entities.size ? '' : 'none';
   $('bList').innerHTML = [...fb.keys()].sort().map(b => `<option value="${esc(b)}">`).join('');
   const gl = $('gchips'); gl.innerHTML = '';
@@ -551,6 +674,8 @@ function refresh(rebuild) {
   const s = F.sort;
   if (s === 'brand') view.sort((a, b) => get(a, 'brand').localeCompare(get(b, 'brand')));
   if (s === 'pa' || s === 'pd') view.sort((a, b) => ((finalOf(a) || 0) - (finalOf(b) || 0)) * (s === 'pa' ? 1 : -1));
+  if (s === 'old' || s === 'new') view.sort((a, b) => a._added == null ? 1 : b._added == null ? -1 : (a._added - b._added) * (s === 'old' ? 1 : -1)); // sin fecha, al final
+  if (s === 'buyer') view.sort((a, b) => (get(a, 'buyer') || '\uffff').localeCompare(get(b, 'buyer') || '\uffff'));
   if (F.catalog && !s) view.sort((a, b) => a._ord - b._ord);
   if (F.onlyImg) return onlyWithPhotos();
   draw();
@@ -582,6 +707,9 @@ bind('q', 'input', debounce(() => { F.q = strip($('q').value); refresh(false); }
 bind('sort', 'change', () => { F.sort = $('sort').value; refresh(false); });
 bind('onlyImg', 'change', () => { F.onlyImg = $('onlyImg').checked; refresh(false); });
 let hideSold = store.get('hideSold', '1') === '1'; $('hideSold').checked = hideSold;
+let noRepeat = store.get('noRepeat', '1') === '1'; $('noRepeat').checked = noRepeat;
+bind('noRepeat', 'change', () => { noRepeat = $('noRepeat').checked; store.set('noRepeat', noRepeat ? '1' : '0'); refresh(false); });
+function updateNoRepeat() { const p = prof(); $('noRepeatL').style.display = p?.id ? '' : 'none'; if (p?.id) $('noRepeatT').textContent = tl('no repetir lo ya enviado a {c}', { c: p.name }); }
 bind('hideSold', 'change', () => { hideSold = $('hideSold').checked; store.set('hideSold', hideSold ? '1' : '0'); refresh(false); });
 bind('frank', 'change', () => { const n = +$('frank').value; if (n) F.grades = new Set(Array.from({ length: n }, (_, i) => i + 1)); $('frank').value = '0'; refresh(false); });
 ['pmin', 'pmax'].forEach(id => bind(id, 'change', () => { const v = k => { const n = parseFloat($(k).value.replace(',', '.')); return isNaN(n) ? null : n; }; F.min = toUSD(v('pmin'), outCur); F.max = toUSD(v('pmax'), outCur); refresh(false); }));
@@ -589,6 +717,30 @@ bind('bAdd', 'change', () => { const v = strip($('bAdd').value), hit = rows.map(
 $('reset').onclick = () => resetFilters(true, true); // quita los filtros pero conserva el catálogo montado y la selección
 
 /* ============ tarjetas ============ */
+const fdate = t => t ? new Date(t * 1000).toLocaleDateString(LOC()) : '';
+function statusBadges(r) {
+  const c = code(r), st = sold[c], of = offers[c] || {}, out = [];
+  if (st?.s === 'sold') out.push(`<div class="notes err">${esc(tl('Vendido · {n}', { n: [st.number, st.client].filter(Boolean).join(' · ') }))}</div>`);
+  if (st?.s === 'reserved') out.push(`<div class="notes warn">${esc(tl('🔖 Reservado · {n}', { n: [st.client, st.note].filter(Boolean).join(' · ') }))}</div>`);
+  const p = prof();
+  if (p?.id && of[p.id]) out.push(`<div class="notes mute">${esc(tl('Ya enviado a {c} el {d}', { c: p.name, d: fdate(of[p.id]) }))}</div>`);
+  else if (Object.keys(of).length) out.push(`<div class="notes mute">${esc(tl('Ofrecido a {n} cliente(s)', { n: Object.keys(of).length }))}</div>`);
+  return out.join('');
+}
+function reserveDlg(r) { // reservar a mano para un cliente, con nota
+  const c = code(r), st = sold[c];
+  if (st?.s === 'sold') return setStatus(tl('{c} ya está vendido ({n}).', { c, n: st.number }), true);
+  if (!clientDocs) return setStatus(tl('El back office necesita la app abierta con python server.py'), true);
+  $('rTitle').textContent = `${get(r, 'brand')} · ${c}`;
+  $('rCli').innerHTML = `<option value="">—</option>` + [...profiles].sort((a, b) => a.name.localeCompare(b.name)).map(p => `<option value="${esc(p.id)}">${esc(p.name)}</option>`).join('');
+  $('rCli').value = st?.client_id ? String(st.client_id) : (prof()?.id || ''); $('rNote').value = st?.note || '';
+  $('rClear').style.display = st ? '' : 'none'; $('rdlg').style.display = ''; $('rdlg')._code = c;
+}
+async function setStat(s) {
+  const c = $('rdlg')._code; $('rdlg').style.display = 'none';
+  await fetch('/api/status/set', { method: 'POST', headers: API_H, body: JSON.stringify({ codes: [c], s, client_id: +$('rCli').value || null, note: $('rNote').value.trim() }) });
+  await loadSold(); setStatus(s ? tl('{c} reservado', { c }) : tl('{c} ya no está reservado', { c }));
+}
 const io = new IntersectionObserver(es => es.forEach(e => { if (e.isIntersecting) { io.unobserve(e.target); loadCard(e.target); } }), { rootMargin: '300px' });
 function addCard(r) {
   const c = document.createElement('div'), on = selected.has(code(r)); c.className = 'card' + (on ? ' sel' : ''); c._r = r;
@@ -596,9 +748,10 @@ function addCard(r) {
   const price = isNaN(u) ? (orig ? orig + (rates ? tl(' ⚠ moneda desconocida') : '') : '') : fmtMoney(outVal(f)) + ' ' + outCur;
   const sub = isNaN(u) ? '' : (prof() ? tl('base {v} · ', { v: fmtMoney(fromUSD(u)) }) : '') + tl('orig. ') + orig;
   c.innerHTML = `<input type="checkbox" class="pick" ${on ? 'checked' : ''}>${r._rank ? `<span class="rank">${esc(r._letter)}</span>` : ''}<div class="photo"><span class="none">${esc(tl('cargando…'))}</span></div>
-    <div class="info"><div class="brand">${esc(get(r, 'brand') || '—')}</div><div class="code">${esc(code(r))}${get(r, 'entity') ? ' · ' + esc(get(r, 'entity')) : ''}</div>
+    <div class="info"><button class="rsv" title="${esc(tl('Reservar / estado'))}">🔖</button><div class="brand">${esc(get(r, 'brand') || '—')}</div><div class="code">${esc(code(r))}${get(r, 'entity') ? ' · ' + esc(get(r, 'entity')) : ''}${get(r, 'buyer') ? ' · ' + esc(tl('buyer {b}', { b: get(r, 'buyer') })) : ''}</div>${r._added != null ? `<div class="notes mute">${esc(ageText(r))}</div>` : ''}
     <div class="desc">${esc(nameOf(r))}</div>
-    ${F.catalog && r._tag ? `<div class="notes">🎯 ${esc(r._tag)}</div>` : ''}${sold[code(r)] ? `<div class="notes err">${esc(tl('Vendido · {n}', { n: sold[code(r)].number + (sold[code(r)].client ? ' · ' + sold[code(r)].client : '') }))}</div>` : ''}${price ? `<div class="price">${esc(price)}</div>` : ''}${sub ? `<div class="mute notes">${esc(sub)}</div>` : ''}</div>`;
+    ${F.catalog && r._tag ? `<div class="notes">🎯 ${esc(r._tag)}</div>` : ''}${statusBadges(r)}${price ? `<div class="price">${esc(price)}</div>` : ''}${sub ? `<div class="mute notes">${esc(sub)}</div>` : ''}</div>`;
+  c.querySelector('.rsv').onclick = () => reserveDlg(r);
   c.querySelector('.pick').onchange = e => { toggle(code(r), e.target.checked); c.classList.toggle('sel', e.target.checked); };
   $('grid').append(c); io.observe(c);
 }
@@ -677,9 +830,16 @@ Object.assign(BRANDLESS_DICT, { // francés e inglés
 });
 for (const w of ['wallet', 'pouch', 'backpack', 'belt', 'shoe', 'watch', 'scarf', 'sunglasses', 'necklace', 'bracelet', 'ring', 'earring', 'black', 'red', 'brown', 'blue', 'navy', 'white', 'green', 'pink', 'gray', 'grey', 'yellow', 'purple', 'burgundy', 'gold', 'silver', 'leather', 'canvas', 'patent', 'ostrich', 'croc', 'lizard', 'snake', 'python']) if (!BRANDLESS_DICT[w]) BRANDLESS_DICT[w] = [w];
 function basicParse(text) {
-  const t = strip(text), spec = { brands: [], entities: [], keyword_groups: [], exclude_keywords: [], exclude_name_keywords: [], select_count: 0, diversify_brands: false, sort: '' }, used = [];
+  let t = strip(text); const t2 = s => { t = t.replace(s, ' '); }, spec = { brands: [], entities: [], keyword_groups: [], exclude_keywords: [], exclude_name_keywords: [], select_count: 0, diversify_brands: false, sort: '' }, used = [];
   const money = s => { const m = s.match(/(\d+(?:[.,]\d+)?)\s*(k|mil)?/); if (!m) return null; let v = parseFloat(m[1].replace(',', '.')); if (m[2]) v *= 1000; return v; };
   let m;
+  { // antigüedad: «más de 6 meses», «older than 2 years», «plus de 3 mois», «últimos 30 días»… (va antes del precio para que «más de 6» no sea un precio)
+    const U = '(dias?|days?|jours?|semanas?|weeks?|semaines?|mes(?:es)?|months?|mois|anos?|years?|ans?|annees?)', toDays = (n, u) => n * (/^(d|j)/.test(u) ? 1 : /^(sem|w)/.test(u) ? 7 : /^(mes|mon|moi)/.test(u) ? 30.44 : 365.25);
+    if ((m = t.match(new RegExp('(?:hace mas de|mas de|mas antiguos? de|older than|more than|over|plus de|il y a plus de|depuis plus de)\\s*(\\d+)\\s*' + U)))) { spec.min_age_days = Math.round(toDays(+m[1], m[2])); t2(m[0]); }
+    if ((m = t.match(new RegExp('(?:hace menos de|menos de|ultimos?|ultimas?|newer than|less than|last|within|moins de|derniers?|dernieres?)\\s*(\\d+)\\s*' + U)))) { spec.max_age_days = Math.round(toDays(+m[1], m[2])); t2(m[0]); }
+    if (/mas recientes|lo ultimo|recien|newest|latest|most recent|plus recents|nouveautes/.test(t)) spec.sort = 'added_desc';
+    else if (/mas antiguos|mas viejos|stock viejo|oldest|plus anciens/.test(t)) spec.sort = 'added_asc';
+  }
   if ((m = t.match(/(?:entre|between|de|from|du)\s*\$?\s*(\d[\d.,]*\s*(?:k|mil)?)\s*(?:y|and|a|to|-|et)\s*\$?\s*(\d[\d.,]*\s*(?:k|mil)?)/))) { spec.min_price = money(m[1]); spec.max_price = money(m[2]); used.push(m[0]); }
   else {
     if ((m = t.match(/(?:menos de|menor (?:a|que|de)|bajo|hasta|maximo|max|under|below|less than|moins de|moins que|sous|jusqu.{0,2}a|maximum|budget|<)\s*\$?\s*(\d[\d.,]*\s*(?:k|mil)?)/))) { spec.max_price = money(m[1]); used.push(m[0]); }
@@ -698,11 +858,12 @@ function basicParse(text) {
   else if (/excelente|casi nuevo|perfecto|pristine|like new|excellent|comme neuf|parfait|etat neuf/.test(t)) spec.worst_rank_allowed = 4;
   else if (/muy buen estado|muy bueno|superb|tres bon etat|tres bon/.test(t)) spec.worst_rank_allowed = 5;
   else if (/buen estado|buena condicion|good condition|bon etat|bonne condition/.test(t)) spec.worst_rank_allowed = 7;
-  if (/barat|cheap|econom|menor precio|pas cher|bon marche|moins cher/.test(t)) spec.sort = 'price_asc'; else if (/mas caro|caros|expensive|mayor precio|plus cher|tres cher/.test(t)) spec.sort = 'price_desc';
+  if (spec.sort) {} else if (/barat|cheap|econom|menor precio|pas cher|bon marche|moins cher/.test(t)) spec.sort = 'price_asc'; else if (/mas caro|caros|expensive|mayor precio|plus cher|tres cher/.test(t)) spec.sort = 'price_desc';
   const nameIdx = new Map(); rows.forEach(r => { const b = get(r, 'brand'); if (b) nameIdx.set(strip(b), b); }); const eIdx = new Map(); rows.forEach(r => { const e = get(r, 'entity'); if (e) eIdx.set(strip(e), e); });
   const has = w => new RegExp('(^|[^a-z0-9])' + w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '([^a-z0-9]|$)').test(t);
   for (const [k, v] of nameIdx) if (k.length > 1 && has(k)) spec.brands.push(v);
   for (const [k, v] of eIdx) if (k.length > 2 && has(k)) spec.entities.push(v);
+  { const yIdx = new Map(); rows.forEach(r => { const y = get(r, 'buyer'); if (y) yIdx.set(strip(y), y); }); spec.buyers = [...yIdx].filter(([k]) => k.length > 1 && has(k)).map(([, v]) => v); }
   for (const w of t.match(/[a-z]+/g) || []) { const d = BRANDLESS_DICT[w] || BRANDLESS_DICT[w.replace(/s$/, '')] || BRANDLESS_DICT[w.replace(/es$/, '')]; if (d && !spec.keyword_groups.some(g => g === d)) spec.keyword_groups.push(d); }
   for (const q of text.matchAll(/"([^"]+)"/g)) spec.keyword_groups.push([strip(q[1])]);
   if (spec.keyword_groups.some(g => g.includes('necklace') || g.includes('ring') || g.includes('earring') || g.includes('bracelet'))) spec.exclude_name_keywords = ['bag', 'handbag', 'tote', 'wallet', 'purse', 'pouch', 'clutch', 'backpack', 'satchel', 'crossbody', 'handle', 'strap', 'key ring', 'keyring', 'key holder', 'keychain', 'key chain', 'd-ring', 'o-ring', 'scarf', 'cufflink']; // joyas: fuera bolsos, llaveros y anillos de bolso
@@ -713,6 +874,10 @@ function describe(s) {
   const p = [];
   if (s.brands?.length) p.push(tl('marcas: ') + s.brands.join(', '));
   if (s.entities?.length) p.push(tl('entity: ') + s.entities.join(', '));
+  if (s.buyers?.length) p.push(tl('buyer: ') + s.buyers.join(', '));
+  if (s.min_age_days != null) p.push(tl('dados de alta hace más de {n} días', { n: s.min_age_days }));
+  if (s.max_age_days != null) p.push(tl('dados de alta en los últimos {n} días', { n: s.max_age_days }));
+  if (s.sort === 'added_asc') p.push(tl('los más antiguos primero')); if (s.sort === 'added_desc') p.push(tl('los más recientes primero'));
   if (s.keyword_groups?.length) p.push(tl('palabras: ') + s.keyword_groups.map(g => g.slice(0, 2).join('/')).join(' + '));
   if (s.min_price != null || s.max_price != null) { const cur = (s.price_currency || outCur).toUpperCase(); p.push(tl('precio {a}–{b}', { a: s.min_price != null ? fmtMoney(s.min_price, cur) : '', b: s.max_price != null ? fmtMoney(s.max_price, cur) : '' })); };
   if (s.grades?.length) p.push(tl('estado solo {g}', { g: s.grades.join(', ') }));
@@ -732,7 +897,8 @@ const toUSD = (v, cur) => v == null ? null : v / (curRate(cur) || 1); // sin mon
 function searchFilter(s) {
   return { loose: false, catalog: null, q: '', brands: new Set(canonList(s.brands, 'brand')), entities: new Set(canonList(s.entities, 'entity')),
     groups: (s.keyword_groups || []).map(g => g.map(strip).filter(Boolean)).filter(g => g.length), exclude: (s.exclude_keywords || []).map(strip).filter(Boolean), excludeName: (s.exclude_name_keywords || []).map(strip).filter(Boolean),
-    min: toUSD(s.min_price, s.price_currency), max: toUSD(s.max_price, s.price_currency), rank: 0, rankMin: 0, grades: gradeSet(s), basis: s.price_basis === 'buying' ? 'buying' : 'shown' };
+    min: toUSD(s.min_price, s.price_currency), max: toUSD(s.max_price, s.price_currency), rank: 0, rankMin: 0, grades: gradeSet(s), basis: s.price_basis === 'buying' ? 'buying' : 'shown',
+    buyers: new Set(canonList(s.buyers, 'buyer')), ageMin: s.min_age_days ?? null, ageMax: s.max_age_days ?? null };
 }
 async function runSearches(list, said) {
   rows.forEach(r => { delete r._tag; delete r._ord; });
@@ -744,7 +910,8 @@ async function runSearches(list, said) {
     const price = r => f.basis === 'buying' ? usdOf(r) : finalOf(r);
     const pref = (s.prefer_keywords || []).map(strip).filter(Boolean), sc = r => pref.reduce((n, w) => n + (hit(r._text, w) ? 1 : 0), 0);
     const cmp0 = (a, b) => sc(b) - sc(a) || (a._rank || 99) - (b._rank || 99);
-    const cmp = s.sort === 'price_asc' ? (a, b) => (price(a) || 1e12) - (price(b) || 1e12) || cmp0(a, b) : s.sort === 'price_desc' ? (a, b) => (price(b) || 0) - (price(a) || 0) || cmp0(a, b) : cmp0;
+    const cmp = s.sort === 'price_asc' ? (a, b) => (price(a) || 1e12) - (price(b) || 1e12) || cmp0(a, b) : s.sort === 'price_desc' ? (a, b) => (price(b) || 0) - (price(a) || 0) || cmp0(a, b)
+      : s.sort === 'added_asc' ? (a, b) => (a._added ?? 9e15) - (b._added ?? 9e15) || cmp0(a, b) : s.sort === 'added_desc' ? (a, b) => (b._added ?? -1) - (a._added ?? -1) || cmp0(a, b) : cmp0;
     const strict = rows.filter(r => code(r) && matches(r, null, f)).sort(cmp), want = s.count || 6;
     let loose = [];
     if (strict.length < want && f.groups.length) { const ss = new Set(strict); loose = rows.filter(r => code(r) && !ss.has(r) && matches(r, null, { ...f, loose: true })).sort(cmp); }
@@ -777,7 +944,8 @@ async function applySpec(s, said) {
   F.groups = (s.keyword_groups || []).map(g => g.map(strip).filter(Boolean)).filter(g => g.length);
   F.exclude = (s.exclude_keywords || []).map(strip).filter(Boolean); F.excludeName = (s.exclude_name_keywords || []).map(strip).filter(Boolean);
   F.min = toUSD(s.min_price, s.price_currency); F.max = toUSD(s.max_price, s.price_currency); F.rank = 0; F.rankMin = 0; F.grades = gradeSet(s);
-  F.sort = { price_asc: 'pa', price_desc: 'pd', brand: 'brand' }[s.sort] || ''; $('sort').value = F.sort;
+  canonList(s.buyers, 'buyer').forEach(b => F.buyers.add(b)); F.ageMin = s.min_age_days ?? null; F.ageMax = s.max_age_days ?? null;
+  F.sort = { price_asc: 'pa', price_desc: 'pd', brand: 'brand', added_asc: 'old', added_desc: 'new', buyer: 'buyer' }[s.sort] || ''; $('sort').value = F.sort;
   refresh(false);
   const rep = $('reply'); rep.style.display = ''; rep.textContent = (said ? said + ' — ' : '') + tl('{d} → {n} resultados', { d: describe(s), n: view.length });
   if (s.select_count > 0) { const n = await pickFirst(s.select_count, !!s.diversify_brands, true); rep.textContent += tl(' · {n} seleccionados', { n }); }
@@ -799,7 +967,8 @@ async function askGo() {
         const cnt = new Map(); rows.forEach(r => { const b = get(r, 'brand'); if (b) cnt.set(b, (cnt.get(b) || 0) + 1); });
         const ents = [...new Set(rows.map(r => get(r, 'entity')).filter(Boolean))];
         const r = await fetch('/ai', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Catalog-Finder': '1' },
-          body: JSON.stringify({ lang, query: text, brands: [...cnt].sort((a, b) => b[1] - a[1]).slice(0, 400).map(([b, n]) => `${b} (${n})`), entities: ents, total: rows.length }) });
+          body: JSON.stringify({ lang, query: text, brands: [...cnt].sort((a, b) => b[1] - a[1]).slice(0, 400).map(([b, n]) => `${b} (${n})`), entities: ents, total: rows.length,
+            buyers: [...new Set(rows.map(r => get(r, 'buyer')).filter(Boolean))].slice(0, 200), hasAdded: !!map.added, today: new Date().toISOString().slice(0, 10) }) });
         if (!r.ok) throw new Error(await r.text());
         const s = await r.json(); store.set(pk, JSON.stringify(s)); return await applySpec(s, s.reply);
       } catch (e) { setStatus(aiErr(e) + (multi ? '' : tl('. Uso el modo básico.')), true); if (multi) { const r = $('reply'); r.style.display = ''; r.textContent = aiErr(e); return; } }
@@ -828,6 +997,8 @@ function buildCatalogContext() {
     `Prices (shown): min ${q(0)}, p25 ${q(.25)}, median ${q(.5)}, p75 ${q(.75)}, max ${q(1)}`,
     'Grades: ' + top(grades, 11).map(([k, n]) => `${gradeLbl(k)}=${n}`).join(', '),
     'Entities: ' + top(ents, 15).map(([k, n]) => `${k}(${n})`).join(', '),
+    ...(map.buyer ? ['Buyers: ' + top(rows.reduce((m, r) => { const y = get(r, 'buyer'); if (y) m.set(y, (m.get(y) || 0) + 1); return m; }, new Map()), 30).map(([k, n]) => `${k}(${n})`).join(', ')] : []),
+    ...(map.added ? ['Added dates: items have an added date (age filters min_age_days / max_age_days and sort added_asc / added_desc are available).'] : []),
     'Brands: ' + brands.map(([k, n]) => `${k}(${n})`).join(', '),
     'Frequent words in item names: ' + top(words, 150).map(([k]) => k).join(' '),
     'Samples (brand | name | grade | price):\n' + brands.slice(0, 25).flatMap(([b]) => byBrand.get(b).map(sampleLine)).slice(0, 150).join('\n')].join('\n');
@@ -891,7 +1062,7 @@ function renderAiState() {
   };
   if ($('keyOff')) $('keyOff').onclick = async () => { await fetch('/ai-key', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Catalog-Finder': '1' }, body: JSON.stringify({ key: '' }) }); aiStatus(); };
 }
-const APP_VERSION = '2026-10-16.4'; // igual que APP_VERSION en server.py
+const APP_VERSION = '2026-10-16.5'; // igual que APP_VERSION en server.py
 let serverOld = false;
 const oldServerMsg = () => tl('⚠ El programa que está en marcha (la ventana negra) es una versión antigua. Cierra TODAS las ventanas negras de Catalog Finder y vuelve a abrirlo; luego recarga esta página.');
 async function aiStatus() {
@@ -1012,10 +1183,10 @@ function download(blob, name) { const a = document.createElement('a'); a.href = 
 async function exportCsv() {
   try {
     const scope = await chooseScope(); if (!scope) return;
-    const { head, body, warn } = await buildCustomer(scope), q = v => '"' + String(v ?? '').replace(/"/g, '""') + '"';
+    const { head, body, sel, warn } = await buildCustomer(scope), q = v => '"' + String(v ?? '').replace(/"/g, '""') + '"';
     const lines = [head.map(q).join(',')].concat(body.map(r => r.map(c => q(c.f ? '=' + c.f : c.v ?? '')).join(',')));
     download(new Blob(['﻿' + lines.join('\n')], { type: 'text/csv' }), `customer_${stamp()}.csv`);
-    done(body.length, warn);
+    done(body.length, warn, await recordSent(sel));
   } catch (e) { setStatus(e.message, true); }
 }
 const priceBands = () => { const e = bandEdges(), L = [[0, e[0], `Under ${e[0]}`], [e[0], e[1], `${e[0]}-${e[1]}`], [e[1], e[2], `${e[1]}-${e[2]}`], [e[2], e[3], `${e[2]}-${e[3]}`], [e[3], Infinity, `Over ${e[3]}`]]; return L.map(x => [x[0], x[1], x[2] + ' ' + outCur]); };
@@ -1050,7 +1221,7 @@ async function exportXlsx() {
   try {
     const scope = await chooseScope(); if (!scope) return;
     const { head, body, sel, warn } = await buildCustomer(scope), by = $('splitBy').value;
-    if (!by) { const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, buildSheet(head, body), 'Customer'); XLSX.writeFile(wb, `customer_${stamp()}.xlsx`); return done(body.length, warn); }
+    if (!by) { const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, buildSheet(head, body), 'Customer'); XLSX.writeFile(wb, `customer_${stamp()}.xlsx`); return done(body.length, warn, await recordSent(sel)); }
     const groups = new Map(); // etiqueta → { ord, idx[] }
     sel.forEach((r, i) => { const [label, ord] = SPLITS[by](r); if (!groups.has(label)) groups.set(label, { ord, idx: [] }); groups.get(label).idx.push(i); });
     const list = [...groups].sort((a, b) => a[1].ord.localeCompare(b[1].ord)), used = new Set();
@@ -1061,20 +1232,28 @@ async function exportXlsx() {
       const wb = XLSX.utils.book_new(); for (const [label, g] of list) XLSX.utils.book_append_sheet(wb, buildSheet(head, g.idx.map(i => body[i])), nameOf_(label));
       XLSX.writeFile(wb, `customer_por_${by}_${stamp()}.xlsx`);
     }
-    done(body.length, warn, tl(' · {n} grupos ({g})', { n: list.length, g: list.map(([l, g]) => `${l}: ${g.idx.length}`).join(', ') }));
+    done(body.length, warn, tl(' · {n} grupos ({g})', { n: list.length, g: list.map(([l, g]) => `${l}: ${g.idx.length}`).join(', ') }) + await recordSent(sel));
   } catch (e) { setStatus(e.message, true); }
 }
 function done(n, warn, extra = '') { setStatus(tl('Descargados {n} artículos · Buy Now en {c} · {m}{x}', { n, c: outCur, m: prof() ? tl('margen {p}', { p: profLabel() }) : tl('sin margen'), x: extra }) + (warn ? ' · ⚠ ' + warn : ''), !!warn); }
 $('splitBy').onchange = () => { $('splitOutL').style.display = $('splitBy').value ? '' : 'none'; };
 $('exportX').onclick = exportXlsx; $('exportCsv').onclick = exportCsv;
+$('rSave').onclick = () => setStat('reserved'); $('rClear').onclick = () => setStat(''); $('rCancel').onclick = () => $('rdlg').style.display = 'none';
+async function recordSent(sel) { // Excel descargado con un cliente elegido = catálogo enviado (para no repetirle piezas)
+  const p = prof(); if (!clientDocs || !p?.id || !sel?.length) return '';
+  try {
+    await fetch('/api/catalogs/record', { method: 'POST', headers: API_H, body: JSON.stringify({ client_id: +p.id, label: $('ask').value.trim().slice(0, 120),
+      items: sel.map(r => ({ code: code(r), brand: get(r, 'brand'), name: nameOf(r).slice(0, 160), price: isNaN(finalOf(r)) ? null : outVal(finalOf(r)), cur: outCur, grade: r._letter })) }) });
+    await loadSold(); return tl(' · registrado como enviado a {c}', { c: p.name });
+  } catch { return ''; }
+}
 $('toInvoice').onclick = async () => { // pasa la selección al back office (precio con el margen del cliente elegido, en USD)
   const by = new Map(rows.map(r => [code(r), r])), sel = [...selected].map(c => by.get(c)).filter(Boolean);
   if (!sel.length) return setStatus(tl('Selecciona primero los artículos de la invoice'), true);
   if (!store.online) return setStatus(tl('El back office necesita la app abierta con python server.py'), true);
-  const w = window.open('', '_blank');
   store.set('invoiceDraft', JSON.stringify({ at: Date.now(), profile: activeProf, lines: sel.map(r => ({ code: code(r), brand: get(r, 'brand'), details: nameOf(r), grade: r._letter, entity: get(r, 'entity'), priceUSD: isNaN(finalOf(r)) ? null : finalOf(r), baseUSD: isNaN(usdOf(r)) ? null : usdOf(r) })) }));
   await store.flush();
-  if (w) w.location = 'backoffice.html#draft'; else location.href = 'backoffice.html#draft';
+  location.href = 'backoffice.html#draft';
 };
 
 /* ============ ajustes / init ============ */
@@ -1087,6 +1266,8 @@ $('exp').value = store.get('exp', 'https://s3.amazonaws.com/storage.j-ports/phot
 $('labels').value = store.get('labels', '1=With Tags\n4=Superb Condition\n7=Good Condition');
 $('natural').checked = store.get('natural', '1') === '1';
 $('url').value = store.get('url', '');
+$('dateOrder').value = store.get('dateOrder', 'auto'); $('dateOrder').onchange = () => { store.set('dateOrder', $('dateOrder').value); if (rows.length) { prep(); refresh(false); } };
+$('autoLoad').checked = store.get('autoLoad', '1') === '1'; $('autoLoad').onchange = () => store.set('autoLoad', $('autoLoad').checked ? '1' : '0');
 function relocalize() { // vuelve a pintar lo que se genera por código (lo estático lo hace applyI18n)
   setLoaded(); $('loaded').title = tl('Clic para cambiar de hoja'); renderAiState(); buildCurSelects(); renderNews();
   if (headers.length) buildMapping();
@@ -1096,7 +1277,9 @@ function relocalize() { // vuelve a pintar lo que se genera por código (lo est�
 $('langSel').innerHTML = Object.entries(window.LANGS).map(([k, v]) => `<option value="${k}">${v}</option>`).join(''); $('langSel').value = lang;
 $('langSel').onchange = () => { lang = $('langSel').value; store.set('lang', lang); applyI18n(); relocalize(); $('reply').style.display = 'none'; };
 captureI18n(); applyI18n();
-saveSel(); buildCurSelects(); loadRates(); aiStatus(); loadSold();
+saveSel(); buildCurSelects(); updateNoRepeat(); loadRates(); aiStatus(); loadSold();
+if ($('url').value && (store.get('autoLoad', '1') === '1' || pendingAct.length || BG)) loadURL();
+else if (pendingAct.length) setStatus(tl('Carga la hoja para continuar.'), true);
 addEventListener('focus', loadSold); // al volver del back office, refresca los vendidos
 </script>
 </body>
