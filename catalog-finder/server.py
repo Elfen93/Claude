@@ -151,6 +151,7 @@ Reglas:
 - Si el usuario da una LISTA de peticiones distintas, rellena `searches` con una entrada por linea (y deja vacios los filtros de nivel superior). Respeta las instrucciones por linea que el usuario indique (filtro duro vs preferencia blanda, topes de precio, cantidad).
 - Monedas: '$' = USD, '€' = EUR, '£' = GBP; '¥' = JPY salvo que diga yuan/CNY. Si el usuario NO indica moneda, deja price_currency vacio (la app usa la moneda que el usuario esta viendo).
 - Estado: si pide grados concretos ('solo BC', 'solo B+ y B', 'unicamente AB') usa grades con esos grados exactos; 'X o mejor' o un rango ('de AB a B-') puede usar worst/best_rank_allowed o grades.
+- Descartar por tipo de articulo (p.ej. 'sin bolsos'): usa exclude_name_keywords (solo nombre/descripcion). Usa exclude_keywords solo para defectos o palabras en notas/condicion. NO excluyas por condicion salvo que el usuario lo pida (p.ej. si dice que acepta piezas con strass faltantes, no excluyas 'missing').
 - Si el usuario da rangos en una moneda (EUR...), rellena price_currency; si habla de 'precio de compra/buying price/sourcing', usa price_basis=buying. 'Del grado AB al B-' => best_rank_allowed=5, worst_rank_allowed=8.
 - reply: una frase corta, en el idioma indicado al final, diciendo que has entendido y aplicado. No inventes nada que el usuario no pidio."""
 _SEARCH_PROPS = {
@@ -160,6 +161,7 @@ _SEARCH_PROPS = {
     "keyword_groups": {"type": "array", "items": {"type": "array", "items": {"type": "string"}}, "description": "FILTRO DURO: cada grupo = sinonimos (basta uno); se deben cumplir todos los grupos"},
     "prefer_keywords": {"type": "array", "items": {"type": "string"}, "description": "PREFERENCIA BLANDA: no excluye, solo ordena primero los articulos que contienen mas de estas palabras"},
     "exclude_keywords": {"type": "array", "items": {"type": "string"}},
+    "exclude_name_keywords": {"type": "array", "items": {"type": "string"}, "description": "Exclusion aplicada SOLO al nombre/descripcion del articulo (no a notas ni accesorios). Usala para descartar TIPOS de articulo (p.ej. bolsos) sin perder articulos cuyas notas mencionan 'dust bag'. exclude_keywords mira todo el texto (condicion, notas...)."},
     "min_price": {"type": "number"},
     "max_price": {"type": "number"},
     "worst_rank_allowed": {"type": "integer", "minimum": 1, "maximum": 10},

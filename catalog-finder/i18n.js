@@ -122,6 +122,8 @@ window.I18N = {
   'estado {a} o mejor': { en: 'grade {a} or better', fr: 'état {a} ou mieux' },
   'seleccionar {n}': { en: 'select {n}', fr: 'sélectionner {n}' },
   ' variando marcas': { en: ' varying brands', fr: ' en variant les marques' },
+  'sin joyas finas (oro 18K, platino, diamantes…)': { en: 'no fine jewelry (18K gold, platinum, diamonds…)', fr: 'sans haute joaillerie (or 18K, platine, diamants…)' },
+  'sin {w}…': { en: 'without {w}…', fr: 'sans {w}…' },
   'no he entendido ningún filtro': { en: 'I did not understand any filter', fr: 'je n’ai compris aucun filtre' },
   'Preparando búsquedas…': { en: 'Preparing searches…', fr: 'Préparation des recherches…' },
   '⚠ {l}: no conozco la moneda {c}; uso {o}': { en: '⚠ {l}: unknown currency {c}; using {o}', fr: '⚠ {l} : devise {c} inconnue ; j’utilise {o}' },

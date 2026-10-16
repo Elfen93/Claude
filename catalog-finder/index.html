@@ -436,11 +436,11 @@ $('loaded').onclick = () => { if (rows.length) $('loadBox').style.display = $('l
 $('loaded').style.cursor = 'pointer'; $('loaded').title = tl('Clic para cambiar de hoja');
 
 /* ============ filtros ============ */
-const F = { grades: new Set(), rankMin: 0, onlySel: false, loose: false, catalog: null, q: '', brands: new Set(), entities: new Set(), min: null, max: null, rank: 0, groups: [], exclude: [], sort: '', onlyImg: false };
+const F = { grades: new Set(), rankMin: 0, onlySel: false, loose: false, catalog: null, q: '', brands: new Set(), entities: new Set(), min: null, max: null, rank: 0, groups: [], exclude: [], excludeName: [], sort: '', onlyImg: false };
 function resetFilters(redraw = true, keepCatalog = false) {
   const cat = F.catalog;
   F.grades.clear();
-  Object.assign(F, { rankMin: 0, onlySel: false, loose: false, catalog: keepCatalog ? cat : null, q: '', min: null, max: null, rank: 0, groups: [], exclude: [], sort: '', onlyImg: false }); F.brands.clear(); F.entities.clear();
+  Object.assign(F, { rankMin: 0, onlySel: false, loose: false, catalog: keepCatalog ? cat : null, q: '', min: null, max: null, rank: 0, groups: [], exclude: [], excludeName: [], sort: '', onlyImg: false }); F.brands.clear(); F.entities.clear();
   $('q').value = ''; $('pmin').value = $('pmax').value = ''; $('frank').value = '0'; $('sort').value = ''; $('onlyImg').checked = false; $('onlySel').checked = false;
   if (redraw) refresh(false);
 }
@@ -457,6 +457,7 @@ function matches(r, skip, f = F) {
   const t = f.loose ? r._text : r._core;
   for (const g of f.groups) if (!g.some(w => hit(t, w))) return false;
   for (const w of f.exclude) if (hit(r._text, w)) return false;
+  for (const w of f.excludeName || []) if (hit(r._core, w)) return false; // solo nombre/descripción
   return true;
 }
 function chips(el, facet, set, max) {
@@ -618,7 +619,7 @@ $('selNone').onclick = () => { selected.clear(); saveSel(); syncChecks(); };
 const BRANDLESS_DICT = { // español → inglés (grupos de sinónimos)
   cartera: ['wallet', 'clutch', 'card case', 'coin'], billetera: ['wallet'], monedero: ['coin', 'wallet'], bolso: ['bag', 'handbag', 'tote', 'shoulder'], bolsa: ['bag', 'tote'],
   mochila: ['backpack'], cinturon: ['belt'], zapato: ['shoe', 'sneaker', 'loafer', 'pump'], zapatos: ['shoe', 'sneaker', 'loafer', 'pump'], reloj: ['watch'], bufanda: ['scarf', 'stole'],
-  panuelo: ['scarf'], gafas: ['sunglasses', 'glasses'], joya: ['jewelry', 'necklace', 'bracelet', 'ring', 'earring'], collar: ['necklace'], pulsera: ['bracelet'], anillo: ['ring'], pendientes: ['earring'],
+  panuelo: ['scarf'], gafas: ['sunglasses', 'glasses'], joya: ['jewelry', 'necklace', 'bracelet', 'earring', 'brooch', 'pendant'], collar: ['necklace'], pulsera: ['bracelet'], anillo: ['ring'], pendientes: ['earring'],
   tote: ['tote'], clutch: ['clutch'], hobo: ['hobo'], satchel: ['satchel'], crossbody: ['crossbody', 'shoulder'], bandolera: ['crossbody', 'shoulder'],
   negro: ['black'], negra: ['black'], rojo: ['red'], roja: ['red'], marron: ['brown'], azul: ['blue', 'navy'], beige: ['beige'], blanco: ['white'], blanca: ['white'], verde: ['green'], rosa: ['pink'],
   gris: ['gray', 'grey'], amarillo: ['yellow'], naranja: ['orange'], morado: ['purple'], burdeos: ['burgundy'], dorado: ['gold'], plateado: ['silver'],
@@ -626,14 +627,14 @@ const BRANDLESS_DICT = { // español → inglés (grupos de sinónimos)
 };
 Object.assign(BRANDLESS_DICT, { // francés e inglés
   sac: ['bag', 'handbag', 'tote', 'shoulder'], portefeuille: ['wallet'], pochette: ['pouch', 'clutch'], ceinture: ['belt'], chaussure: ['shoe', 'sneaker', 'loafer', 'pump'], montre: ['watch'],
-  echarpe: ['scarf', 'stole'], foulard: ['scarf'], carre: ['carre', 'scarf'], lunettes: ['sunglasses', 'glasses'], bijou: ['jewelry', 'necklace', 'bracelet', 'ring', 'earring'], bague: ['ring'], boucles: ['earring'],
+  echarpe: ['scarf', 'stole'], foulard: ['scarf'], carre: ['carre', 'scarf'], lunettes: ['sunglasses', 'glasses'], bijou: ['jewelry', 'necklace', 'bracelet', 'earring', 'brooch', 'pendant'], bague: ['ring'], boucles: ['earring'],
   noir: ['black'], noire: ['black'], rouge: ['red'], bleu: ['blue', 'navy'], bleue: ['blue', 'navy'], blanc: ['white'], blanche: ['white'], vert: ['green'], verte: ['green'], jaune: ['yellow'], violet: ['purple'],
   bordeaux: ['burgundy'], dore: ['gold'], doree: ['gold'], argente: ['silver'], cuir: ['leather'], toile: ['canvas'], vernis: ['patent'], autruche: ['ostrich'], lezard: ['lizard'], serpent: ['snake', 'python'], collier: ['necklace'],
-  bag: ['bag', 'handbag', 'tote', 'shoulder'], handbag: ['bag', 'handbag', 'tote', 'shoulder'], jewelry: ['jewelry', 'necklace', 'bracelet', 'ring', 'earring'], shoes: ['shoe', 'sneaker', 'loafer', 'pump'],
+  bag: ['bag', 'handbag', 'tote', 'shoulder'], handbag: ['bag', 'handbag', 'tote', 'shoulder'], jewelry: ['jewelry', 'necklace', 'bracelet', 'earring', 'brooch', 'pendant'], jewellery: ['jewelry', 'necklace', 'bracelet', 'earring', 'brooch', 'pendant'], joyeria: ['jewelry', 'necklace', 'bracelet', 'earring', 'brooch', 'pendant'], bisuteria: ['jewelry', 'necklace', 'bracelet', 'earring', 'brooch', 'pendant'], bijouterie: ['jewelry', 'necklace', 'bracelet', 'earring', 'brooch', 'pendant'], shoes: ['shoe', 'sneaker', 'loafer', 'pump'],
 });
 for (const w of ['wallet', 'pouch', 'backpack', 'belt', 'shoe', 'watch', 'scarf', 'sunglasses', 'necklace', 'bracelet', 'ring', 'earring', 'black', 'red', 'brown', 'blue', 'navy', 'white', 'green', 'pink', 'gray', 'grey', 'yellow', 'purple', 'burgundy', 'gold', 'silver', 'leather', 'canvas', 'patent', 'ostrich', 'croc', 'lizard', 'snake', 'python']) if (!BRANDLESS_DICT[w]) BRANDLESS_DICT[w] = [w];
 function basicParse(text) {
-  const t = strip(text), spec = { brands: [], entities: [], keyword_groups: [], exclude_keywords: [], select_count: 0, diversify_brands: false, sort: '' }, used = [];
+  const t = strip(text), spec = { brands: [], entities: [], keyword_groups: [], exclude_keywords: [], exclude_name_keywords: [], select_count: 0, diversify_brands: false, sort: '' }, used = [];
   const money = s => { const m = s.match(/(\d+(?:[.,]\d+)?)\s*(k|mil)?/); if (!m) return null; let v = parseFloat(m[1].replace(',', '.')); if (m[2]) v *= 1000; return v; };
   let m;
   if ((m = t.match(/(?:entre|between|de|from|du)\s*\$?\s*(\d[\d.,]*\s*(?:k|mil)?)\s*(?:y|and|a|to|-|et)\s*\$?\s*(\d[\d.,]*\s*(?:k|mil)?)/))) { spec.min_price = money(m[1]); spec.max_price = money(m[2]); used.push(m[0]); }
@@ -661,6 +662,8 @@ function basicParse(text) {
   for (const [k, v] of eIdx) if (k.length > 2 && has(k)) spec.entities.push(v);
   for (const w of t.match(/[a-z]+/g) || []) { const d = BRANDLESS_DICT[w] || BRANDLESS_DICT[w.replace(/s$/, '')] || BRANDLESS_DICT[w.replace(/es$/, '')]; if (d && !spec.keyword_groups.some(g => g === d)) spec.keyword_groups.push(d); }
   for (const q of text.matchAll(/"([^"]+)"/g)) spec.keyword_groups.push([strip(q[1])]);
+  if (spec.keyword_groups.some(g => g.includes('necklace') || g.includes('ring') || g.includes('earring') || g.includes('bracelet'))) spec.exclude_name_keywords = ['bag', 'handbag', 'tote', 'wallet', 'purse', 'pouch', 'clutch', 'backpack', 'satchel', 'crossbody', 'handle', 'strap', 'key ring', 'keyring', 'key holder', 'keychain', 'key chain', 'd-ring', 'o-ring', 'scarf', 'cufflink']; // joyas: fuera bolsos, llaveros y anillos de bolso
+  if (/fashion|costume|bisuter|fantaisie|sin alta joyeria|no fine|pas de haute/.test(t)) spec.exclude_keywords = ['k18', '18k', 'k14', '14k', 'k10', '10k', 'k24', '24k', 'pt900', 'pt950', 'platinum', 'carat', 'diamond', 'sapphire', 'emerald', 'ruby', 'yellow gold', 'white gold', 'pink gold']; // bisutería: fuera joyería fina
   return spec;
 }
 function describe(s) {
@@ -672,6 +675,8 @@ function describe(s) {
   if (s.grades?.length) p.push(tl('estado solo {g}', { g: s.grades.join(', ') }));
   else if (s.worst_rank_allowed) p.push(s.best_rank_allowed ? tl('estado {a} a {b}', { a: RANKS.find(x => x[1] === s.best_rank_allowed)?.[2], b: RANKS.find(x => x[1] === s.worst_rank_allowed)?.[2] }) : tl('estado {a} o mejor', { a: RANKS.find(x => x[1] === s.worst_rank_allowed)?.[2] }));
   if (s.select_count) p.push(tl('seleccionar {n}', { n: s.select_count }) + (s.diversify_brands ? tl(' variando marcas') : ''));
+  if (s.exclude_keywords?.includes('k18')) p.push(tl('sin joyas finas (oro 18K, platino, diamantes…)'));
+  if (s.exclude_name_keywords?.length) p.push(tl('sin {w}…', { w: s.exclude_name_keywords.slice(0, 3).join(', ') }));
   return p.length ? p.join(' · ') : tl('no he entendido ningún filtro');
 }
 const BRAND_SYN = [['ysl', 'saint laurent', 'yves saint laurent'], ['dior', 'christian dior'], ['bottega', 'bottega veneta'], ['celine', 'celine paris'], ['lv', 'louis vuitton'], ['hermes', 'hermes paris'], ['the row', 'therow'], ['dg', 'dolce & gabbana', 'dolce gabbana']];
@@ -687,7 +692,7 @@ async function runSearches(list, said) {
   const rep = $('reply'), report0 = []; rep.style.display = ''; rep.textContent = tl('Preparando búsquedas…');
   const plan = list.map((s, si) => {
     const f = { loose: false, catalog: null, q: '', brands: new Set(canonList(s.brands, 'brand')), entities: new Set(canonList(s.entities, 'entity')),
-      groups: (s.keyword_groups || []).map(g => g.map(strip).filter(Boolean)).filter(g => g.length), exclude: (s.exclude_keywords || []).map(strip).filter(Boolean),
+      groups: (s.keyword_groups || []).map(g => g.map(strip).filter(Boolean)).filter(g => g.length), exclude: (s.exclude_keywords || []).map(strip).filter(Boolean), excludeName: (s.exclude_name_keywords || []).map(strip).filter(Boolean),
       min: toUSD(s.min_price, s.price_currency), max: toUSD(s.max_price, s.price_currency), rank: 0, rankMin: 0, grades: gradeSet(s), basis: s.price_basis === 'buying' ? 'buying' : 'shown' };
     if ((s.min_price != null || s.max_price != null) && s.price_currency && !curRate(s.price_currency)) report0.push(tl('⚠ {l}: no conozco la moneda {c}; uso {o}', { l: s.label || tl('búsqueda {n}', { n: si + 1 }), c: s.price_currency, o: outCur }));
     const price = r => f.basis === 'buying' ? usdOf(r) : finalOf(r);
@@ -724,7 +729,7 @@ async function applySpec(s, said) {
   resetFilters(false);
   canonList(s.brands, 'brand').forEach(b => F.brands.add(b)); canonList(s.entities, 'entity').forEach(b => F.entities.add(b));
   F.groups = (s.keyword_groups || []).map(g => g.map(strip).filter(Boolean)).filter(g => g.length);
-  F.exclude = (s.exclude_keywords || []).map(strip).filter(Boolean);
+  F.exclude = (s.exclude_keywords || []).map(strip).filter(Boolean); F.excludeName = (s.exclude_name_keywords || []).map(strip).filter(Boolean);
   F.min = toUSD(s.min_price, s.price_currency); F.max = toUSD(s.max_price, s.price_currency); F.rank = 0; F.rankMin = 0; F.grades = gradeSet(s);
   F.sort = { price_asc: 'pa', price_desc: 'pd', brand: 'brand' }[s.sort] || ''; $('sort').value = F.sort;
   refresh(false);

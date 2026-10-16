@@ -28,6 +28,11 @@ Si pegas una lista con varias peticiones, la IA las ejecuta una por una (`search
 
 - **Cuarta plantilla**: `prompts/top10_resale_buys.txt`, sourcing para reventa basado en el informe *Top 10 Buys* (25 sep): bolsos Céline Box/Luggage, Bottega, Dior Montaigne, Hermès Dogon, LV Capucines y Fendi Peekaboo, grados A–B+, precio de compra (`price_basis=buying`) en USD y colores vivos como preferencia. Los 10 bolsos del informe pasan sus filtros. La app no calcula márgenes de reventa (el catálogo no trae precio retail ni de reventa): sirve para generar candidatos y tú estimas el margen.
 
+## Joyería de marca (bisutería) sin bolsos
+- **Quinta plantilla**: `prompts/fashion_jewelry_brands.txt`: bisutería de marca (Dior prioritario, luego LV y otras), grado B+ o mejor, **se permiten piezas con strass faltantes**, sin joyería fina (oro 18K, platino, diamantes…) y sin bolsos.
+- Nuevo campo `exclude_name_keywords`: descarta por el **nombre/descripción** del artículo (no por las notas). Sirve para quitar los bolsos que contienen "ring" (D-ring, O-ring, key ring) sin perder joyas que traen "dust bag" o "pouch" en los accesorios de las notas. `exclude_keywords` sigue mirando todo el texto (notas, condición).
+- **Modo básico**: al pedir joyas ya no usa `ring` suelto, descarta bolsos, llaveros y pañuelos por el nombre y, si dices *fashion/costume/bisutería*, también la joyería fina. Los anillos de dedo solo se buscan si los pides.
+
 ## Idioma (español, inglés, francés)
 - Selector **🌐** arriba a la derecha: cambia **toda** la interfaz (pantalla, diálogos, avisos, filtros) al instante y se recuerda. La terminal usa `CATALOG_LANG=es|en|fr` (o el idioma del sistema). Los errores del servidor salen en el idioma elegido.
 - El **asistente** entiende peticiones en los tres idiomas (modo básico: precios, marcas, estados, cantidades y palabras comunes; con IA: frases libres) y responde en el idioma elegido.

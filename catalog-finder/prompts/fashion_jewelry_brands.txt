@@ -1,0 +1,24 @@
+Build a sourcing list of BRANDED FASHION JEWELRY (costume jewelry: gold plated, rhinestone, faux pearl, enamel, resin, logo pieces). Christian Dior is the priority, then Louis Vuitton, then other brands. Run ONE search per line below (use "searches", one entry per line, label = "Brand - Type"), IN THIS ORDER, only items with photos, no repeats between lines.
+
+RULES FOR EVERY LINE
+- Grade: B+ or better (worst_rank_allowed=6, no minimum).
+- Pieces with MISSING RHINESTONES or missing stones are ALLOWED. Do NOT exclude anything because of condition wording ("missing", "stone", "rhinestone", "loss", "scratch"...). Do not add condition-based exclude_keywords.
+- ONLY jewelry. Item types are HARD filters (keyword_groups) and match the item name/description.
+- Many BAGS contain the word "ring" (D-ring, O-ring, key ring, ring handle): they must be discarded. Use exclude_name_keywords (checks ONLY the item name/description, not the notes; jewelry often lists "dust bag" or "pouch" as an accessory in the notes and must be kept): "bag", "handbag", "tote", "wallet", "purse", "pouch", "clutch", "backpack", "satchel", "crossbody", "handle", "strap", "key ring", "keyring", "key holder", "keychain", "key chain", "d-ring", "o-ring", "scarf", "cufflink", "cuff link", "sunglasses", "belt", "watch".
+- NO fine jewelry. Use exclude_keywords (full text) with: "k18", "18k", "k14", "14k", "k10", "10k", "k24", "24k", "pt900", "pt950", "platinum", "carat", "diamond", "sapphire", "emerald", "ruby", "yellow gold", "white gold", "pink gold". (Gold plated / "GP" / gold tone is fashion jewelry and is fine.)
+- Never include fine-jewelry houses (Cartier, Tiffany, Bulgari, Van Cleef & Arpels, Harry Winston, Boucheron, Chaumet, Piaget, Mikimoto).
+- Prices: no cap (add one here if you want: [MAX PRICE]).
+- Use my catalog's exact brand names.
+
+CHRISTIAN DIOR (priority)
+1. Earrings: hard "earring"; count 8; prefer "rhinestone", "logo", "cd", "pearl", "clip".
+2. Necklaces and pendants: hard any of "necklace", "pendant", "choker"; count 6; prefer "rhinestone", "logo", "pearl".
+3. Bracelets and bangles: hard any of "bracelet", "bangle", "cuff"; count 3.
+4. Brooches: hard "brooch"; count 3.
+5. Rings (finger rings): hard "ring"; count 2.
+
+LOUIS VUITTON
+6. Jewelry: hard any of "earring", "necklace", "pendant", "choker", "bracelet", "bangle", "cuff", "brooch", "ring"; count 8; prefer "monogram", "logo".
+
+OTHER BRANDS (do them last)
+7. Chanel, Gucci, Celine, Yves Saint Laurent, Hermes, Givenchy, Fendi, Prada, Balenciaga, Burberry, Versace, Dolce & Gabbana, Miu Miu, Valentino, Salvatore Ferragamo, Loewe: hard any of "earring", "necklace", "pendant", "choker", "bracelet", "bangle", "cuff", "brooch", "ring"; count 10; prefer "rhinestone", "logo", "pearl", "gold plated", "gp".
