@@ -545,4 +545,12 @@ window.I18N = {
   ' ({m} no están en el catálogo cargado)': { en: ' ({m} are not in the loaded catalog)', fr: ' ({m} ne sont pas dans le catalogue chargé)' },
   'elige los mejores, variando marcas': { en: 'pick the best, varying brands', fr: 'choisis les meilleurs, en variant les marques' },
   '📋 {n} códigos pegados': { en: '📋 {n} pasted codes', fr: '📋 {n} codes collés' },
+  'ocultar sin precio o precio sospechoso': { en: 'hide missing or suspicious prices', fr: 'masquer prix absents ou suspects' },
+  'Artículos sin precio o con un precio por debajo del mínimo creíble (Ajustes avanzados)': { en: 'Items with no price or a price below the minimum credible price (Advanced settings)', fr: 'Articles sans prix ou sous le prix minimum crédible (Réglages avancés)' },
+  'Precio mínimo creíble (USD)': { en: 'Minimum credible price (USD)', fr: 'Prix minimum crédible (USD)' },
+  'Por debajo de esto (en USD) el precio se marca como sospechoso, p. ej. ¥1': { en: 'Below this (in USD) a price is flagged as suspicious, e.g. ¥1', fr: 'En dessous (en USD), le prix est signalé comme suspect, p. ex. ¥1' },
+  ' · ⚠ {m} sin precio o con precio sospechoso': { en: ' · ⚠ {m} with no price or a suspicious price', fr: ' · ⚠ {m} sans prix ou avec un prix suspect' },
+  '⚠ sin precio': { en: '⚠ no price', fr: '⚠ pas de prix' },
+  '⚠ precio sospechoso: {v}': { en: '⚠ suspicious price: {v}', fr: '⚠ prix suspect : {v}' },
+  'sin precios dudosos': { en: 'no doubtful prices', fr: 'sans prix douteux' },
 };

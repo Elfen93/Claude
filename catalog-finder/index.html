@@ -126,6 +126,7 @@
         <label>Tamaño <input id="size" type="text" style="width:80px"></label>
         <label>Prefijo código <input id="prefix" type="text" style="width:60px" placeholder="ej. C"></label>
         <label>Máx. fotos <input id="maxn" type="text" style="width:50px"></label>
+        <label title="Por debajo de esto (en USD) el precio se marca como sospechoso, p. ej. ¥1">Precio mínimo creíble (USD) <input id="minPrice" type="text" style="width:60px"></label>
         <label title="Cómo leer fechas como 03/04/2026">Fechas <select id="dateOrder"><option value="auto">automático</option><option value="dmy">día/mes/año</option><option value="mdy">mes/día/año</option></select></label>
       </div>
       <div class="row">
@@ -173,6 +174,7 @@
           <div id="yRow"><div class="plbl">Buyer</div><div id="ychips"></div></div></div></span>
         <span class="fwrap"><button class="pill" data-pop="opt">⚙ Opciones</button><div class="pop" id="pop-opt" style="width:auto">
           <label><input type="checkbox" id="onlyImg"> solo con fotos</label>
+          <label title="Artículos sin precio o con un precio por debajo del mínimo creíble (Ajustes avanzados)"><input type="checkbox" id="hideBad"> ocultar sin precio o precio sospechoso</label>
           <label title="Artículos en una invoice guardada o reservados"><input type="checkbox" id="hideSold"> ocultar vendidos y reservados</label>
           <label id="noRepeatL" title="Oculta lo que ya está en un Excel enviado al cliente elegido"><input type="checkbox" id="noRepeat"> <span id="noRepeatT">no repetir lo ya enviado</span></label></div></span>
       </div>
@@ -414,6 +416,11 @@ const curWarn = r => map.priceInit && map.curInit && (() => { let a = get(r, 'cu
 const discOf = r => { // rebaja desde el alta (0,2 = −20%); entre monedas distintas, menos del 5% es ruido del tipo de cambio
   if (r._cw) return NaN; const i = initUSD(r), u = usdOf(r); if (!(i > 0 && u > 0)) return NaN; const d = 1 - u / i;
   let c = get(r, 'curInit').toUpperCase().replace(/\s/g, ''); c = CUR_ALIAS[c] || c; return c && c !== curOf(r) && Math.abs(d) < 0.05 ? 0 : d; };
+const minUSD = () => { const v = parseFloat(String(store.get('minPriceUSD', '5')).replace(',', '.')); return isNaN(v) ? 5 : v; };
+function badPrice(r) { // '' · 'none' (sin precio o 0) · 'low' (por debajo del mínimo creíble, p. ej. ¥1)
+  const v = priceNum(get(r, 'price')); if (isNaN(v) || v <= 0) return 'none';
+  const u = usdOf(r); return !isNaN(u) && u < minUSD() ? 'low' : '';
+}
 const finalOf = r => { const u = usdOf(r), p = prof(); return (isNaN(u) || !p) ? u : u * (1 + (+p.pct || 0) / 100) + (+p.fee || 0) / (rate(p.feeCur) || 1); }; // precio de venta en USD (interno)
 async function loadRates() {
   try {
@@ -425,7 +432,7 @@ async function loadRates() {
     else { $('fx').textContent = tl('⚠ sin tipos de cambio'); $('fx').className = 'err'; return; }
   }
   $('fx').textContent = `1 USD = ${(rates.JPY || 0).toFixed(2)} JPY · ${(rates.CNY || 0).toFixed(3)} CNY${outCur !== 'USD' && outCur !== 'JPY' && outCur !== 'CNY' ? ' · ' + rate(outCur).toFixed(3) + ' ' + outCur : ''} · ${ratesDate}`;
-  buildCurSelects(); if (rows.length) refresh(false);
+  buildCurSelects(); if (rows.length) { setLoaded(); refresh(false); }
 }
 const COMMON = ['USD', 'EUR', 'GBP', 'JPY', 'CNY', 'HKD', 'CHF', 'CAD', 'AUD', 'SGD', 'KRW', 'AED'];
 function curOptions(sel, cur) { // monedas disponibles (las habituales primero)
@@ -511,8 +518,8 @@ async function pool(items, fn, n = 8) { const q = [...items.keys()]; await Promi
 /* ============ carga ============ */
 let loadedN = 0, loadSource = 'file', news = null;
 function setLoaded() {
-  if (!loadedN) return; const cw = rows.filter(r => r._cw).length, ch = map.channel ? new Set(rows.map(r => get(r, 'channel')).filter(Boolean)).size : 0;
-  $('loaded').textContent = tl('✓ {n} artículos cargados', { n: loadedN.toLocaleString(LOC()) }) + (ch > 1 ? tl(' de {c} pestañas', { c: ch }) : '') + (cw ? tl(' · ⚠ {m} con moneda dudosa', { m: cw }) : '');
+  if (!loadedN) return; const bp = rows.filter(r => badPrice(r)).length, cw = rows.filter(r => r._cw).length, ch = map.channel ? new Set(rows.map(r => get(r, 'channel')).filter(Boolean)).size : 0;
+  $('loaded').textContent = tl('✓ {n} artículos cargados', { n: loadedN.toLocaleString(LOC()) }) + (ch > 1 ? tl(' de {c} pestañas', { c: ch }) : '') + (cw ? tl(' · ⚠ {m} con moneda dudosa', { m: cw }) : '') + (bp ? tl(' · ⚠ {m} sin precio o con precio sospechoso', { m: bp }) : '');
 }
 const baseH = h => strip(String(h).replace(/\s*\(\d+\)$/, '')); // «Cur (3)» → «cur»
 function findHeader(tbl) { // la fila de cabeceras puede no ser la primera (hojas con títulos encima)
@@ -683,6 +690,7 @@ function resetFilters(redraw = true, keepCatalog = false) {
 }
 function matches(r, skip, f = F) {
   if (pasteScope && !pasteScope.has(code(r))) return false;
+  if (hideBad && badPrice(r)) return false;
   if ((hideSold || f.hideStatus) && sold[code(r)]) return false;
   { const cid = f.client !== undefined ? f.client : (noRepeat ? activeProf : ''); if (cid && offers[code(r)]?.[cid]) return false; }
   if (f.catalog && !f.catalog.has(r)) return false;
@@ -730,7 +738,7 @@ function pillsAndTokens() {
   const orig = [...F.channels, ...F.entities, ...F.owners, ...F.buyers];
   F.channels.forEach(x => add(x, () => F.channels.delete(x))); F.entities.forEach(x => add(x, () => F.entities.delete(x))); F.owners.forEach(x => add(x, () => F.owners.delete(x))); F.buyers.forEach(x => add('buyer ' + x, () => F.buyers.delete(x)));
   pill('orig', 'Origen', orig);
-  const opts = [F.onlyImg && tl('solo con fotos'), hideSold && tl('sin vendidos'), noRepeat && prof()?.id && tl('sin repetir')].filter(Boolean);
+  const opts = [F.onlyImg && tl('solo con fotos'), hideBad && tl('sin precios dudosos'), hideSold && tl('sin vendidos'), noRepeat && prof()?.id && tl('sin repetir')].filter(Boolean);
   const op = document.querySelector('#fbar .pill[data-pop="opt"]'); op.textContent = '⚙ ' + tl('Opciones') + (opts.length ? ' · ' + opts.length : '');
   if (pasteScope) add(tl('📋 {n} códigos pegados', { n: pasteScope.size }), () => { pasteScope = null; });
   if (F.q) add('“' + F.q + '”', () => { F.q = ''; $('q').value = ''; });
@@ -851,6 +859,9 @@ bind('q', 'input', debounce(() => { F.q = strip($('q').value); refresh(false); }
 bind('sort', 'change', () => { F.sort = $('sort').value; refresh(false); });
 bind('onlyImg', 'change', () => { F.onlyImg = $('onlyImg').checked; refresh(false); });
 let hideSold = store.get('hideSold', '1') === '1'; $('hideSold').checked = hideSold;
+let hideBad = store.get('hideBad', '0') === '1'; $('hideBad').checked = hideBad;
+bind('hideBad', 'change', () => { hideBad = $('hideBad').checked; store.set('hideBad', hideBad ? '1' : '0'); refresh(false); });
+$('minPrice').value = store.get('minPriceUSD', '5'); bind('minPrice', 'change', () => { store.set('minPriceUSD', $('minPrice').value); if (rows.length) { setLoaded(); refresh(false); } });
 let noRepeat = store.get('noRepeat', '1') === '1'; $('noRepeat').checked = noRepeat;
 bind('noRepeat', 'change', () => { noRepeat = $('noRepeat').checked; store.set('noRepeat', noRepeat ? '1' : '0'); refresh(false); });
 function updateNoRepeat() { const p = prof(); $('noRepeatL').style.display = p?.id ? '' : 'none'; if (p?.id) $('noRepeatT').textContent = tl('no repetir lo ya enviado a {c}', { c: p.name }); }
@@ -894,7 +905,7 @@ function addCard(r) {
   c.innerHTML = `<input type="checkbox" class="pick" ${on ? 'checked' : ''}>${r._rank ? `<span class="rank">${esc(r._letter)}</span>` : ''}<div class="photo"><span class="none">${esc(tl('cargando…'))}</span></div>
     <div class="info"><button class="rsv" title="${esc(tl('Reservar / estado'))}">🔖</button><div class="brand">${esc(get(r, 'brand') || '—')}</div><div class="code">${esc(code(r))}${get(r, 'entity') ? ' · ' + esc(get(r, 'entity')) : ''}${get(r, 'buyer') ? ' · ' + esc(tl('buyer {b}', { b: get(r, 'buyer') })) : ''}</div>${typeOf(r) || get(r, 'channel') || get(r, 'owner') ? `<div class="notes mute">${esc([typeOf(r), get(r, 'channel'), get(r, 'owner')].filter(Boolean).join(' · '))}</div>` : ''}${r._added != null ? `<div class="notes mute">${esc(ageText(r))}</div>` : ''}
     <div class="desc">${esc(nameOf(r))}</div>
-    ${F.catalog && r._tag ? `<div class="notes">🎯 ${esc(r._tag)}</div>` : ''}${statusBadges(r)}${r._cw ? `<div class="notes warn">${esc(tl('⚠ moneda dudosa: mismo importe que el inicial en {c}', { c: get(r, 'curInit') }))}</div>` : ''}${Math.abs(discOf(r)) >= 0.01 ? `<div class="notes ${discOf(r) > 0 ? 'ok' : 'mute'}">${esc(discOf(r) > 0 ? tl('−{p}% desde el alta (antes {v})', { p: Math.round(discOf(r) * 100), v: [get(r, 'priceInit'), get(r, 'curInit')].join(' ') }) : tl('+{p}% desde el alta', { p: Math.round(-discOf(r) * 100) }))}</div>` : ''}${price ? `<div class="price">${esc(price)}</div>` : ''}${sub ? `<div class="mute notes">${esc(sub)}</div>` : ''}</div>`;
+    ${F.catalog && r._tag ? `<div class="notes">🎯 ${esc(r._tag)}</div>` : ''}${statusBadges(r)}${badPrice(r) ? `<div class="notes warn">${esc(badPrice(r) === 'none' ? tl('⚠ sin precio') : tl('⚠ precio sospechoso: {v}', { v: [get(r, 'price'), get(r, 'cur')].filter(Boolean).join(' ') }))}</div>` : ''}${r._cw ? `<div class="notes warn">${esc(tl('⚠ moneda dudosa: mismo importe que el inicial en {c}', { c: get(r, 'curInit') }))}</div>` : ''}${Math.abs(discOf(r)) >= 0.01 ? `<div class="notes ${discOf(r) > 0 ? 'ok' : 'mute'}">${esc(discOf(r) > 0 ? tl('−{p}% desde el alta (antes {v})', { p: Math.round(discOf(r) * 100), v: [get(r, 'priceInit'), get(r, 'curInit')].join(' ') }) : tl('+{p}% desde el alta', { p: Math.round(-discOf(r) * 100) }))}</div>` : ''}${price ? `<div class="price">${esc(price)}</div>` : ''}${sub ? `<div class="mute notes">${esc(sub)}</div>` : ''}</div>`;
   c.querySelector('.rsv').onclick = () => reserveDlg(r);
   c.querySelector('.pick').onchange = e => { toggle(code(r), e.target.checked); c.classList.toggle('sel', e.target.checked); };
   $('grid').append(c); io.observe(c);
