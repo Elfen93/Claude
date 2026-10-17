@@ -86,6 +86,7 @@ Todo se guarda en **`catalog.db`**, un solo archivo dentro de la carpeta (no va 
   - Para que el stock use su coste inicial, vuelve a cargar la hoja de stock una vez en el buscador.
 - **✨ Pregúntale a la IA:** escribe una pregunta como se la harías a una persona («¿qué modelos de Gucci se venden mejor y dónde?»).
   - La IA no recibe tu archivo: pide tablas que se calculan en tu ordenador (ventas, stock, buyers, palabras de los títulos y, si hace falta, algunas fotos) y responde con esas cifras.
+  - Trabaja en la **moneda elegida arriba** (con el cambio de cada día de venta). Si pones JPY y le dices «máximo 10.000 ¥ por pieza», lo usa tal cual y responde en yenes. Si cambias de moneda, pulsa «Nueva conversación».
   - Puedes ver cada tabla que ha usado y bajarlas a Excel. Puedes seguir preguntando sobre la misma respuesta.
   - Usa la misma clave que el buscador (*Activar IA…*). Opus 5.5 por defecto (unos céntimos por pregunta); Sonnet 5.5 y Haiku 5.5 son más baratos.
   - Si el modelo rechaza una pregunta por sus filtros de seguridad, la API la reintenta sola con el modelo que recomienda Anthropic.

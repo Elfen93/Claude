@@ -84,6 +84,7 @@ Everything is stored in **`catalog.db`**, a single file in the folder (not in gi
   - For stock to use its initial cost, reload the stock sheet once in the finder.
 - **✨ Ask the AI:** write a question as you would ask a person («which Gucci models sell best and where?»).
   - The AI does not receive your file: it asks for tables computed on your computer (sales, stock, buyers, title words and, if needed, a few photos) and answers with those figures.
+  - It works in the **currency chosen above** (at each sale day's rate). With JPY selected, «max ¥10,000 per piece» is used as is and the answer comes in yen. If you change currency, click «New conversation».
   - You can see every table it used and download them to Excel. You can ask follow-up questions.
   - It uses the same key as the search page (*Activate AI…*). Opus 5.5 by default (a few cents per question); Sonnet 5.5 and Haiku 5.5 are cheaper.
   - If the model declines a question because of its safety filters, the API retries it automatically on the model Anthropic recommends.

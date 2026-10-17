@@ -84,6 +84,7 @@ Tout est stocké dans **`catalog.db`**, un seul fichier dans le dossier (pas dan
   - Pour que le stock utilise son coût initial, rechargez une fois la feuille de stock dans le chercheur.
 - **✨ Demandez à l’IA :** écrivez une question comme à une personne (« quels modèles Gucci se vendent le mieux et où ? »).
   - L’IA ne reçoit pas votre fichier : elle demande des tableaux calculés sur votre ordinateur (ventes, stock, acheteurs, mots des titres et, si besoin, quelques photos) et répond avec ces chiffres.
+  - Elle travaille dans la **devise choisie en haut** (au taux de chaque jour de vente). Avec JPY, « 10 000 ¥ maximum par pièce » est utilisé tel quel et la réponse est en yens. Si vous changez de devise, cliquez sur « Nouvelle conversation ».
   - Vous voyez chaque tableau utilisé et pouvez les télécharger en Excel. Vous pouvez poser des questions de suivi.
   - Elle utilise la même clé que la recherche (*Activer l’IA…*). Opus 5.5 par défaut (quelques centimes par question) ; Sonnet 5.5 et Haiku 5.5 coûtent moins.
   - Si le modèle refuse une question à cause de ses filtres de sécurité, l’API la relance automatiquement sur le modèle recommandé par Anthropic.
