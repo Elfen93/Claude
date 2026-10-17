@@ -328,15 +328,95 @@ function stepTable(t) {
 function renderAIConv() {
   const box = $('aiConv'); if (!box) return;
   box.style.display = AI.conv.length ? '' : 'none';
-  box.innerHTML = AI.conv.map(c => c.kind === 'q' ? `<div class="ai-user">${esc(c.text)}</div>`
+  box.innerHTML = AI.conv.map((c, i) => c.kind === 'q' ? `<div class="ai-user">${esc(c.text)}</div>`
     : c.kind === 'step' ? `<details class="ai-step"><summary>${esc(stepLabel(c))}</summary>${c.t.images ? `<div class="ai-photos">${c.t.images.filter(x => x.url).map(x => `<img src="${esc(x.url)}" title="${esc(x.text)}" alt="${esc(x.c)}">`).join('')}</div>` : ''}${stepTable(c.t)}</details>`
     : c.kind === 'note' ? `<div class="ai-step">💬 ${esc(c.text)}</div>`
     : c.kind === 'err' ? `<div class="panel err">${esc(c.text)}</div>`
-    : `<div class="ai-ans">${mdHTML(c.text)}${c.cut ? `<p class="hint">${esc(tl('(respuesta cortada: pide «sigue» para continuar)'))}</p>` : ''}</div>`).join('')
+    : `<div class="ai-ans">${mdHTML(c.text)}${c.cut ? `<p class="hint">${esc(tl('(respuesta cortada: pide «sigue» para continuar)'))}</p>` : ''}</div>
+      <div class="row ai-dl" style="margin:4px 0 14px"><button data-pdf="${i}">🖨 ${esc(tl('PDF de esta respuesta'))}</button><button data-xl="${i}">⬇ ${esc(tl('Excel de esta respuesta'))}</button></div>`).join('')
     + (AI.busy ? `<div class="ai-step">⏳ ${esc(tl('Analizando… (paso {n})', { n: AI.step }))}</div>` : '');
+  box.querySelectorAll('[data-pdf]').forEach(b => b.onclick = () => aiPdf(+b.dataset.pdf)); box.querySelectorAll('[data-xl]').forEach(b => b.onclick = () => aiXlsx(+b.dataset.xl));
   const cost = $('aiCost'); if (cost) cost.textContent = AI.cost ? tl('coste de esta conversación: ≈ ${v}', { v: AI.cost < 0.01 ? AI.cost.toFixed(4) : AI.cost.toFixed(3) }) : '';
   if ($('aiGo')) $('aiGo').disabled = AI.busy; if ($('aiX')) $('aiX').style.display = AI.tables.length ? '' : 'none';
   if ($('aiGo')) $('aiGo').textContent = AI.messages.length ? tl('Seguir preguntando') : tl('Analizar');
+}
+/* ---------- descargar una respuesta: PDF (imprimir) o Excel, con la pregunta y las tablas que usó ---------- */
+function aiTurn(i) { // la respuesta i, su pregunta y los pasos que hubo entre las dos
+  const steps = []; let q = '';
+  for (let j = i - 1; j >= 0; j--) { const c = AI.conv[j]; if (c.kind === 'step') steps.unshift(c); else if (c.kind === 'q') { q = c.text; break; } else if (c.kind === 'a') break; }
+  return { q, a: AI.conv[i].text, steps, cur: AI.cur || SV.cur };
+}
+const aiFile = q => 'analisis_ia_' + new Date().toISOString().slice(0, 10) + '_' + (nrm(q).replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '').slice(0, 40) || 'respuesta');
+const aiMeta = T => tl('Datos: ventas del {a} al {b} · importes en {c} · {d}', { a: fmtDay(SV.minDay), b: fmtDay(SV.maxDay), c: T.cur, d: new Date().toLocaleString(LOC()) });
+function aiPdf(i) {
+  const T = aiTurn(i), N = 40;
+  const tbl = t => `<table><tr>${t.columns.map(c => `<th>${esc(c)}</th>`).join('')}</tr>${[...t.rows.slice(0, N), ...(t.total ? [t.total] : [])].map(r => `<tr>${r.map(v => `<td${typeof v === 'number' ? ' class="n"' : ''}>${esc(aiCell(v))}</td>`).join('')}</tr>`).join('')}</table>${t.rows.length > N ? `<p class="note">${esc(tl('… y {n} filas más (están en el Excel).', { n: t.rows.length - N }))}</p>` : ''}`;
+  const photos = T.steps.flatMap(c => c.t.images || []).filter(x => x.url);
+  $('printArea').innerHTML = `<style>@page { size: A4 portrait; margin: 12mm; } .rep { border:none; padding:0; } .rep h3 { break-after:avoid; } .rep tr { break-inside:avoid; } .rep .q { background:#f3f3f0; padding:8px 10px; border-radius:6px; margin:10px 0; }
+      .rep .ans table { margin:6px 0; } .rep .ans p, .rep .ans li { font-size:12.5px; } .rep .ph { display:flex; flex-wrap:wrap; gap:6px; } .rep .ph figure { margin:0; width:120px; font-size:9px; color:#555; } .rep .ph img { width:120px; height:120px; object-fit:cover; border-radius:4px; }
+      .rep .annex table { font-size:8.5px; table-layout:auto; } .rep .annex th, .rep .annex td { padding:2px 4px; overflow-wrap:anywhere; } .rep .annex th { background:#e3efe8; } .rep .annex p { margin:10px 0 3px; break-after:avoid; }</style>
+    <div class="rep"><h1>✨ ${esc(tl('Análisis con IA'))}</h1><div class="mute">${esc(aiMeta(T))}</div>
+      <div class="q"><b>${esc(tl('Pregunta'))}:</b> ${esc(T.q)}</div><div class="ans">${mdHTML(T.a)}</div>
+      ${photos.length ? `<h3>${esc(tl('Fotos que miró'))}</h3><div class="ph">${photos.map(x => `<figure><img src="${esc(x.url)}"><figcaption>${esc(x.text.slice(0, 90))}</figcaption></figure>`).join('')}</div>` : ''}
+      ${T.steps.length ? `<h3>${esc(tl('Anexo: datos que usó la IA'))}</h3><div class="annex">${T.steps.map((c, k) => `<p><b>${k + 1}. ${esc(stepLabel(c))}</b></p>${tbl(c.t)}`).join('')}</div>` : ''}
+      <p class="note">${esc(tl('Cifras calculadas en este ordenador con tus archivos; la IA solo las ha leído y comentado.'))}</p></div>`;
+  const old = document.title; document.title = aiFile(T.q); setTimeout(() => { window.print(); document.title = old; }, 400);
+}
+/* Excel con formato: hoja «Respuesta» que se lee como un informe y una hoja por tabla usada (cabecera fija, filtros, miles) */
+const XS = { // estilos (xlsx-js-style)
+  title: { font: { bold: true, sz: 16, color: { rgb: '1F4D3A' } } }, meta: { font: { italic: true, sz: 9, color: { rgb: '6B6A66' } } },
+  qLab: { font: { bold: true, color: { rgb: 'FFFFFF' } }, fill: { patternType: 'solid', fgColor: { rgb: '1F4D3A' } }, alignment: { vertical: 'top' } },
+  q: { font: { sz: 11 }, fill: { patternType: 'solid', fgColor: { rgb: 'F3F3F0' } }, alignment: { wrapText: true, vertical: 'top' } },
+  h: { font: { bold: true, sz: 13, color: { rgb: '1F4D3A' } }, border: { bottom: { style: 'thin', color: { rgb: '1F4D3A' } } } },
+  p: { alignment: { wrapText: true, vertical: 'top' } }, li: { alignment: { wrapText: true, vertical: 'top', indent: 1 } },
+  th: { font: { bold: true }, fill: { patternType: 'solid', fgColor: { rgb: 'E3EFE8' } }, border: { bottom: { style: 'thin', color: { rgb: '9DB8A9' } } }, alignment: { wrapText: true, vertical: 'center' } },
+  td: { border: { bottom: { style: 'hair', color: { rgb: 'DDDDDD' } } }, alignment: { vertical: 'top' } },
+  tot: { font: { bold: true }, border: { top: { style: 'thin', color: { rgb: '1F4D3A' } } } }, note: { font: { italic: true, sz: 9, color: { rgb: '6B6A66' } } } };
+const numFmt = (col, v) => typeof v !== 'number' ? null : /%|share|margin|loss/i.test(col) ? '0.0' : /markup|×/i.test(col) ? '0.00' : Number.isInteger(v) || Math.abs(v) >= 100 ? '#,##0' : '#,##0.00';
+const mdCells = t => t.replace(/\*\*|__|`/g, '').trim();
+function aiSheet(build) { // build(put) escribe celdas; devuelve la hoja con rango, uniones y anchos
+  const ws = {}, merges = []; let maxR = 0, maxC = 0;
+  const put = (r, c, v, st, z) => { if (v == null || v === '') { if (!st) return; v = ''; } const cell = { v, t: typeof v === 'number' ? 'n' : 's' }; if (st) cell.s = st; if (z) { cell.z = z; cell.s = { ...(st || {}), numFmt: z }; }
+    ws[XLSX.utils.encode_cell({ r, c })] = cell; maxR = Math.max(maxR, r); maxC = Math.max(maxC, c); };
+  const extra = build(put, (r1, c1, r2, c2) => merges.push({ s: { r: r1, c: c1 }, e: { r: r2, c: c2 } })) || {};
+  ws['!ref'] = XLSX.utils.encode_range({ s: { r: 0, c: 0 }, e: { r: maxR, c: Math.max(maxC, 0) } }); if (merges.length) ws['!merges'] = merges; Object.assign(ws, extra); return ws;
+}
+const widthOf = (rows, c, min = 8, max = 48) => Math.max(min, Math.min(max, ...rows.map(r => String(r[c] == null ? '' : typeof r[c] === 'number' ? Math.round(r[c]).toLocaleString('en-US') : r[c]).length + 2)));
+function aiXlsx(i) {
+  const T = aiTurn(i), W = 8; // la respuesta ocupa 8 columnas unidas
+  const answer = aiSheet((put, merge) => {
+    let r = 0; put(r, 0, '✨ ' + tl('Análisis con IA'), XS.title); merge(r, 0, r, W - 1); r++;
+    put(r, 0, aiMeta(T), XS.meta); merge(r, 0, r, W - 1); r += 2;
+    put(r, 0, tl('Pregunta'), XS.qLab); put(r, 1, T.q, XS.q); for (let c = 2; c < W; c++) put(r, c, '', XS.q); merge(r, 1, r, W - 1); const qRow = r; r += 2;
+    const heights = [{ hpt: 18 }, {}, {}, { hpt: Math.max(1, Math.ceil(T.q.length / 95)) * 15 }];
+    const lines = T.a.split('\n'); let tbl = null;
+    const flush = () => { if (!tbl) return; tbl.forEach((cells, k) => cells.forEach((v, c) => { const n = typeof v === 'string' ? v.replace(/[,¥$€£\s]/g, '') : ''; const num = k && /^[-−]?\d+(\.\d+)?$/.test(n) && v.length < 20 ? +n.replace('−', '-') : null;
+      put(r + k, c, num ?? v, k ? XS.td : XS.th, num != null ? numFmt(tbl[0][c] || '', num) : null); })); r += tbl.length + 1; tbl = null; };
+    for (const line of lines) {
+      const l = line.trim();
+      if (l.startsWith('|')) { if (/^\|?\s*:?-{2,}/.test(l)) continue; (tbl = tbl || []).push(l.replace(/^\||\|$/g, '').split('|').map(mdCells)); continue; }
+      flush(); if (!l) continue;
+      const h = l.match(/^#+\s*(.*)/), li = l.match(/^(?:[-*•]|\d+[.)])\s+(.*)/), txt = mdCells(h ? h[1] : li ? (/^\d/.test(l) ? l.match(/^\d+[.)]/)[0] + ' ' : '• ') + li[1] : l);
+      if (h) r++; put(r, 0, txt, h ? XS.h : li ? XS.li : XS.p); if (h) for (let c = 1; c < W; c++) put(r, c, '', XS.h); merge(r, 0, r, W - 1);
+      heights[r] = { hpt: Math.max(1, Math.ceil(txt.length / 110)) * 15 + (h ? 4 : 0) }; r++;
+    }
+    flush();
+    put(r + 1, 0, tl('Cifras calculadas en este ordenador con tus archivos; la IA solo las ha leído y comentado.'), XS.note); merge(r + 1, 0, r + 1, W - 1);
+    return { '!cols': [{ wch: 26 }, ...Array(W - 1).fill({ wch: 16 })], '!rows': heights, '!pageSetup': { orientation: 'portrait', fitToWidth: 1 } };
+  });
+  const data = T.steps.map((c, k) => { const t = c.t, all = [t.columns, ...t.rows, ...(t.total ? [t.total] : [])];
+    return [`${k + 1} ${c.name}`.slice(0, 30), aiSheet((put, merge) => {
+      put(0, 0, `${k + 1}. ${stepLabel(c)}`, { font: { bold: true, sz: 12, color: { rgb: '1F4D3A' } } }); merge(0, 0, 0, Math.max(0, t.columns.length - 1));
+      put(1, 0, t.title + (t.note ? ' · ' + t.note : ''), XS.meta); merge(1, 0, 1, Math.max(0, t.columns.length - 1));
+      t.columns.forEach((h, j) => put(3, j, h, XS.th));
+      t.rows.forEach((row, ri) => row.forEach((v, j) => put(4 + ri, j, v === '' ? null : v, XS.td, numFmt(t.columns[j], v))));
+      if (t.total) t.total.forEach((v, j) => put(4 + t.rows.length, j, v, XS.tot, numFmt(t.columns[j], v)));
+      return { '!cols': t.columns.map((_, j) => ({ wch: widthOf(all, j) })), '!autofilter': { ref: XLSX.utils.encode_range({ s: { r: 3, c: 0 }, e: { r: 3 + t.rows.length, c: t.columns.length - 1 } }) } };
+    })]; });
+  if (typeof XLSX === 'undefined') return say(tl('No se cargó la librería xlsx (falta vendor/xlsx.bundle.js). Usa el botón CSV.'));
+  const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, answer, tl('Respuesta')); const used = new Set([tl('Respuesta')]);
+  data.forEach(([n, ws]) => { let nm = n.replace(/[:\\/?*[\]]/g, '-'), j = 1; while (used.has(nm)) nm = nm.slice(0, 27) + '_' + (++j); used.add(nm); XLSX.utils.book_append_sheet(wb, ws, nm); });
+  XLSX.writeFile(wb, aiFile(T.q) + '.xlsx');
 }
 function renderAIHist() {
   const el = $('aiHist'); if (!el) return;

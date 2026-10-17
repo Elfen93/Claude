@@ -1269,7 +1269,7 @@ function renderAiState() {
   };
   if ($('keyOff')) $('keyOff').onclick = async () => { await fetch('/ai-key', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Catalog-Finder': '1' }, body: JSON.stringify({ key: '' }) }); aiStatus(); };
 }
-const APP_VERSION = '2026-10-17.4'; // igual que APP_VERSION en server.py
+const APP_VERSION = '2026-10-17.5'; // igual que APP_VERSION en server.py
 let serverOld = false;
 const oldServerMsg = () => tl('⚠ El programa que está en marcha (la ventana negra) es una versión antigua. Cierra TODAS las ventanas negras de Catalog Finder y vuelve a abrirlo; luego recarga esta página.');
 async function aiStatus() {
