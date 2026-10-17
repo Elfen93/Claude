@@ -74,6 +74,13 @@ Tout est stocké dans **`catalog.db`**, un seul fichier dans le dossier (pas dan
   - Pièces achetées depuis le début de l’historique, combien se sont vendues, et ce qui est normal pour la même marque, catégorie et mois d’achat (comparaison équitable).
   - En cliquant sur un acheteur : ce qui marche, ce qui ne marche pas, son stock de plus de 6 mois et ses pièces bloquées, avec Excel et « Voir dans la recherche ».
   - Sert à décider quoi acheter et où vendre, pas à juger qui que ce soit.
+- **💴 Prix d'achat :** qui paie plus pour la même chose et où baisser le coût :
+  - Regroupe ce qui a été acheté (vendu + en stock) par marque, modèle, taille, ligne et grade. Exemple : « Louis Vuitton · Keepall 50 · Monogram · grade B+ ».
+  - Par groupe : coût médian, fourchette normale et, par buyer, combien il en a acheté et son coût médian vs la médiane (+12 % = paie 12 % de plus).
+  - « Payé en trop » : ce qu'on aurait économisé en achetant tout à la médiane de son groupe. En haut, le résumé par buyer.
+  - « Vend vs médiane » : si quelqu'un paie plus mais vend aussi plus cher, il ne paie pas trop. Regardez les photos (cliquez sur le groupe) avant de conclure.
+  - Coût = PAT initial avec taxes, au taux du jour d'achat. Choisissez la devise JPY pour voir les yens exacts. Les pièces 3× plus ou moins chères que leur groupe ne comptent pas (souvent autre chose).
+  - Pour que le stock utilise son coût initial, rechargez une fois la feuille de stock dans le chercheur.
 - **✨ Demandez à l’IA :** écrivez une question comme à une personne (« quels modèles Gucci se vendent le mieux et où ? »).
   - L’IA ne reçoit pas votre fichier : elle demande des tableaux calculés sur votre ordinateur (ventes, stock, acheteurs, mots des titres et, si besoin, quelques photos) et répond avec ces chiffres.
   - Vous voyez chaque tableau utilisé et pouvez les télécharger en Excel. Vous pouvez poser des questions de suivi.

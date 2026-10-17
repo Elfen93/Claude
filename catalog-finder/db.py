@@ -65,9 +65,9 @@ def init():
             CREATE TABLE IF NOT EXISTS imports(id INTEGER PRIMARY KEY AUTOINCREMENT, kind TEXT, src TEXT, at REAL, n INTEGER, added INTEGER, updated INTEGER, info TEXT);
         """)
         icols = {r[1] for r in c.execute("PRAGMA table_info(items)")}
-        for col in ("type", "channel", "owner", "buyer", "added"):
+        for col, ty in (("type", "TEXT"), ("channel", "TEXT"), ("owner", "TEXT"), ("buyer", "TEXT"), ("added", "TEXT"), ("price_init", "REAL"), ("cur_init", "TEXT")):
             if col not in icols:
-                c.execute(f"ALTER TABLE items ADD COLUMN {col} TEXT")
+                c.execute(f"ALTER TABLE items ADD COLUMN {col} {ty}")
         cols = {r[1] for r in c.execute("PRAGMA table_info(status)")}
         for col, ty in (("client_id", "INTEGER"), ("note", "TEXT")):
             if col not in cols:
@@ -134,9 +134,10 @@ def snapshot(source, items):
             clean.append((code, it, price))
         gone = [k for k in old if k not in cur_codes]
         ex = lambda it, i: (str(it[i]) if it[i] is not None else None) if len(it) > i else None
-        extra = [(ex(it, 7), ex(it, 8), ex(it, 9), ex(it, 10), ex(it, 11), source, code) for code, it, price in clean]
+        num = lambda it, i: it[i] if len(it) > i and isinstance(it[i], (int, float)) else None
+        extra = [(ex(it, 7), ex(it, 8), ex(it, 9), ex(it, 10), ex(it, 11), num(it, 12), ex(it, 13), source, code) for code, it, price in clean]
         if prev and not (new or gone or down or up):
-            c.executemany("UPDATE items SET type=?, channel=?, owner=?, buyer=?, added=? WHERE source=? AND code=?", extra)  # misma hoja: se repiten las novedades de la ultima carga con cambios
+            c.executemany("UPDATE items SET type=?, channel=?, owner=?, buyer=?, added=?, price_init=?, cur_init=? WHERE source=? AND code=?", extra)  # misma hoja: se repiten las novedades de la ultima carga con cambios
             last = c.execute("SELECT id, at FROM loads WHERE source=? AND (new>0 OR gone>0 OR down>0) ORDER BY id DESC LIMIT 1", (source,)).fetchone()
             if not last:
                 return {"first": False, "unchanged": True, "load": prev["id"], "n": len(cur_codes), "new": [], "gone": [], "down": [], "up": 0, "since": prev["at"]}
@@ -156,7 +157,7 @@ def snapshot(source, items):
         c.executemany("INSERT INTO load_items(load, code, kind, old, new) VALUES(?,?,?,?,?)",
                       [(lid, k, "new", None, None) for k in new] + [(lid, k, "gone", old[k][0], None) for k in gone]
                       + [(lid, d["c"], "down", d["old"], d["new"]) for d in down])
-        c.executemany("UPDATE items SET type=?, channel=?, owner=?, buyer=?, added=? WHERE source=? AND code=?", extra)
+        c.executemany("UPDATE items SET type=?, channel=?, owner=?, buyer=?, added=?, price_init=?, cur_init=? WHERE source=? AND code=?", extra)
         return {"first": not prev, "load": lid, "n": len(cur_codes), "new": new, "gone": gone, "down": down, "up": up, "since": prev and prev["at"], "at": now}
 
 
@@ -430,6 +431,6 @@ def stock_latest():
         if not last:
             return {"source": None, "at": None, "rows": []}
         lid, at = c.execute("SELECT MAX(id), MAX(at) FROM loads WHERE source=?", (last["source"],)).fetchone()
-        rows = [list(r) for r in c.execute("SELECT code, brand, name, price, cur, entity, grade, type, channel, owner, buyer, added FROM items "
+        rows = [list(r) for r in c.execute("SELECT code, brand, name, price, cur, entity, grade, type, channel, owner, buyer, added, price_init, cur_init FROM items "
                                            "WHERE source=? AND last_load=?", (last["source"], lid))]
     return {"source": last["source"], "at": at, "rows": rows}

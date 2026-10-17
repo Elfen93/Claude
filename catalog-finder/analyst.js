@@ -45,6 +45,10 @@ const AI_TOOLS = [
     input_schema: { type: 'object', properties: { period: AI_PERIOD, filters: AI_FILTERS, limit: { type: 'integer', description: 'default 40' } } } },
   { name: 'buyer_report', description: 'What happens to what each buyer purchases: pieces bought since a date (sold + still in stock), % sold vs what is normal for the same brand, category and purchase month, days to sell, margin, current stock, stock older than 6 months and stalled pieces. With "buyer": that buyer\'s best-selling and non-selling products.',
     input_schema: { type: 'object', properties: { buyer: { type: 'string' }, since: { type: 'string', description: 'YYYY-MM-DD; default = first sale date in the data (complete history)' }, limit: { type: 'integer' } } } },
+  { name: 'purchase_costs', description: 'Purchase prices compared like for like: pieces bought (sold + still in stock) grouped by brand, model, size, line and grade, with the median cost per group and, per buyer, how many they bought and their median cost vs the group median. "overpaid" = sum of what was paid above the group median. Pieces costing over 3x above or below their group are left out (usually a different item). Without "buyer": a summary per buyer plus the groups with the most overpayment. With "buyer": the groups where that buyer pays most above the others.',
+    input_schema: { type: 'object', properties: { buyer: { type: 'string' }, since: { type: 'string', description: 'Purchase (added) date from, YYYY-MM-DD; default = 12 months before the last sale date' },
+      search: { type: 'string', description: 'Only groups whose name contains this text (e.g. "Keepall 50", "Kelly", "grade B+")' }, min_pieces: { type: 'integer', description: 'Minimum pieces per group, default 4' },
+      include_unrecognised: { type: 'boolean', description: 'Also group pieces without a recognised model (by line + item type)' }, limit: { type: 'integer', description: 'default 25, max 80' } } } },
   { name: 'view_photos', description: 'See the main photo of up to 8 pieces (CTag codes) to judge colour, leather, hardware, style or condition. Costs extra: use it only when titles are not enough.',
     input_schema: { type: 'object', properties: { codes: { type: 'array', items: { type: 'string' }, maxItems: 8 } }, required: ['codes'] } }];
 const AI_SYSTEM = `You are the sales analyst of a pre-owned luxury goods reseller (bags, small leather goods, jewelry, watches, scarves, clothing). The user is the owner or a manager. They want concrete, practical answers to decide what to buy, at what cost, and on which channel to sell.
@@ -61,6 +65,7 @@ How to work:
 - Be careful with small samples: flag groups with fewer than 5 sales and do not base a recommendation on 1-2 sales.
 - The latest month in the data may be incomplete (late reporting); say so when it affects a trend.
 - For "where to sell", compare channels on markup, margin, days to sell and loss rate for the same product group, and say which is best and why (for example: one channel pays more over cost but takes three times longer).
+- For purchase prices ("who pays more for the same thing", "where can we cut cost"), use purchase_costs: it compares the same model, size, line and grade. A higher cost can be justified by a better piece (colour, year, accessories): check sells_vs_median, and look at photos before calling it overpaying.
 - Buyer figures are for purchasing decisions, not to judge people: compare each buyer with what is normal for the same brand, category and purchase month, and mention the mix of what they buy.
 
 Answer format: in the language the user message asks for. Start with the direct answer in 2-4 bullets with concrete names and numbers. Then short sections or a compact markdown table if useful. End with 3-5 concrete recommendations under a heading. Keep it under about 350 words unless the user asks for more. No preamble.`;
@@ -176,6 +181,21 @@ function toolBuyers(i) {
     columns: ['list', 'product', 'bought', 'sold', 'sold_%', 'normal_%', 'med_days', 'markup'],
     rows: [...good.map(p => ['selling', p.k, p.n, p.sold, aiNum(p100(p.st), 0), aiNum(p100(p.expM), 0), aiNum(p.daysM), aiNum(p.mkM, 2)]), ...bad.map(p => ['not selling', p.k, p.n, p.sold, aiNum(p100(p.st), 0), aiNum(p100(p.expM), 0), aiNum(p.daysM), aiNum(p.mkM, 2)])] };
 }
+function toolCosts(i) {
+  const since = /^\d{4}-\d{2}-\d{2}/.test(i.since || '') ? i.since.slice(0, 10) : addDaysISO(SV.maxDay, -364), n = lim(i.limit, 25, 80), q = nrm(i.search || '');
+  const keepCur = SV.cur; let R; SV.cur = 'USD'; try { R = costGroups({ since, size: true, line: true, prod: !!i.include_unrecognised, min: Math.max(2, +i.min_pieces || 4), cat: c => CAT_EN[c] || c, grade: g => 'grade ' + g }); } finally { SV.cur = keepCur; }
+  const G = q ? R.groups.filter(g => nrm(g.k).includes(q.trim())) : R.groups, b = nrm(i.buyer || ''), who = b ? (R.buyers.find(x => nrm(x.b) === b) || R.buyers.find(x => nrm(x.b).includes(b))) : null;
+  const note = `Costs in USD at the rate of each purchase day (initial PAT, tax included). ${R.odd} pieces left out as outliers.${SV.stock?.rows?.some(x => x.price_init > 0) ? '' : ' Stock pieces use their current cost (initial cost not loaded yet).'}`;
+  const others = g => g.buyers.map(x => `${x.b} ${x.n}×${aiNum(x.cost)} (${premTxt(x.prem)})`).join('; ');
+  if (who) { const mine = G.map(g => ({ g, me: g.buyers.find(x => x.b === who.b) })).filter(x => x.me).sort((x, y) => y.me.over - x.me.over).slice(0, n);
+    return { title: `purchase_costs · buyer ${who.b} · bought since ${since}: ${who.n} comparable pieces in ${who.groups} groups, pays ${premTxt(who.prem)} vs group medians, ${aiNum(who.abovePct * 100, 0)}% of pieces above the median, overpaid $${aiNum(who.over)}, sells ${premTxt(who.salePrem)} vs median sale`, note,
+      columns: ['group', 'pieces', 'median_cost_usd', 'buyer_pieces', 'buyer_median_cost_usd', 'buyer_vs_median', 'buyer_overpaid_usd', 'cheapest_buyer', 'all_buyers (pieces×median cost, vs median)'],
+      rows: mine.map(({ g, me }) => [g.k, g.n, aiNum(g.M), me.n, aiNum(me.cost), premTxt(me.prem), aiNum(me.over), `${g.buyers[0].b} ${aiNum(g.buyers[0].cost)}`, others(g)]) }; }
+  return { title: `purchase_costs · bought since ${since}${b ? ` · buyer "${i.buyer}" not found` : ''}${q ? ` · search "${i.search}"` : ''}: ${G.reduce((t, g) => t + g.n, 0)} comparable pieces in ${G.length} groups, overpaid vs group medians $${aiNum(G.reduce((t, g) => t + g.save, 0))}`, note,
+    columns: ['row', 'name', 'pieces', 'median_cost_usd / buyer_vs_median', 'p10-p90 / %_above_median', 'median_sale_usd / sells_vs_median', 'overpaid_usd', 'buyers'],
+    rows: [...(q ? [] : R.buyers.map(x => ['buyer', x.b, x.n, premTxt(x.prem), aiNum(x.abovePct * 100, 0) + '%', premTxt(x.salePrem), aiNum(x.over), x.groups + ' groups'])),
+      ...G.slice(0, n).map(g => ['group', g.k, g.n, aiNum(g.M), `${aiNum(g.p10)}-${aiNum(g.p90)}`, aiNum(g.MS), aiNum(g.save), others(g)])] };
+}
 async function toolPhotos(i) {
   const codes = [...new Set((Array.isArray(i.codes) ? i.codes : []).map(c => String(c).trim().toUpperCase()).filter(c => /^[A-Z0-9_-]{1,40}$/.test(c)))].slice(0, 8);
   const tpl = store.get('tpl', 'https://s3.amazonaws.com/storage.j-ports/photographs/{id}/{size}/{n}.jpg');
@@ -186,7 +206,7 @@ async function toolPhotos(i) {
   const items = codes.map(c => ({ c, text: info(c), url: counts[c] > 0 ? photo(c) : null }));
   return { title: `view_photos · ${items.filter(x => x.url).length} of ${codes.length} with photo`, columns: ['code', 'piece', 'photo'], rows: items.map(x => [x.c, x.text, x.url ? 'yes' : 'no photo']), images: items };
 }
-const AI_RUN = { query_sales: toolQuerySales, stock_status: toolStock, list_items: toolList, top_terms: toolTerms, buyer_report: toolBuyers, view_photos: toolPhotos };
+const AI_RUN = { query_sales: toolQuerySales, stock_status: toolStock, list_items: toolList, top_terms: toolTerms, buyer_report: toolBuyers, purchase_costs: toolCosts, view_photos: toolPhotos };
 const aiCell = v => v == null || v === '' ? '—' : typeof v === 'number' ? (Math.abs(v) >= 1000 ? Math.round(v).toLocaleString('en-US') : String(v)) : String(v).replace(/\|/g, '/');
 const aiTableText = t => [t.title, t.note, t.columns.join(' | '), ...t.rows.map(r => r.map(aiCell).join(' | ')), t.total ? t.total.map(aiCell).join(' | ') : ''].filter(Boolean).join('\n');
 async function aiRunTool(u) { // ejecuta lo que pide la IA y devuelve el tool_result (texto; imágenes en view_photos)
@@ -279,7 +299,7 @@ function mdHTML(md) { // markdown sencillo (títulos, listas, negritas, tablas) 
   }
   flush(); return out.join('');
 }
-const AI_STEP_NAMES = { query_sales: '🔎 Ventas', stock_status: '📦 Stock', list_items: '📄 Piezas', top_terms: '🔤 Palabras de los títulos', buyer_report: '🛒 Buyers', view_photos: '📷 Fotos' };
+const AI_STEP_NAMES = { query_sales: '🔎 Ventas', stock_status: '📦 Stock', list_items: '📄 Piezas', top_terms: '🔤 Palabras de los títulos', buyer_report: '🛒 Buyers', purchase_costs: '💴 Precios de compra', view_photos: '📷 Fotos' };
 const AI_DIM_UI = { brand: 'Marca', product: 'Producto', model: 'Modelo', model_size: 'Modelo + talla', line: 'Línea / lona', color: 'Color', material: 'Material', size: 'Talla', category: 'Categoría', type: 'Tipo', channel: 'Canal',
   entity: 'Entidad', buyer: 'Buyer', owner: 'Owner', grade: 'Grado', month: 'Mes', week: 'Semana', cost_band: 'Coste', price_band: 'Precio', days_band: 'Días hasta vender', age_band: 'Antigüedad stock' };
 function stepLabel(s) {
@@ -287,7 +307,7 @@ function stepLabel(s) {
   if (i.group_by?.length) bits.push(tl('por {d}', { d: [].concat(i.group_by).map(d => tl(AI_DIM_UI[d] || d).toLowerCase()).join(' + ') }));
   if (i.period) { const [a, b] = aiPeriod(i.period); bits.push(`${fmtDay(a)} – ${fmtDay(b)}`); }
   if (i.filters && descF(i.filters) !== 'none') bits.push(descF(i.filters));
-  if (i.source) bits.push(i.source); if (i.buyer) bits.push(i.buyer);
+  if (i.source) bits.push(i.source); if (i.buyer) bits.push(i.buyer); if (i.search) bits.push(`«${i.search}»`);
   return bits.join(' · ') + ` (${s.t.rows.length})`;
 }
 function stepTable(t) {
@@ -317,6 +337,7 @@ const AI_PRESETS = ['¿Qué es lo que mejor se está vendiendo en los últimos 3
   'Compara los canales: ¿dónde vendo mejor cada categoría, por margen y por rapidez?',
   'Para cada buyer: ¿qué compra que se vende bien y qué compra que no se vende?',
   '¿Qué debería comprar más el mes que viene y qué debería dejar de comprar? Con costes orientativos.',
+  '¿Dónde podemos bajar costes de compra? Compara a los buyers con el mismo modelo, talla y grado: quién paga más por lo mismo y cuánto nos costaría de más.',
   'Mira las fotos de los 8 bolsos Chanel que más rápido se han vendido y dime qué tienen en común (color, piel, herrajes, estado).'];
 async function viewAI() {
   const el = $('sv-ai');

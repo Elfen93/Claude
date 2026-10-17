@@ -74,6 +74,13 @@ Everything is stored in **`catalog.db`**, a single file in the folder (not in gi
   - Pieces bought since the start of the history, how many sold, and what is normal for the same brand, category and purchase month (a fair comparison).
   - Click a buyer: what works, what does not, their stock older than 6 months and their stalled pieces, with Excel and «Show in search».
   - Meant to decide what to buy and where to sell, not to judge anyone.
+- **💴 Purchase prices:** who pays more for the same thing and where cost can come down:
+  - Groups what was bought (sold + in stock) by brand, model, size, line and grade. Example: «Louis Vuitton · Keepall 50 · Monogram · grade B+».
+  - Per group: median cost, normal range and, per buyer, how many they bought and their median cost vs the median (+12% = pays 12% more).
+  - «Overpaid»: what would have been saved buying everything at its group median. At the top, the summary per buyer.
+  - «Sells vs median»: if someone pays more but also sells higher, they are not overpaying. Look at the photos (click the group) before drawing conclusions.
+  - Cost = initial PAT with tax, at the rate of the purchase day. Choose Currency JPY to see exact yen. Pieces costing 3× more or less than their group don't count (usually a different item).
+  - For stock to use its initial cost, reload the stock sheet once in the finder.
 - **✨ Ask the AI:** write a question as you would ask a person («which Gucci models sell best and where?»).
   - The AI does not receive your file: it asks for tables computed on your computer (sales, stock, buyers, title words and, if needed, a few photos) and answers with those figures.
   - You can see every table it used and download them to Excel. You can ask follow-up questions.

@@ -40,7 +40,8 @@ const SV = { loaded: false, sales: [], fxDates: [], fxMap: {}, imports: [], appr
   cur: store.get('salesCur', 'USD'), period: store.get('salesPeriod', 'all'), from: '', to: '', cmp: store.get('salesCmp', 'prev'),
   rankDim: 'brand', rankSort: ['rev', -1], rankAll: false, itemsSort: ['d', -1], itemsPage: 0, itemsQ: '', itemsIssue: '',
   stockWin: 180, stockDim: 'brandcat', stockSig: '', stockSmall: false, stallSort: 'over', repMonth: '', metric: 'n',
-  topDim: 'prod', topSort: 'n', topMin: 3, topUnknown: false, topShowAll: false, buySince: 'hist', buySel: '' };
+  topDim: 'prod', topSort: 'n', topMin: 3, topUnknown: false, topShowAll: false, buySince: 'hist', buySel: '',
+  costSince: 'm12', costSize: true, costLine: true, costProd: false, costMin: 4, costBuyer: '', costAll: false };
 const FACETS = [
   { k: 'channel', l: 'Canal', v: s => s.channel }, { k: 'entity', l: 'Entidad', v: s => s.entity }, { k: 'cat', l: 'Categoría', v: s => s.cat, lab: x => tl(x) },
   { k: 'type', l: 'Tipo', v: s => s.typeC }, { k: 'brand', l: 'Marca', v: s => s.brand }, { k: 'owner', l: 'Owner', v: s => s.owner }, { k: 'buyer', l: 'Buyer', v: s => s.buyer },
@@ -179,9 +180,9 @@ function setCurK() { SV.sales.forEach(s => { s.k = SV.cur === 'USD' ? 1 : rateOn
 async function loadStock() {
   if (SV.stock) return SV.stock;
   const d = await api('stock'), today = new Date().toISOString().slice(0, 10);
-  SV.stock = { source: d.source, at: d.at, rows: d.rows.map(([code, brand, name, price, cur, entity, grade, type, channel, owner, buyer, added]) => {
+  SV.stock = { source: d.source, at: d.at, rows: d.rows.map(([code, brand, name, price, cur, entity, grade, type, channel, owner, buyer, added, price_init, cur_init]) => {
     const typeC = cleanType(type), costU = price > 0 ? todayUSD(price, cur) : null; // sin precio (o 0) no es «coste 0»
-    const x = { code, brand, name, price, cur, entity, grade: grade || '', type, typeC, cat: sCat(typeC), channel, owner, buyer, added, age: added ? daysBetween(added, today) : null, costU, band: bandOf(costU) };
+    const x = { code, brand, name, price, cur, price_init, cur_init, entity, grade: grade || '', type, typeC, cat: sCat(typeC), channel, owner, buyer, added, age: added ? daysBetween(added, today) : null, costU, band: bandOf(costU) };
     addAttrs(x, name); return x;
   }) };
   return SV.stock;
@@ -327,8 +328,8 @@ function paint() {
   $('sFx').textContent = [SV.period !== 'all' ? tl('{a} – {b}', { a: fmtDay(r[0]), b: fmtDay(r[1]) }) : '', c && SV.period !== 'all' ? tl('comparado con {a} – {b}', { a: fmtDay(c[0]), b: fmtDay(c[1]) }) : '',
     !SV.fxDates.length ? tl('⚠ sin tipos de cambio históricos: se usan los de hoy') : SV.approx ? tl('⚠ algunas monedas con el tipo de cambio de hoy') : ''].filter(Boolean).join(' · ');
   document.querySelectorAll('#sTabs button').forEach(b => b.classList.toggle('on', b.dataset.v === SV.view));
-  ['sum', 'top', 'buy', 'rank', 'stock', 'items', 'report', 'ai'].forEach(v => $('sv-' + v).style.display = v === SV.view ? '' : 'none');
-  ({ sum: viewSum, top: viewTop, buy: viewBuyers, rank: viewRank, stock: viewStock, items: viewItems, report: viewReport, ai: () => viewAI() })[SV.view]();
+  ['sum', 'top', 'buy', 'cost', 'rank', 'stock', 'items', 'report', 'ai'].forEach(v => $('sv-' + v).style.display = v === SV.view ? '' : 'none');
+  ({ sum: viewSum, top: viewTop, buy: viewBuyers, cost: viewCosts, rank: viewRank, stock: viewStock, items: viewItems, report: viewReport, ai: () => viewAI() })[SV.view]();
 }
 $('sTabs').onclick = e => { const b = e.target.closest('button'); if (!b) return; SV.view = b.dataset.v; paint(); };
 $('sPeriod').onchange = () => { SV.period = $('sPeriod').value; store.set('salesPeriod', SV.period); $('sCustom').style.display = SV.period === 'custom' ? '' : 'none'; paint(); };
@@ -688,6 +689,91 @@ function buyerSheets(C, g) {
   const P = buyerProducts(C, g).sort((a, b) => b.n - a.n);
   return [[tl('Productos'), [[tl('Producto'), tl('Compradas'), tl('Vendidas'), tl('% vendido'), tl('Lo normal'), tl('Días'), tl('×coste')], ...P.map(p => [p.k, p.n, p.sold, r2(p.st), r2(p.expM), p.daysM == null ? null : Math.round(p.daysM), r2(p.mkM)])]],
     [tl('Estancadas'), stalledSheet(g.stalled)], [tl('En stock'), [['CTag', tl('Marca'), tl('Descripción'), tl('Producto'), tl('Canal'), tl('Fecha de alta'), tl('Días en stock'), tl('Coste') + ' (USD)'], ...g.now.map(x => [x.code, x.brand, x.name, x.prod, x.channel, x.added, x.age, r2(x.costU)])]]];
+}
+
+/* ---------- 💴 Precios de compra: lo mismo (modelo, talla, línea y grado), ¿quién lo compra más caro? ---------- */
+function buyCost(v, cur, day) { // coste de compra en la moneda de la pantalla, al cambio del día de compra (en la misma moneda, exacto)
+  if (!(v > 0) || !cur) return null; if (cur === SV.cur) return v;
+  const u = toUSD(v, cur, day); if (u == null) return null; const k = SV.cur === 'USD' ? 1 : rateOn(SV.cur, day); return k ? u * k : null;
+}
+function purchases(since) { // todo lo comprado que conocemos: lo vendido + lo que sigue en stock, con su coste inicial
+  const today = new Date().toISOString().slice(0, 10), out = [];
+  for (const s of SV.sales) { if (!okRow(s)) continue; const day = s.added || s.d; if (since && day < since) continue;
+    const [v, c] = s.pat_init > 0 ? [s.pat_init, s.pat_init_cur || s.pat_cur] : [s.pat, s.pat_cur];
+    out.push({ x: s, code: s.code, buyer: s.buyer || '—', day, cost: buyCost(v, c, day), sold: true, sale: s.revU != null ? buyCost(s.revU, 'USD', s.d) : null, mk: s.profU != null && s.costU > 0 ? s.revU / s.costU : null, days: s.days }); }
+  for (const x of SV.stock?.rows || []) { if (!okRow(x)) continue; const day = x.added || today; if (since && day < since) continue;
+    const [v, c] = x.price_init > 0 ? [x.price_init, x.cur_init || x.cur] : [x.price, x.cur];
+    out.push({ x, code: x.code, buyer: x.buyer || '—', day, cost: buyCost(v, c, day), sold: false, age: x.age }); }
+  return out.filter(p => p.cost != null);
+}
+function costGroups(o) { // grupos comparables con su mediana; por buyer: cuánto paga frente a esa mediana
+  const key = p => { const x = p.x, m = o.prod ? x.prod : x.bm; if (!m || !x.grade) return '';
+    return [m + (o.size && x.size ? ' ' + x.size : ''), o.line && x.line && !m.includes(x.line) ? x.line : '', x.cat && x.cat !== 'Bolsos' && !o.prod ? (o.cat || tl)(x.cat) : '', (o.grade || (g => tl('grado {g}', { g })))(x.grade)].filter(Boolean).join(' · '); };
+  const G = new Map(); purchases(o.since).forEach(p => { const k = key(p); if (k) pushTo(G, k, p); });
+  const groups = []; let odd = 0;
+  for (const [k, all] of G) {
+    if (all.length < o.min) continue;
+    const M0 = median(all.map(p => p.cost)), l = all.filter(p => p.cost >= M0 / 3 && p.cost <= M0 * 3); // fuera de ×3 suele ser otra cosa (cartera, accesorio, error en el PAT)
+    if (l.length < o.min) continue; const by = new Map(); l.forEach(p => pushTo(by, p.buyer, p)); if (by.size < 2) continue; odd += all.length - l.length;
+    const M = median(l.map(p => p.cost)), sales = l.filter(p => p.sold && p.sale != null).map(p => p.sale), MS = median(sales);
+    const buyers = [...by].map(([b, ps]) => { const c = median(ps.map(p => p.cost)), sl = ps.filter(p => p.sold && p.sale != null);
+      return { b, n: ps.length, cost: c, prem: M ? c / M - 1 : null, over: ps.reduce((t, p) => t + Math.max(0, p.cost - M), 0), sale: median(sl.map(p => p.sale)), salePrem: MS && sl.length ? median(sl.map(p => p.sale)) / MS - 1 : null, sold: sl.length }; })
+      .sort((a, b) => a.cost - b.cost);
+    groups.push({ k, n: l.length, odd: all.filter(p => !l.includes(p)), M, p10: quant(l.map(p => p.cost), 0.1), p90: quant(l.map(p => p.cost), 0.9), MS, buyers, items: l, save: l.reduce((t, p) => t + Math.max(0, p.cost - M), 0) });
+  }
+  const B = new Map(); // resumen por buyer, solo con piezas de grupos comparables
+  groups.forEach(g => g.items.forEach(p => { let a = B.get(p.buyer); if (!a) B.set(p.buyer, a = { b: p.buyer, n: 0, sum: 0, med: 0, above: 0, over: 0, groups: new Set(), sp: [] });
+    a.n++; a.sum += p.cost; a.med += g.M; if (p.cost > g.M) a.above++; a.over += Math.max(0, p.cost - g.M); a.groups.add(g.k); if (p.sold && p.sale != null && g.MS) a.sp.push(p.sale / g.MS - 1); }));
+  const buyers = [...B.values()].map(a => ({ ...a, prem: a.med ? a.sum / a.med - 1 : null, abovePct: a.above / a.n, salePrem: median(a.sp), groups: a.groups.size })).sort((a, b) => b.n - a.n);
+  return { groups: groups.sort((a, b) => b.save - a.save), buyers, odd };
+}
+const premTxt = v => { if (v == null || !isFinite(v)) return '—'; const r = Math.round(v * 100); return `${r > 0 ? '+' : r < 0 ? '−' : '±'}${Math.abs(r)}%`; };
+async function viewCosts() {
+  const el = $('sv-cost');
+  if (!SV.stock) { el.innerHTML = `<p class="mute">${esc(tl('Cargando el stock…'))}</p>`; try { await loadStock(); } catch {} if (SV.view !== 'cost') return; }
+  const since = { m6: addDaysISO(SV.maxDay, -182), m12: addDaysISO(SV.maxDay, -364), all: '' }[SV.costSince] ?? addDaysISO(SV.maxDay, -364);
+  const R = costGroups({ since, size: SV.costSize, line: SV.costLine, prod: SV.costProd, min: SV.costMin }), sel = SV.costBuyer;
+  const groups = sel ? R.groups.filter(g => g.buyers.some(b => b.b === sel)) : R.groups, th = (t, n) => `<th${n ? ' class="num"' : ''}>${esc(t)}</th>`;
+  const tile = (k, v, s) => `<div class="tile" style="cursor:default"><div class="k">${esc(k)}</div><div class="v">${esc(v)}</div><div class="s">${esc(s || '')}</div></div>`;
+  const noInit = !(SV.stock?.rows || []).some(x => x.price_init > 0);
+  const show = SV.costAll ? groups : groups.slice(0, 30), cmp = R.groups.reduce((t, g) => t + g.n, 0);
+  el.innerHTML = `<div class="panel"><div class="row">
+      <label>${esc(tl('Compras de'))} <select id="ctS"><option value="m6">${esc(tl('Últimos 6 meses'))}</option><option value="m12">${esc(tl('Últimos 12 meses'))}</option><option value="all">${esc(tl('Todo'))}</option></select></label>
+      <label><input type="checkbox" id="ctSize"${SV.costSize ? ' checked' : ''}> ${esc(tl('misma talla'))}</label><label><input type="checkbox" id="ctLine"${SV.costLine ? ' checked' : ''}> ${esc(tl('misma línea (Monogram, Damier…)'))}</label>
+      <label><input type="checkbox" id="ctProd"${SV.costProd ? ' checked' : ''}> ${esc(tl('incluir sin modelo (línea + tipo)'))}</label>
+      <label>${esc(tl('mín. piezas por grupo'))} <input id="ctMin" type="number" min="2" value="${SV.costMin}" style="width:60px"></label>
+      <label>Buyer <select id="ctB"><option value="">${esc(tl('Todos'))}</option>${R.buyers.map(b => `<option value="${esc(b.b)}">${esc(b.b)} (${b.n})</option>`).join('')}</select></label>
+      <button id="ctX" style="margin-left:auto">⬇ Excel</button></div>
+    <p class="hint" style="margin:6px 0 0">${esc(tl('Se compara lo mismo con lo mismo: mismo modelo, talla, línea y grado (el grado del título o de la pestaña Grading; sin grado no entra). Coste = PAT inicial (con impuestos) en {c}, al cambio del día de compra. Las piezas vendidas y las que siguen en stock cuentan igual.', { c: SV.cur }))}
+      ${SV.cur !== 'JPY' ? ' ' + esc(tl('Consejo: elige Moneda JPY arriba para ver los yenes exactos.')) : ''}</p>
+    ${noInit ? `<p class="hint" style="color:var(--warn)">⚠ ${esc(tl('Vuelve a cargar la hoja de stock en el buscador para tener también el coste inicial de lo que está en stock (ahora se usa el actual).'))}</p>` : ''}</div>
+    <div class="tiles">${tile(tl('Piezas comparables'), cmp.toLocaleString('en-US'), tl('{n} grupos con 2+ buyers', { n: R.groups.length }))}${tile(tl('Pagado por encima de la mediana'), moneyC(R.groups.reduce((t, g) => t + g.save, 0)), tl('lo que se habría ahorrado comprando todo a la mediana de su grupo'))}</div>
+    <div class="panel"><h2>${esc(tl('Por buyer'))}</h2><div style="overflow:auto"><table class="list"><tr>${th('Buyer')}${th(tl('Piezas comparadas'), 1)}${th(tl('Grupos'), 1)}${th(tl('Paga frente a la mediana'), 1)}${th(tl('Piezas por encima'), 1)}${th(tl('Pagado de más'), 1)}${th(tl('Vende frente a la mediana'), 1)}</tr>
+      ${R.buyers.map(b => `<tr><td class="lbl" data-b="${esc(b.b)}">${esc(b.b)}</td><td class="num">${b.n}</td><td class="num">${b.groups}</td><td class="num">${premTxt(b.prem)}</td><td class="num">${pct(b.abovePct, 0)}</td><td class="num">${esc(moneyC(b.over))}</td><td class="num">${premTxt(b.salePrem)}</td></tr>`).join('')}</table></div>
+      <p class="hint">${esc(tl('«Paga frente a la mediana»: cuánto más (o menos) paga que la mediana de cada grupo. «Vende frente a la mediana»: lo mismo con el precio de venta de lo ya vendido; si alguien paga más pero también vende más caro (mejor color, accesorios, año), no está pagando de más. El mismo grado no es la misma pieza: mira las fotos antes de sacar conclusiones.'))}</p></div>
+    <div class="panel"><h2>${esc(tl('Dónde se puede bajar el coste'))}${sel ? ` · ${esc(sel)}` : ''}</h2><div style="overflow:auto"><table class="list"><tr>${th(tl('Grupo'))}${th(tl('Piezas'), 1)}${th(tl('Coste mediano'), 1)}${th(tl('Rango (10–90%)'), 1)}${th(tl('Por buyer: piezas × coste mediano (frente a la mediana)'))}${th(tl('Venta mediana'), 1)}${th(tl('Pagado de más'), 1)}</tr>
+      ${show.map((g, i) => `<tr><td class="lbl" data-g="${i}">${esc(g.k)}</td><td class="num">${g.n}</td><td class="num">${esc(money(g.M))}</td><td class="num">${esc(money(g.p10))} – ${esc(money(g.p90))}</td>
+        <td>${g.buyers.map(b => `<span class="chip" style="margin:0 4px 4px 0;${b.b === sel ? 'border-color:var(--acc);font-weight:600' : ''}">${esc(b.b)} ${b.n} × ${esc(money(b.cost))} <small>${premTxt(b.prem)}</small></span>`).join('')}</td>
+        <td class="num">${esc(money(g.MS))}</td><td class="num">${esc(money(g.save))}</td></tr>`).join('') || `<tr><td colspan="7" class="mute">${esc(tl('Nada con esas condiciones.'))}</td></tr>`}</table></div>
+      ${groups.length > 30 ? `<button id="ctAll" style="margin-top:8px">${esc(SV.costAll ? tl('Ver solo los 30 primeros') : tl('Ver todos ({n})', { n: groups.length }))}</button>` : ''}
+      <p class="hint">${esc(tl('Pulsa un grupo para ver las piezas una a una (con foto, fecha, coste y a cuánto se vendió).'))}${R.odd ? ' ' + esc(tl('{n} piezas con un coste 3 veces por encima o por debajo de su grupo no cuentan (suelen ser otra cosa: cartera, accesorio o un PAT mal puesto); salen al final del detalle.', { n: R.odd })) : ''}</p></div><div id="ctDet"></div>`;
+  $('ctS').value = SV.costSince; $('ctB').value = sel;
+  $('ctS').onchange = () => { SV.costSince = $('ctS').value; viewCosts(); }; $('ctB').onchange = () => { SV.costBuyer = $('ctB').value; viewCosts(); };
+  $('ctSize').onchange = () => { SV.costSize = $('ctSize').checked; viewCosts(); }; $('ctLine').onchange = () => { SV.costLine = $('ctLine').checked; viewCosts(); };
+  $('ctProd').onchange = () => { SV.costProd = $('ctProd').checked; viewCosts(); }; $('ctMin').onchange = () => { SV.costMin = Math.max(2, +$('ctMin').value || 4); viewCosts(); };
+  if ($('ctAll')) $('ctAll').onclick = () => { SV.costAll = !SV.costAll; viewCosts(); };
+  el.querySelectorAll('[data-b]').forEach(td => td.onclick = () => { SV.costBuyer = td.dataset.b; viewCosts(); });
+  el.querySelectorAll('[data-g]').forEach(td => td.onclick = () => { const g = show[+td.dataset.g];
+    $('ctDet').innerHTML = `<div class="panel"><h2>${esc(g.k)}</h2><div style="overflow:auto"><table class="list"><tr><th></th>${th('CTag')}${th('Buyer')}${th(tl('Fecha de alta'))}${th(tl('Coste'), 1)}${th(tl('frente a la mediana'), 1)}${th(tl('Venta'), 1)}${th(tl('Días'), 1)}${th(tl('Descripción'))}</tr>
+      ${[...g.items].sort((a, b) => b.cost - a.cost).map(p => `<tr><td><img class="thumb" src="${esc(photo(p.code))}" loading="lazy" onerror="this.style.visibility='hidden'"></td><td>${esc(p.code)}</td><td>${esc(p.buyer)}</td><td>${esc(fmtDay(p.day))}</td><td class="num">${esc(money(p.cost))}</td><td class="num">${premTxt(g.M ? p.cost / g.M - 1 : null)}</td>
+        <td class="num">${p.sold ? esc(money(p.sale)) : `<span class="mute">${esc(tl('en stock'))} · ${p.age ?? '—'} ${esc(tl('días'))}</span>`}</td><td class="num">${p.sold ? p.days ?? '—' : ''}</td><td>${esc(((p.sold ? p.x.descr : p.x.name) || '').slice(0, 70))}</td></tr>`).join('')}
+      ${g.odd.length ? `<tr><td colspan="9" class="mute">${esc(tl('No cuentan (coste fuera de ×3):'))} ${g.odd.map(p => `${esc(p.code)} ${esc(p.buyer)} ${esc(money(p.cost))} · ${esc(((p.sold ? p.x.descr : p.x.name) || '').slice(0, 40))}`).join(' · ')}</td></tr>` : ''}</table></div></div>`;
+    $('ctDet').scrollIntoView({ behavior: 'smooth' }); });
+  $('ctX').onclick = () => xlsxDownload([[tl('Por buyer'), [['Buyer', tl('Piezas comparadas'), tl('Grupos'), tl('Paga frente a la mediana'), tl('Piezas por encima'), tl('Pagado de más') + ` (${SV.cur})`, tl('Vende frente a la mediana')],
+      ...R.buyers.map(b => [b.b, b.n, b.groups, r2(b.prem), r2(b.abovePct), r2(b.over), r2(b.salePrem)])]],
+    [tl('Grupos'), [[tl('Grupo'), 'Buyer', tl('Piezas'), tl('Coste mediano') + ` (${SV.cur})`, tl('frente a la mediana'), tl('Venta mediana') + ` (${SV.cur})`, tl('Pagado de más') + ` (${SV.cur})`],
+      ...groups.flatMap(g => g.buyers.map(b => [g.k, b.b, b.n, r2(b.cost), r2(b.prem), r2(b.sale), r2(b.over)]))]],
+    [tl('Piezas'), [[tl('Grupo'), 'CTag', 'Buyer', tl('Fecha de alta'), tl('Coste') + ` (${SV.cur})`, tl('Venta') + ` (${SV.cur})`, tl('Situación')], ...groups.flatMap(g => g.items.map(p => [g.k, p.code, p.buyer, p.day, r2(p.cost), r2(p.sale), p.sold ? tl('vendida') : tl('en stock')]))]]], 'precios_de_compra');
 }
 
 /* ---------- Informe mensual (PDF y Excel) ---------- */

@@ -76,6 +76,13 @@ Todo se guarda en **`catalog.db`**, un solo archivo dentro de la carpeta (no va 
   - Piezas compradas desde el inicio del histórico, cuántas se vendieron y lo normal para la misma marca, categoría y mes de compra (para comparar en igualdad de condiciones).
   - Pulsando un buyer: lo que le funciona, lo que no, su stock de más de 6 meses y sus piezas estancadas, con Excel y «Ver en el buscador».
   - Sirve para decidir qué comprar y dónde vender, no para juzgar a nadie.
+- **💴 Precios de compra:** quién paga más por lo mismo y dónde se puede bajar el coste:
+  - Agrupa lo comprado (vendido + en stock) por marca, modelo, talla, línea y grado. Ejemplo: «Louis Vuitton · Keepall 50 · Monogram · grado B+».
+  - En cada grupo: coste mediano, rango normal y, por buyer, cuántas compró y a qué coste mediano frente a la mediana (+12 % = paga un 12 % más).
+  - «Pagado de más»: lo que se habría ahorrado comprando todo a la mediana de su grupo. Arriba, el resumen por buyer.
+  - «Vende frente a la mediana»: si alguien paga más pero también vende más caro, no está pagando de más. Mira las fotos (pulsa el grupo) antes de sacar conclusiones.
+  - Coste = PAT inicial con impuestos, al cambio del día de compra. Elige Moneda JPY para ver los yenes exactos. Lo que cuesta 3 veces más o menos que su grupo no cuenta (suele ser otra cosa).
+  - Para que el stock use su coste inicial, vuelve a cargar la hoja de stock una vez en el buscador.
 - **✨ Pregúntale a la IA:** escribe una pregunta como se la harías a una persona («¿qué modelos de Gucci se venden mejor y dónde?»).
   - La IA no recibe tu archivo: pide tablas que se calculan en tu ordenador (ventas, stock, buyers, palabras de los títulos y, si hace falta, algunas fotos) y responde con esas cifras.
   - Puedes ver cada tabla que ha usado y bajarlas a Excel. Puedes seguir preguntando sobre la misma respuesta.
