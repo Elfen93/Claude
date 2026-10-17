@@ -39,19 +39,30 @@ const bandOf = u => u == null ? '' : BANDS.find(([a, b]) => u >= a && u < b)[2];
 const SV = { loaded: false, sales: [], fxDates: [], fxMap: {}, imports: [], approx: false, stock: null, colors: new Map(), view: 'sum',
   cur: store.get('salesCur', 'USD'), period: store.get('salesPeriod', 'all'), from: '', to: '', cmp: store.get('salesCmp', 'prev'),
   rankDim: 'brand', rankSort: ['rev', -1], rankAll: false, itemsSort: ['d', -1], itemsPage: 0, itemsQ: '', itemsIssue: '',
-  stockWin: 180, stockDim: 'brandcat', stockSig: '', stockSmall: false, stallSort: 'over', repMonth: '', metric: 'n' };
+  stockWin: 180, stockDim: 'brandcat', stockSig: '', stockSmall: false, stallSort: 'over', repMonth: '', metric: 'n',
+  topDim: 'prod', topSort: 'n', topMin: 3, topUnknown: false, topShowAll: false, buySince: 'hist', buySel: '' };
 const FACETS = [
   { k: 'channel', l: 'Canal', v: s => s.channel }, { k: 'entity', l: 'Entidad', v: s => s.entity }, { k: 'cat', l: 'Categoría', v: s => s.cat, lab: x => tl(x) },
   { k: 'type', l: 'Tipo', v: s => s.typeC }, { k: 'brand', l: 'Marca', v: s => s.brand }, { k: 'owner', l: 'Owner', v: s => s.owner }, { k: 'buyer', l: 'Buyer', v: s => s.buyer },
-  { k: 'grade', l: 'Grado', v: s => s.grade }, { k: 'band', l: 'Coste (PAT, USD)', v: s => s.band }];
+  { k: 'grade', l: 'Grado', v: s => s.grade }, { k: 'band', l: 'Coste (PAT, USD)', v: s => s.band },
+  { k: 'model', l: 'Modelo', v: s => s.bm }, { k: 'line', l: 'Línea / lona', v: s => s.bl }, { k: 'color', l: 'Color', v: s => s.color }, { k: 'material', l: 'Material', v: s => s.material }, { k: 'size', l: 'Talla', v: s => s.size },
+  { k: 'prod', l: 'Producto', v: s => s.prod }];
 const SF = Object.fromEntries(FACETS.map(f => [f.k, new Set()]));
-const PILLS = [['channel', 'Canal', ['channel']], ['entity', 'Entidad', ['entity']], ['cat', 'Categoría', ['cat', 'type']], ['brand', 'Marca', ['brand'], true],
+const PILLS = [['channel', 'Canal', ['channel']], ['entity', 'Entidad', ['entity']], ['cat', 'Categoría', ['cat', 'type']], ['brand', 'Marca', ['brand'], true], ['prodp', 'Modelo / color', ['model', 'line', 'color', 'material', 'size'], true],
   ['orig', 'Owner / Buyer', ['owner', 'buyer']], ['grade', 'Grado', ['grade']], ['band', 'Coste', ['band']]];
 const okRow = (s, skip) => FACETS.every(f => f.k === skip || !SF[f.k].size || SF[f.k].has(f.v(s)));
 const DIMS = { channel: ['Canal', s => s.channel], brand: ['Marca', s => s.brand], cat: ['Categoría', s => s.cat ? tl(s.cat) : ''], type: ['Tipo', s => s.typeC],
   entity: ['Entidad', s => s.entity], owner: ['Owner', s => s.owner], buyer: ['Buyer', s => s.buyer], grade: ['Grado', s => s.grade], month: ['Mes', s => s.m],
-  band: ['Coste (PAT, USD)', s => s.band], brandcat: ['Marca · categoría', s => s.brand ? `${s.brand} · ${tl(s.cat || 'Otros')}` : ''] };
-const dimFacet = { channel: 'channel', brand: 'brand', type: 'type', entity: 'entity', owner: 'owner', buyer: 'buyer', grade: 'grade', band: 'band' };
+  band: ['Coste (PAT, USD)', s => s.band], brandcat: ['Marca · categoría', s => s.brand ? `${s.brand} · ${tl(s.cat || 'Otros')}` : ''],
+  prod: ['Producto (modelo, o línea + tipo)', s => s.prod], model: ['Modelo', s => s.bm], modelSize: ['Modelo + talla', s => s.bms], line: ['Línea / lona', s => s.bl], color: ['Color', s => s.color],
+  material: ['Material', s => s.material], size: ['Talla', s => s.size] };
+const dimFacet = { channel: 'channel', brand: 'brand', type: 'type', entity: 'entity', owner: 'owner', buyer: 'buyer', grade: 'grade', band: 'band', prod: 'prod', model: 'model', line: 'line', color: 'color', material: 'material', size: 'size' };
+function addAttrs(x, title) { // modelo, línea, color, material y talla leídos del título (attrs.js)
+  const a = typeof attrsOf === 'function' ? attrsOf(x.brand, title, x.typeC) : {}, b = x.brand || '—';
+  x.model = a.model || ''; x.line = a.line || ''; x.color = a.color || ''; x.material = a.material || ''; x.size = a.size || '';
+  x.bm = x.model ? `${b} · ${x.model}` : ''; x.bms = x.bm ? x.bm + (x.size ? ' ' + x.size : '') : ''; x.bl = x.line ? `${b} · ${x.line}` : '';
+  x.prod = x.bm || `${b} · ${[x.line, x.typeC].filter(Boolean).join(' ') || '—'}`;
+}
 
 /* ---------- tipos de cambio por día (BCE) ---------- */
 function rateOn(cur, day) { // unidades de «cur» por 1 USD el día «day» (o el último día hábil anterior)
@@ -161,7 +172,7 @@ function prepSale(s) {
   s.days = s.added ? daysBetween(s.added, s.d) : null;
   s.revU = toUSD(s.sold, s.sold_cur, s.d); s.costU = toUSD(s.pat, s.pat_cur, s.d);
   s.profU = s.revU != null && s.costU != null && s.sold > 0 && s.pat > 0 ? s.revU - s.costU : null;
-  s.band = bandOf(s.costU); s.grade = s.grade || '';
+  s.band = bandOf(s.costU); s.grade = s.grade || ''; addAttrs(s, s.descr);
   return s;
 }
 function setCurK() { SV.sales.forEach(s => { s.k = SV.cur === 'USD' ? 1 : rateOn(SV.cur, s.d) || null; }); }
@@ -170,7 +181,8 @@ async function loadStock() {
   const d = await api('stock'), today = new Date().toISOString().slice(0, 10);
   SV.stock = { source: d.source, at: d.at, rows: d.rows.map(([code, brand, name, price, cur, entity, grade, type, channel, owner, buyer, added]) => {
     const typeC = cleanType(type), costU = price > 0 ? todayUSD(price, cur) : null; // sin precio (o 0) no es «coste 0»
-    return { code, brand, name, price, cur, entity, grade: grade || '', type, typeC, cat: sCat(typeC), channel, owner, buyer, added, age: added ? daysBetween(added, today) : null, costU, band: bandOf(costU) };
+    const x = { code, brand, name, price, cur, entity, grade: grade || '', type, typeC, cat: sCat(typeC), channel, owner, buyer, added, age: added ? daysBetween(added, today) : null, costU, band: bandOf(costU) };
+    addAttrs(x, name); return x;
   }) };
   return SV.stock;
 }
@@ -279,7 +291,7 @@ function fillChips(per) {
   for (const f of FACETS) {
     const el = document.querySelector(`#sBar [data-chips="${f.k}"]`); if (!el) continue;
     const cnt = new Map(); for (const s of per) if (okRow(s, f.k)) { const v = f.v(s); if (v) cnt.set(v, (cnt.get(v) || 0) + 1); }
-    const q = (document.querySelector(`#sBar [data-find]`)?.closest('.pop')?.contains(el) ? strip2(document.querySelector('#sBar [data-find]').value) : '');
+    const fi = el.closest('.pop')?.querySelector('[data-find]'), q = fi ? strip2(fi.value) : '';
     let list = [...cnt].sort((a, b) => f.k === 'grade' ? GRADE_ORDER.indexOf(a[0]) - GRADE_ORDER.indexOf(b[0]) : f.k === 'band' ? BANDS.findIndex(x => x[2] === a[0]) - BANDS.findIndex(x => x[2] === b[0]) : b[1] - a[1]);
     if (q) list = list.filter(([k]) => strip2(k).includes(q));
     const max = q ? 200 : 60; SF[f.k].forEach(v => { if (!list.slice(0, max).some(x => x[0] === v)) list.unshift([v, cnt.get(v) || 0]); });
@@ -315,8 +327,8 @@ function paint() {
   $('sFx').textContent = [SV.period !== 'all' ? tl('{a} – {b}', { a: fmtDay(r[0]), b: fmtDay(r[1]) }) : '', c && SV.period !== 'all' ? tl('comparado con {a} – {b}', { a: fmtDay(c[0]), b: fmtDay(c[1]) }) : '',
     !SV.fxDates.length ? tl('⚠ sin tipos de cambio históricos: se usan los de hoy') : SV.approx ? tl('⚠ algunas monedas con el tipo de cambio de hoy') : ''].filter(Boolean).join(' · ');
   document.querySelectorAll('#sTabs button').forEach(b => b.classList.toggle('on', b.dataset.v === SV.view));
-  ['sum', 'rank', 'stock', 'items', 'report'].forEach(v => $('sv-' + v).style.display = v === SV.view ? '' : 'none');
-  ({ sum: viewSum, rank: viewRank, stock: viewStock, items: viewItems, report: viewReport })[SV.view]();
+  ['sum', 'top', 'buy', 'rank', 'stock', 'items', 'report', 'ai'].forEach(v => $('sv-' + v).style.display = v === SV.view ? '' : 'none');
+  ({ sum: viewSum, top: viewTop, buy: viewBuyers, rank: viewRank, stock: viewStock, items: viewItems, report: viewReport, ai: () => viewAI() })[SV.view]();
 }
 $('sTabs').onclick = e => { const b = e.target.closest('button'); if (!b) return; SV.view = b.dataset.v; paint(); };
 $('sPeriod').onchange = () => { SV.period = $('sPeriod').value; store.set('salesPeriod', SV.period); $('sCustom').style.display = SV.period === 'custom' ? '' : 'none'; paint(); };
@@ -489,7 +501,7 @@ async function viewStock() {
     <div class="tiles">${tile(tl('Stock'), totN.toLocaleString('en-US'), tl('a coste: {v}', { v: moneyC(fromTodayUSD(value)) }))}${tile(tl('Meses de stock'), totMos == null ? '—' : totMos.toFixed(1), tl('al ritmo de los últimos {d} días', { d: SV.stockWin }))}
       ${tile(tl('Stock de más de 1 año'), `${old.length.toLocaleString('en-US')} (${pct(old.length / (totN || 1), 0)})`, tl('a coste: {v}', { v: moneyC(fromTodayUSD(oldV)) }))}${tile(tl('Piezas estancadas'), stl.length.toLocaleString('en-US'), tl('a coste: {v}', { v: moneyC(stlV) }))}
       ${tile(tl('Señales'), `▲ ${cnt('buy')} · ▼ ${cnt('over')}`, tl('compra más · sobrestock'))}</div>
-    <div class="panel"><div class="row"><label>${esc(tl('Agrupar por'))} <select id="stDim">${['brandcat', 'brand', 'cat', 'type', 'channel', 'entity', 'owner', 'buyer', 'grade', 'band'].map(k => `<option value="${k}">${esc(tl(DIMS[k][0]))}</option>`).join('')}</select></label>
+    <div class="panel"><div class="row"><label>${esc(tl('Agrupar por'))} <select id="stDim">${['brandcat', 'prod', 'model', 'brand', 'cat', 'type', 'line', 'color', 'material', 'channel', 'entity', 'owner', 'buyer', 'grade', 'band'].map(k => `<option value="${k}">${esc(tl(DIMS[k][0]))}</option>`).join('')}</select></label>
       <label>${esc(tl('Ventana de ventas'))} <select id="stWin"><option value="90">90 ${esc(tl('días'))}</option><option value="180">180 ${esc(tl('días'))}</option><option value="365">365 ${esc(tl('días'))}</option></select></label>
       <select id="stSig"><option value="">${esc(tl('Todas las señales'))}</option><option value="buy">▲ ${esc(tl('Compra más'))} (${cnt('buy')})</option><option value="slow">◆ ${esc(tl('Lento'))} (${cnt('slow')})</option><option value="over">▼ ${esc(tl('Sobrestock'))} (${cnt('over')})</option></select>
       <label><input type="checkbox" id="stSmall"${SV.stockSmall ? ' checked' : ''}> ${esc(tl('incluir grupos pequeños'))}</label></div>
@@ -518,6 +530,166 @@ async function viewStock() {
   $('stlX').onclick = () => xlsxDownload([[tl('Estancadas'), stalledSheet(stl)], [tl('Rotación'), rotationSheet(R.rows)]], 'stock_estancado');
 }
 
+/* ---------- 🔥 Qué se vende: productos concretos, tendencia, canal y stock ---------- */
+function chanStats(list) { // por canal: ventas, ×coste mediano y días medianos; el mejor (×) y el más rápido entre los que tienen 3+ ventas
+  const m = new Map();
+  for (const s of list) {
+    let c = m.get(s.channel); if (!c) m.set(s.channel, c = { name: s.channel, n: 0, mk: [], days: [] }); c.n++;
+    if (s.profU != null && s.costU > 0) c.mk.push(s.revU / s.costU); if (s.days != null && s.days >= 0) c.days.push(s.days);
+  }
+  const all = [...m.values()].map(c => ({ name: c.name, n: c.n, mk: median(c.mk), days: median(c.days) })).sort((a, b) => b.n - a.n), ok = all.filter(c => c.n >= 3);
+  return { all, best: ok.filter(c => c.mk != null).sort((a, b) => b.mk - a.mk)[0] || null, fast: ok.filter(c => c.days != null).sort((a, b) => a.days - b.days)[0] || null };
+}
+function chanBar(all) { // reparto de ventas por canal: barra (color = canal) + los dos primeros en texto
+  const total = all.reduce((t, c) => t + c.n, 0); if (!total) return '<span class="mute">—</span>';
+  const txt = all.slice(0, 2).map(c => `${c.name} ${Math.round(c.n / total * 100)}%`).join(' · ');
+  return `<div class="cbar" role="img" aria-label="${esc(txt)}">${all.map(c => `<i style="flex:${c.n} 1 0;background:${SV.colors.get(c.name) || 'var(--series-other)'}"></i>`).join('')}</div><small class="mute">${esc(txt)}</small>`;
+}
+const pushTo = (m, k, v) => { let a = m.get(k); if (!a) m.set(k, a = []); a.push(v); return a; };
+function topRows(dim) { // por grupo: ventas del periodo (y el anterior), canal mejor/más rápido (con todo el histórico) y stock actual
+  const fn = DIMS[dim][1], cur = curSales(), prev = cmpSales(), r = periodRange(), months = Math.max((daysBetween(r[0], r[1]) + 1) / 30.44, 0.25);
+  const G = new Map(), P = new Map(), H = new Map(), K = new Map(), kk = SV.cur === 'USD' ? 1 : rates?.[SV.cur] || NaN;
+  cur.forEach(s => pushTo(G, fn(s) || '—', s)); prev.forEach(s => { const k = fn(s) || '—'; P.set(k, (P.get(k) || 0) + 1); });
+  SV.sales.forEach(s => { if (okRow(s)) pushTo(H, fn(s) || '—', s); });
+  (SV.stock?.rows || []).forEach(x => { if (okRow(x)) pushTo(K, fn(x) || '—', x); });
+  return [...new Set([...G.keys(), ...K.keys()])].map(k => {
+    const list = G.get(k) || [], A = agg(list), stock = K.get(k) || [], ch = chanStats(H.get(k) || []), mix = chanStats(list).all;
+    const mk = median(list.filter(s => s.profU != null && s.costU > 0).map(s => s.revU / s.costU)), price = median(list.filter(s => s.revU != null && s.k).map(s => s.revU * s.k));
+    const perMonth = list.length / months, mos = perMonth ? stock.length / perMonth : (stock.length ? Infinity : null), prevN = P.get(k) || 0;
+    const sig = list.length >= 5 && mos != null && mos < 3 && (A.margin ?? 0) > 0 ? 'buy' : stock.length >= 5 && (mos == null || mos > 12) ? 'over' : stock.length >= 5 && mos > 6 ? 'slow' : '';
+    const generic = k === '—' || (dim === 'prod' && list.concat(stock).every(x => !x.model && !x.line));
+    return { k, generic, n: list.length, prevN, trend: prevN ? (list.length - prevN) / prevN : null, rev: A.rev, prof: A.prof, margin: A.margin, markup: mk, price, days: A.days, mix, best: ch.best, fast: ch.fast,
+      stock: stock.length, value: stock.reduce((t, x) => t + (x.costU || 0), 0) * kk, age: median(stock.map(x => x.age).filter(v => v != null)), mos, sig, codes: stock.map(x => x.code) };
+  });
+}
+const unknownGroup = r => r.generic || / · —$/.test(r.k);
+const mosTxt = v => v == null ? '—' : v === Infinity ? '∞' : v.toFixed(1);
+const trendTxt = r => r.trend == null ? (r.prevN === 0 && r.n ? tl('nuevo') : '—') : `${r.trend > 0 ? '▲' : r.trend < 0 ? '▼' : '＝'} ${Math.abs(r.trend * 100).toFixed(0)}%`;
+function topSentence(r) { // una frase concreta por grupo, con las cifras de la tabla
+  const parts = [tl('{g}: {n} vendidos', { g: r.k, n: r.n })];
+  if (r.trend != null) parts[0] += ` (${trendTxt(r)} ${cmpName()})`;
+  if (r.price != null) parts.push(tl('precio típico {p}', { p: money(r.price) }) + (r.markup ? ` (×${r.markup.toFixed(2)} ${tl('sobre coste')})` : ''));
+  if (r.days != null) parts.push(tl('{d} días hasta vender', { d: Math.round(r.days) }));
+  let s = parts.join(', ') + '. ';
+  if (r.mix.length) s += tl('Se vende sobre todo en {c} ({p}%)', { c: r.mix[0].name, p: Math.round(r.mix[0].n / r.n * 100) });
+  if (r.best) s += '; ' + tl('mejor margen en {c} (×{m})', { c: r.best.name, m: r.best.mk.toFixed(2) });
+  if (r.fast && r.fast.name !== r.best?.name) s += '; ' + tl('más rápido en {c} ({d} días)', { c: r.fast.name, d: Math.round(r.fast.days) });
+  return s + '. ' + tl('Stock: {n}', { n: r.stock }) + (r.stock ? ` (${tl('{m} meses', { m: mosTxt(r.mos) })})` : '') + (r.sig ? ' ' + sigHTML(r.sig).replace(/<[^>]+>/g, '') : '') + '.';
+}
+async function viewTop() {
+  const el = $('sv-top');
+  if (!SV.stock) { el.innerHTML = `<p class="mute">${esc(tl('Cargando el stock…'))}</p>`; try { await loadStock(); } catch {} if (SV.view !== 'top') return; }
+  const dim = SV.topDim, rows = topRows(dim), fac = dimFacet[dim];
+  const sold = rows.filter(r => r.n >= SV.topMin && (SV.topUnknown || !unknownGroup(r)));
+  const S = { n: (a, b) => b.n - a.n, prof: (a, b) => b.prof - a.prof, rev: (a, b) => b.rev - a.rev, fast: (a, b) => (a.days ?? 1e9) - (b.days ?? 1e9), trend: (a, b) => (b.trend ?? -1e9) - (a.trend ?? -1e9), markup: (a, b) => (b.markup ?? 0) - (a.markup ?? 0) };
+  sold.sort(S[SV.topSort] || S.n);
+  const stuck = rows.filter(r => r.stock >= 3 && (SV.topUnknown || !unknownGroup(r)) && (r.mos == null || r.mos > 12)).sort((a, b) => b.value - a.value).slice(0, 8);
+  const show = SV.topShowAll ? sold : sold.slice(0, 40), th = (t, n) => `<th${n ? ' class="num"' : ''}>${esc(t)}</th>`;
+  const lbl = r => `<td class="${fac ? 'lbl' : ''}" data-v="${esc(r.k)}">${esc(r.k)}</td>`;
+  el.innerHTML = `<div class="panel"><div class="row">
+      <label>${esc(tl('Agrupar por'))} <select id="tpDim">${['prod', 'model', 'modelSize', 'line', 'color', 'material', 'size', 'brandcat', 'brand', 'type'].map(k => `<option value="${k}">${esc(tl(DIMS[k][0]))}</option>`).join('')}</select></label>
+      <label>${esc(tl('Ordenar por'))} <select id="tpSort"><option value="n">${esc(tl('Unidades'))}</option><option value="prof">${esc(tl('Beneficio'))}</option><option value="rev">${esc(tl('Ingresos'))}</option><option value="markup">${esc(tl('×coste'))}</option><option value="fast">${esc(tl('Los más rápidos'))}</option><option value="trend">${esc(tl('Tendencia'))}</option></select></label>
+      <label>${esc(tl('mín. ventas'))} <input id="tpMin" type="number" min="1" value="${SV.topMin}" style="width:60px"></label>
+      <label title="${esc(tl('Grupos sin modelo ni línea en el título, p. ej. «Gucci · Shoulder bag»'))}"><input type="checkbox" id="tpUnk"${SV.topUnknown ? ' checked' : ''}> ${esc(tl('incluir grupos genéricos'))}</label>
+      <button id="tpX" style="margin-left:auto">⬇ Excel</button></div>
+    ${SV.period === 'all' ? `<p class="hint" style="margin:6px 0 0">${esc(tl('Consejo: elige arriba un periodo (p. ej. «Últimos 90 días») para ver la tendencia frente al periodo anterior.'))}</p>` : ''}
+    <p class="hint" style="margin:6px 0 0">${esc(tl('El modelo, la línea, el color, el material y la talla se leen del título. «Producto» = el modelo si se reconoce; si no, la línea y el tipo (p. ej. «Prada · Saffiano Tote bag»).'))}</p></div>
+    <div class="cols2x"><div class="panel"><h2>🔥 ${esc(tl('Lo que mejor se vende'))}</h2>${sold.length ? `<ul class="facts">${sold.slice(0, 5).map(r => `<li>${esc(topSentence(r))}</li>`).join('')}</ul>` : `<p class="mute">${esc(tl('Nada con esas condiciones.'))}</p>`}</div>
+      <div class="panel"><h2>🧊 ${esc(tl('Lo que no se mueve'))}</h2>${stuck.length ? `<ul class="facts">${stuck.map(r => `<li>${esc(tl('{g}: {s} en stock (coste {v}, mediana {a} días); {n} vendidos en el periodo → {m} meses de stock.', { g: r.k, s: r.stock, v: moneyC(r.value), a: r.age == null ? '—' : Math.round(r.age), n: r.n, m: mosTxt(r.mos) }))}${r.best ? ' ' + esc(tl('Donde mejor se vende: {c} (×{m}).', { c: r.best.name, m: r.best.mk.toFixed(2) })) : ''}</li>`).join('')}</ul>
+        <button id="tpStuck">🔎 ${esc(tl('Ver en el buscador'))}</button>` : `<p class="mute">${esc(tl('Nada parado con esas condiciones.'))}</p>`}</div></div>
+    <div class="panel"><div style="overflow:auto"><table class="list"><tr>${th(tl(DIMS[dim][0]))}${th(tl('Vendidos'), 1)}${th('Δ', 1)}${th(tl('Precio típico'), 1)}${th(tl('×coste'), 1)}${th(tl('Margen'), 1)}${th(tl('Días'), 1)}${th(tl('Canales'))}${th(tl('Mejor canal (margen)'))}${th(tl('Más rápido'))}${th(tl('Stock'), 1)}${th(tl('Meses de stock'), 1)}${th(tl('Señal'))}</tr>
+      ${show.map(r => `<tr>${lbl(r)}<td class="num">${r.n}</td><td class="num">${esc(trendTxt(r))}</td><td class="num">${esc(money(r.price))}</td><td class="num">${r.markup ? '×' + r.markup.toFixed(2) : '—'}</td><td class="num">${pct(r.margin)}</td><td class="num">${r.days == null ? '—' : Math.round(r.days)}</td>
+        <td style="min-width:120px">${chanBar(r.mix)}</td><td>${esc(r.best ? `${r.best.name} ×${r.best.mk.toFixed(2)}` : '—')}</td><td>${esc(r.fast ? `${r.fast.name} · ${Math.round(r.fast.days)} ${tl('días')}` : '—')}</td><td class="num">${r.stock}</td><td class="num">${mosTxt(r.mos)}</td><td>${sigHTML(r.sig)}</td></tr>`).join('')}</table></div>
+      ${sold.length > 40 ? `<button id="tpAll" style="margin-top:8px">${esc(SV.topShowAll ? tl('Ver solo los 40 primeros') : tl('Ver todos ({n})', { n: sold.length }))}</button>` : ''}
+      <p class="hint">${esc(tl('Mejor canal y más rápido: con todo el histórico de ese grupo (3+ ventas por canal). Stock y meses de stock: con la última hoja del buscador al ritmo de venta del periodo.'))}</p></div>`;
+  $('tpDim').value = dim; $('tpSort').value = SV.topSort;
+  $('tpDim').onchange = () => { SV.topDim = $('tpDim').value; SV.topShowAll = false; viewTop(); }; $('tpSort').onchange = () => { SV.topSort = $('tpSort').value; viewTop(); };
+  $('tpMin').onchange = () => { SV.topMin = Math.max(1, +$('tpMin').value || 1); viewTop(); }; $('tpUnk').onchange = () => { SV.topUnknown = $('tpUnk').checked; viewTop(); };
+  if ($('tpAll')) $('tpAll').onclick = () => { SV.topShowAll = !SV.topShowAll; viewTop(); };
+  if ($('tpStuck')) $('tpStuck').onclick = () => openInSearch(stuck.flatMap(r => r.codes));
+  if (fac) el.querySelectorAll('td.lbl').forEach(td => td.onclick = () => { if (td.dataset.v === '—') return; SF[fac].add(td.dataset.v); paint(); });
+  $('tpX').onclick = () => xlsxDownload([[tl('Qué se vende'), [[tl(DIMS[dim][0]), tl('Vendidos'), tl('Periodo anterior'), tl('Ingresos') + ` (${SV.cur})`, tl('Beneficio') + ` (${SV.cur})`, tl('Margen'), tl('Precio típico') + ` (${SV.cur})`, tl('×coste'), tl('Días'), tl('Canales'), tl('Mejor canal (margen)'), tl('Más rápido'), tl('Stock'), tl('Valor stock (coste)') + ` (${SV.cur})`, tl('Meses de stock'), tl('Señal')],
+    ...sold.map(r => [r.k, r.n, r.prevN, r2(r.rev), r2(r.prof), r2(r.margin), r2(r.price), r2(r.markup), r.days == null ? null : Math.round(r.days), r.mix.map(c => `${c.name} ${c.n}`).join(', '), r.best ? `${r.best.name} ×${r.best.mk.toFixed(2)}` : '', r.fast ? `${r.fast.name} ${Math.round(r.fast.days)}` : '', r.stock, r2(r.value), r.mos === Infinity ? null : r2(r.mos), r.sig ? tl(SIG[r.sig][2]) : ''])]]], 'que_se_vende');
+}
+async function openInSearch(codes) { store.set('pendingCodes', JSON.stringify([...new Set(codes)])); await store.flush(); location.href = 'index.html#codes'; }
+
+/* ---------- 🛒 Buyers: qué se vende y qué no de lo que compra cada uno ---------- */
+function buyerCohort(since) { // piezas compradas desde «since»: vendidas (en el histórico) + las que siguen en stock
+  const sold = SV.sales.filter(s => s.added && s.added >= since && okRow(s)), stock = (SV.stock?.rows || []).filter(x => x.added && x.added >= since && okRow(x));
+  const items = [...sold.map(x => ({ x, sold: 1 })), ...stock.map(x => ({ x, sold: 0 }))];
+  // «lo normal»: qué parte se vendió de lo comprado ese mes de la misma marca y categoría (o categoría, o todo)
+  const T = new Map(), keys = x => [`a|${x.brand}|${x.cat}|${x.added.slice(0, 7)}`, `b|${x.cat}|${x.added.slice(0, 7)}`, `c|${x.added.slice(0, 7)}`];
+  items.forEach(({ x, sold: v }) => keys(x).forEach(k => { let a = T.get(k); if (!a) T.set(k, a = [0, 0]); a[0] += v; a[1]++; }));
+  const expOf = x => { for (const k of keys(x)) { const a = T.get(k); if (a && a[1] >= 10) return a[0] / a[1]; } return null; };
+  const stl = stalled(segStats()), stlBy = new Map(), nowBy = new Map(), by = new Map();
+  stl.forEach(s => pushTo(stlBy, s.x.buyer || '—', s)); (SV.stock?.rows || []).forEach(x => { if (okRow(x)) pushTo(nowBy, x.buyer || '—', x); });
+  items.forEach(it => { const b = it.x.buyer || '—'; let g = by.get(b); if (!g) by.set(b, g = { k: b, items: [] }); g.items.push(it); });
+  nowBy.forEach((_, b) => { if (!by.has(b)) by.set(b, { k: b, items: [] }); });
+  const kk = SV.cur === 'USD' ? 1 : rates?.[SV.cur] || NaN;
+  const rows = [...by.values()].map(g => {
+    const soldL = g.items.filter(i => i.sold).map(i => i.x), exps = g.items.map(i => expOf(i.x)).filter(v => v != null), A = agg(soldL), now = nowBy.get(g.k) || [], st = stlBy.get(g.k) || [];
+    return { k: g.k, items: g.items, n: g.items.length, nSold: soldL.length, st: g.items.length ? soldL.length / g.items.length : null, exp: exps.length ? exps.reduce((a, b) => a + b, 0) / exps.length : null,
+      days: A.days, margin: A.margin, lossPct: A.lossPct, now, old: now.filter(x => x.age >= 180).length, stalled: st, stalledV: st.reduce((t, s) => t + (s.cost || 0), 0), nowV: now.reduce((t, x) => t + (x.costU || 0), 0) * kk };
+  }).sort((a, b) => b.n - a.n || b.now.length - a.now.length);
+  return { since, rows, expOf };
+}
+const ppTxt = (a, b) => a == null || b == null ? '—' : `${a - b > 0 ? '▲' : a - b < 0 ? '▼' : '＝'} ${Math.abs((a - b) * 100).toFixed(0)} pp`;
+async function viewBuyers() {
+  const el = $('sv-buy');
+  if (!SV.stock) { el.innerHTML = `<p class="mute">${esc(tl('Cargando el stock…'))}</p>`; try { await loadStock(); } catch {} if (SV.view !== 'buy') return; }
+  const since = { hist: SV.minDay, d90: addDaysISO(SV.maxDay, -89), d180: addDaysISO(SV.maxDay, -179), d365: addDaysISO(SV.maxDay, -364) }[SV.buySince] || SV.minDay;
+  const C = buyerCohort(since), sel = C.rows.find(r => r.k === SV.buySel);
+  const th = (t, n) => `<th${n ? ' class="num"' : ''}>${esc(t)}</th>`;
+  let h = `<div class="panel"><div class="row"><label>${esc(tl('Compras desde'))} <select id="byS"><option value="hist">${esc(tl('el inicio del histórico de ventas ({d})', { d: fmtDay(SV.minDay) }))}</option><option value="d90">${esc(tl('Últimos 90 días'))}</option><option value="d180">${esc(tl('Últimos 6 meses'))}</option><option value="d365">${esc(tl('Últimos 12 meses'))}</option></select></label>
+      <label>Buyer <select id="byB"><option value="">${esc(tl('Todos'))}</option>${C.rows.map(r => `<option value="${esc(r.k)}">${esc(r.k)} (${r.n})</option>`).join('')}</select></label></div>
+    ${since < SV.minDay ? `<p class="hint" style="color:var(--warn)">⚠ ${esc(tl('Las ventas solo empiezan el {d}: lo comprado antes y vendido antes de esa fecha no aparece, así que el porcentaje vendido sale más bajo de lo real.', { d: fmtDay(SV.minDay) }))}</p>` : ''}
+    <p class="hint" style="margin:6px 0 0">${esc(tl('Compradas = piezas con fecha de alta desde esa fecha (vendidas + las que siguen en stock). «Lo normal» = lo que se vendió de lo comprado el mismo mes de la misma marca y categoría, para comparar en igualdad de condiciones. Sirve para decidir qué comprar y dónde vender, no para juzgar a nadie.'))}</p></div>`;
+  if (!sel) {
+    h += `<div class="panel"><div style="overflow:auto"><table class="list"><tr>${th('Buyer')}${th(tl('Compradas'), 1)}${th(tl('Vendidas'), 1)}${th(tl('% vendido'), 1)}${th(tl('Lo normal en lo que compra'), 1)}${th(tl('Diferencia'), 1)}${th(tl('Días hasta vender'), 1)}${th(tl('Margen'), 1)}${th(tl('Con pérdida'), 1)}${th(tl('En stock ahora'), 1)}${th(tl('Stock > 6 meses'), 1)}${th(tl('Estancadas'), 1)}</tr>
+      ${C.rows.map(r => `<tr><td class="lbl" data-b="${esc(r.k)}">${esc(r.k)}</td><td class="num">${r.n}</td><td class="num">${r.nSold}</td><td class="num">${pct(r.st, 0)}</td><td class="num">${pct(r.exp, 0)}</td><td class="num">${esc(ppTxt(r.st, r.exp))}</td><td class="num">${r.days == null ? '—' : Math.round(r.days)}</td><td class="num">${pct(r.margin)}</td><td class="num">${pct(r.lossPct, 0)}</td><td class="num">${r.now.length}</td><td class="num">${r.old}</td><td class="num">${r.stalled.length}${r.stalled.length ? ` <small class="mute">${esc(moneyC(r.stalledV))}</small>` : ''}</td></tr>`).join('')}</table></div>
+      <p class="hint">${esc(tl('Pulsa un buyer para ver qué le funciona y qué no.'))}</p></div>`;
+  } else h += buyerDetailHTML(C, sel);
+  el.innerHTML = h;
+  $('byS').value = SV.buySince; $('byB').value = SV.buySel;
+  $('byS').onchange = () => { SV.buySince = $('byS').value; viewBuyers(); }; $('byB').onchange = () => { SV.buySel = $('byB').value; viewBuyers(); };
+  el.querySelectorAll('[data-b]').forEach(td => td.onclick = () => { SV.buySel = td.dataset.b; viewBuyers(); });
+  if ($('byBack')) $('byBack').onclick = () => { SV.buySel = ''; viewBuyers(); };
+  if ($('bySearch')) $('bySearch').onclick = () => openInSearch(sel.stalled.map(s => s.x.code).concat(sel.now.filter(x => x.age >= 180).map(x => x.code)));
+  if ($('byX')) $('byX').onclick = () => xlsxDownload(buyerSheets(C, sel), 'buyer_' + sel.k.replace(/[^\w-]+/g, '_'));
+}
+function buyerProducts(C, g) {
+  const P = new Map();
+  g.items.forEach(({ x, sold }) => { let a = P.get(x.prod); if (!a) P.set(x.prod, a = { k: x.prod, n: 0, sold: 0, exp: [], days: [], mk: [] }); a.n++; a.sold += sold; const e = C.expOf(x); if (e != null) a.exp.push(e);
+    if (sold) { if (x.days != null && x.days >= 0) a.days.push(x.days); if (x.profU != null && x.costU > 0) a.mk.push(x.revU / x.costU); } });
+  return [...P.values()].map(a => ({ ...a, st: a.sold / a.n, expM: a.exp.length ? a.exp.reduce((s, v) => s + v, 0) / a.exp.length : null, daysM: median(a.days), mkM: median(a.mk) }));
+}
+function buyerDetailHTML(C, g) {
+  const P = buyerProducts(C, g), good = P.filter(p => p.sold >= 2).sort((a, b) => b.sold - a.sold || b.st - a.st).slice(0, 12);
+  const short = p => p.n * (p.expM ?? p.st) - p.sold, bad = P.filter(p => p.n - p.sold >= 2).sort((a, b) => short(b) - short(a) || (b.n - b.sold) - (a.n - a.sold)).slice(0, 12);
+  const oldBy = new Map(); g.now.forEach(x => pushTo(oldBy, x.prod, x));
+  const stuck = [...oldBy].map(([k, l]) => ({ k, n: l.length, age: median(l.map(x => x.age).filter(v => v != null)), old: l.filter(x => x.age >= 180).length })).filter(r => r.old).sort((a, b) => b.old - a.old).slice(0, 10);
+  const tile = (k, v, s) => `<div class="tile" style="cursor:default"><div class="k">${esc(k)}</div><div class="v">${esc(v)}</div><div class="s">${esc(s || '')}</div></div>`;
+  const th = (t, n) => `<th${n ? ' class="num"' : ''}>${esc(t)}</th>`;
+  return `<div class="row" style="margin:8px 0"><button id="byBack">← ${esc(tl('Todos los buyers'))}</button><h2 style="margin:0">${esc(g.k)}</h2>
+      <button id="bySearch" style="margin-left:auto">🔎 ${esc(tl('Ver en el buscador lo parado'))}</button><button id="byX">⬇ Excel</button></div>
+    <div class="tiles">${tile(tl('Compradas'), g.n.toLocaleString('en-US'), tl('desde {d}', { d: fmtDay(C.since) }))}${tile(tl('Vendidas'), `${g.nSold} (${pct(g.st, 0)})`, tl('lo normal: {p}', { p: pct(g.exp, 0) }))}
+      ${tile(tl('Días hasta vender'), g.days == null ? '—' : Math.round(g.days) + ' ' + tl('días'), '')}${tile(tl('Margen'), pct(g.margin), tl('con pérdida: {p}', { p: pct(g.lossPct, 0) }))}
+      ${tile(tl('En stock ahora'), g.now.length.toLocaleString('en-US'), tl('a coste: {v}', { v: moneyC(g.nowV) }))}${tile(tl('Estancadas'), g.stalled.length.toLocaleString('en-US'), tl('a coste: {v}', { v: moneyC(g.stalledV) }))}</div>
+    <div class="cols2x"><div class="panel"><h2>✅ ${esc(tl('Lo que se vende'))}</h2><div style="overflow:auto"><table class="list"><tr>${th(tl('Producto'))}${th(tl('Compradas'), 1)}${th(tl('Vendidas'), 1)}${th(tl('% vendido'), 1)}${th(tl('Lo normal'), 1)}${th(tl('Días'), 1)}${th(tl('×coste'), 1)}</tr>
+        ${good.map(p => `<tr><td>${esc(p.k)}</td><td class="num">${p.n}</td><td class="num">${p.sold}</td><td class="num">${pct(p.st, 0)}</td><td class="num">${pct(p.expM, 0)}</td><td class="num">${p.daysM == null ? '—' : Math.round(p.daysM)}</td><td class="num">${p.mkM ? '×' + p.mkM.toFixed(2) : '—'}</td></tr>`).join('') || `<tr><td colspan="7" class="mute">${esc(tl('Nada con esas condiciones.'))}</td></tr>`}</table></div></div>
+      <div class="panel"><h2>⛔ ${esc(tl('Lo que no se vende'))}</h2><div style="overflow:auto"><table class="list"><tr>${th(tl('Producto'))}${th(tl('Compradas'), 1)}${th(tl('Sin vender'), 1)}${th(tl('% vendido'), 1)}${th(tl('Lo normal'), 1)}</tr>
+        ${bad.map(p => `<tr><td>${esc(p.k)}</td><td class="num">${p.n}</td><td class="num">${p.n - p.sold}</td><td class="num">${pct(p.st, 0)}</td><td class="num">${pct(p.expM, 0)}</td></tr>`).join('') || `<tr><td colspan="5" class="mute">${esc(tl('Nada con esas condiciones.'))}</td></tr>`}</table></div>
+        ${stuck.length ? `<h3 style="margin:12px 0 4px;font-size:14px">${esc(tl('Stock suyo de más de 6 meses, por producto'))}</h3><ul class="facts">${stuck.map(r => `<li>${esc(tl('{g}: {o} de {n} piezas con más de 6 meses (mediana {a} días)', { g: r.k, o: r.old, n: r.n, a: r.age == null ? '—' : Math.round(r.age) }))}</li>`).join('')}</ul>` : ''}</div></div>
+    ${g.stalled.length ? `<div class="panel"><h2>${esc(tl('Piezas estancadas'))} (${g.stalled.length})</h2><div style="overflow:auto"><table class="list"><tr><th></th><th>CTag</th>${th(tl('Marca'))}${th(tl('Descripción'))}${th(tl('Canal'))}${th(tl('En stock'), 1)}${th(tl('Coste'), 1)}${th(tl('Mejor canal (margen)'))}</tr>
+      ${g.stalled.sort((a, b) => b.over - a.over).slice(0, 25).map(s => `<tr><td><img class="thumb" src="${esc(photo(s.x.code))}" loading="lazy" onerror="this.style.visibility='hidden'"></td><td>${esc(s.x.code)}</td><td>${esc(s.x.brand || '')}</td><td>${esc((s.x.name || '').slice(0, 60))}<br><small class="mute">${esc([s.x.prod, s.x.grade].filter(Boolean).join(' · '))}</small></td><td>${esc(s.x.channel || '')}</td><td class="num">${s.x.age} ${esc(tl('días'))}</td><td class="num">${esc(money(s.cost))}</td><td>${esc(s.seg.best ? `${s.seg.best.name} (×${s.seg.best.mk.toFixed(2)})` : '—')}</td></tr>`).join('')}</table></div>
+      ${g.stalled.length > 25 ? `<p class="hint">${esc(tl('Mostrando 25 de {n}. «Ver en el buscador» y el Excel llevan todas.', { n: g.stalled.length }))}</p>` : ''}</div>` : ''}`;
+}
+function buyerSheets(C, g) {
+  const P = buyerProducts(C, g).sort((a, b) => b.n - a.n);
+  return [[tl('Productos'), [[tl('Producto'), tl('Compradas'), tl('Vendidas'), tl('% vendido'), tl('Lo normal'), tl('Días'), tl('×coste')], ...P.map(p => [p.k, p.n, p.sold, r2(p.st), r2(p.expM), p.daysM == null ? null : Math.round(p.daysM), r2(p.mkM)])]],
+    [tl('Estancadas'), stalledSheet(g.stalled)], [tl('En stock'), [['CTag', tl('Marca'), tl('Descripción'), tl('Producto'), tl('Canal'), tl('Fecha de alta'), tl('Días en stock'), tl('Coste') + ' (USD)'], ...g.now.map(x => [x.code, x.brand, x.name, x.prod, x.channel, x.added, x.age, r2(x.costU)])]]];
+}
+
 /* ---------- Informe mensual (PDF y Excel) ---------- */
 function reportData(month) {
   const a = month + '-01', b = endOfMonth(month), pm = shiftMonth(month, -1), ym = shiftMonth(month, -12);
@@ -529,6 +701,7 @@ function reportData(month) {
     byCh: groupAgg(cur, s => s.channel).sort((x, y) => y.rev - x.rev), prevCh: new Map(groupAgg(prev, s => s.channel).map(x => [x.k, x])),
     byEnt: groupAgg(cur, s => s.entity).sort((x, y) => y.rev - x.rev), prevEnt: new Map(groupAgg(prev, s => s.entity).map(x => [x.k, x])),
     brandsProf: top(cur, s => s.brand, 'prof'), brandsRev: top(cur, s => s.brand, 'rev'), types: top(cur, s => s.typeC, 'rev'), cats: groupAgg(cur, s => s.cat ? tl(s.cat) : '').sort((x, y) => y.rev - x.rev),
+    models: groupAgg(cur.filter(s => s.bm), s => s.bm).sort((x, y) => y.n - x.n || y.prof - x.prof).slice(0, 10),
     buyers: groupAgg(cur, s => s.buyer).sort((x, y) => y.n - x.n), topSales: [...cur].filter(s => s.revU != null).sort((x, y) => y.revU - x.revU).slice(0, 10),
     losses: [...cur].filter(s => s.profU != null && s.profU < 0).sort((x, y) => x.profU - y.profU), R, stl };
 }
@@ -559,6 +732,7 @@ function reportHTML(D) {
     <h3>${esc(tl('Por entidad'))}</h3>${tbl([tl('Entidad'), tl('Unidades'), tl('Ingresos'), tl('Beneficio'), tl('Margen'), tl('Días'), tl('Δ unidades')], g(D.byEnt, D.prevEnt))}
     <div class="cols2"><div><h3>${esc(tl('Top 10 marcas por beneficio'))}</h3>${tbl([tl('Marca'), tl('Unid.'), tl('Beneficio'), tl('Margen')], D.brandsProf.map(x => [x.k, x.n, money(x.prof), pct(x.margin)]))}</div>
       <div><h3>${esc(tl('Top 10 tipos por ingresos'))}</h3>${tbl([tl('Tipo'), tl('Unid.'), tl('Ingresos'), tl('Margen')], D.types.map(x => [x.k, x.n, money(x.rev), pct(x.margin)]))}</div></div>
+    <h3>${esc(tl('Top 10 modelos del mes'))}</h3>${D.models.length ? tbl([tl('Modelo'), tl('Unidades'), tl('Ingresos'), tl('Beneficio'), tl('Margen'), tl('Días'), ''], g(D.models)) : `<div class="note">${esc(tl('Ninguna.'))}</div>`}
     <h3>${esc(tl('Por categoría'))}</h3>${tbl([tl('Categoría'), tl('Unidades'), tl('Ingresos'), tl('Beneficio'), tl('Margen'), tl('Días'), ''], g(D.cats))}
     <h3>${esc(tl('Las 10 ventas más grandes'))}</h3>${tbl(['CTag', tl('Marca'), tl('Descripción'), tl('Canal'), tl('Venta'), tl('Margen')], D.topSales.map(s => [s.code, s.brand || '', (s.descr || '').slice(0, 40), s.channel, money(s.revU * s.k), s.profU != null ? pct(s.profU / s.revU) : '—']), 4)}
     <h3>${esc(tl('Ventas con pérdida ({n}, total {v})', { n: D.losses.length, v: money(D.losses.reduce((t, s) => t + s.profU * s.k, 0)) }))}</h3>
@@ -606,7 +780,7 @@ const stalledSheet = list => [['CTag', tl('Marca'), tl('Descripción'), tl('Tipo
 function reportSheets(D) {
   const K = [[tl('Indicador'), fmtMonth(D.month), fmtMonth(D.pm), fmtMonth(D.ym)], ...[[tl('Unidades vendidas'), 'n'], [tl('Ingresos'), 'rev'], [tl('Coste (PAT)'), 'cost'], [tl('Beneficio'), 'prof'], [tl('Margen sobre ventas'), 'margin'], [tl('Ticket medio'), 'ticket'], [tl('Días hasta vender (mediana)'), 'days'], [tl('Vendidas con pérdida'), 'losses']]
     .map(([l, k]) => [l, r2(D.A[k]), D.P ? r2(D.P[k]) : null, D.Y ? r2(D.Y[k]) : null])];
-  const out = [[tl('Resumen'), K], [tl('Canales'), grpRows(D.byCh, tl('Canal'))], [tl('Entidades'), grpRows(D.byEnt, tl('Entidad'))], [tl('Marcas'), grpRows(groupAgg(D.cur, s => s.brand).sort((a, b) => b.prof - a.prof), tl('Marca'))],
+  const out = [[tl('Resumen'), K], [tl('Canales'), grpRows(D.byCh, tl('Canal'))], [tl('Modelos'), grpRows(groupAgg(D.cur.filter(s => s.bm), s => s.bm).sort((a, b) => b.n - a.n), tl('Modelo'))], [tl('Entidades'), grpRows(D.byEnt, tl('Entidad'))], [tl('Marcas'), grpRows(groupAgg(D.cur, s => s.brand).sort((a, b) => b.prof - a.prof), tl('Marca'))],
     [tl('Tipos'), grpRows(groupAgg(D.cur, s => s.typeC).sort((a, b) => b.rev - a.rev), tl('Tipo'))], ['Buyers', grpRows(D.buyers, 'Buyer')], [tl('Pérdidas'), salesSheet(D.losses)], [tl('Ventas del mes'), salesSheet(D.cur)]];
   if (D.R) out.push([tl('Rotación'), rotationSheet(D.R.rows)], [tl('Estancadas'), stalledSheet(D.stl)]);
   return out;

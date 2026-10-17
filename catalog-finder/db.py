@@ -30,6 +30,15 @@ def _conn():
     return c
 
 
+def checkpoint():
+    """Vuelca el diario (WAL) en catalog.db, para que copiar ese archivo sea siempre una copia completa."""
+    try:
+        with _lock, _conn() as c:
+            c.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+    except sqlite3.Error:
+        pass
+
+
 def init():
     with _lock, _conn() as c:
         c.executescript("""

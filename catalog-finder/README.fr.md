@@ -13,7 +13,7 @@ Lors d’une mise à jour : la nouvelle version ferme d’elle-même l’ancienn
 3. **Choisissez** : cochez les cartes, *Sélectionner tous les résultats* ou *les premiers N*. Puis **Télécharger Excel (.xlsx)**.
 
 ## 🗂 Une seule app : Accueil · Recherche · Clients · Factures · 📊 Ventes · Nouveautés · Entités
-Tout est stocké dans **`catalog.db`**, un seul fichier dans le dossier (pas dans git) ; copiez-le pour sauvegarder. Les réglages du navigateur y sont copiés automatiquement la première fois.
+Tout est stocké dans **`catalog.db`**, un seul fichier dans le dossier (pas dans git) ; pour sauvegarder, fermez l’app et copiez-le. Les réglages du navigateur y sont copiés automatiquement la première fois.
 - **🏠 Accueil** (s’ouvre au démarrage). Met à jour la feuille en arrière-plan et affiche :
   - Les nouveautés avec photos.
   - « ⭐ Pour vos clients » : les nouveautés qui correspondent à la liste de souhaits de chacun, avec un bouton **📦 Catalogue mensuel**.
@@ -63,7 +63,23 @@ Tout est stocké dans **`catalog.db`**, un seul fichier dans le dossier (pas dan
   - Canal, entité, catégorie/type, marque, owner/buyer, grade et tranche de coût.
   - Période : tout, 30/90 derniers jours, 6 ou 12 mois, mois en cours, mois précédent, cette année ou dates libres.
   - Devise des montants : USD, JPY, EUR…
-- **Classements :** par marque, catégorie, type, canal, entité, owner, buyer, grade, mois ou tranche de coût. Cliquez sur une ligne pour filtrer.
+- **Modèle, couleur, matière et taille** sont lus dans chaque titre (Neverfull MM, Keepall 55, GG Marmont, Lady Dior, Carré 90… ; Monogram = toile marron). Filtrez-les avec la pastille **Modèle / couleur**. « Produit » = le modèle si le titre le donne ; sinon ligne + type (p. ex. « Prada · Saffiano Tote bag »).
+- **🔥 Ce qui se vend :** les produits les plus vendus de la période, en phrases concrètes :
+  - Unités vendues et tendance par rapport à la période précédente.
+  - Prix typique, ×coût et jours avant vente.
+  - Le canal où ils se vendent, celui qui paie la meilleure marge et le plus rapide.
+  - Le stock restant et combien de mois il couvre.
+  - Regroupement par modèle, modèle + taille, ligne, couleur ou matière. À côté, « Ce qui ne bouge pas ».
+- **🛒 Acheteurs :** ce qui se vend et ce qui ne se vend pas dans les achats de chacun :
+  - Pièces achetées depuis le début de l’historique, combien se sont vendues, et ce qui est normal pour la même marque, catégorie et mois d’achat (comparaison équitable).
+  - En cliquant sur un acheteur : ce qui marche, ce qui ne marche pas, son stock de plus de 6 mois et ses pièces bloquées, avec Excel et « Voir dans la recherche ».
+  - Sert à décider quoi acheter et où vendre, pas à juger qui que ce soit.
+- **✨ Demandez à l’IA :** écrivez une question comme à une personne (« quels modèles Gucci se vendent le mieux et où ? »).
+  - L’IA ne reçoit pas votre fichier : elle demande des tableaux calculés sur votre ordinateur (ventes, stock, acheteurs, mots des titres et, si besoin, quelques photos) et répond avec ces chiffres.
+  - Vous voyez chaque tableau utilisé et pouvez les télécharger en Excel. Vous pouvez poser des questions de suivi.
+  - Elle utilise la même clé que la recherche (*Activer l’IA…*). Opus 5.5 par défaut (quelques centimes par question) ; Sonnet 5.5 et Haiku 5.5 coûtent moins.
+  - Si le modèle refuse une question à cause de ses filtres de sécurité, l’API la relance automatiquement sur le modèle recommandé par Anthropic.
+- **Classements :** par marque, modèle, modèle + taille, ligne, couleur, matière, catégorie, type, canal, entité, owner, buyer, grade, mois ou tranche de coût. Cliquez sur une ligne pour filtrer.
 - **Stock et rotation** (utilise la dernière feuille chargée dans la recherche) :
   - Mois de stock et taux d’écoulement par marque · catégorie (ou autre regroupement).
   - Signaux : ▲ **Acheter plus** (se vend vite et avec marge), ▼ **Surstock**, ◆ **Lent**.

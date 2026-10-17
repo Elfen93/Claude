@@ -13,7 +13,7 @@ When updating: the new version closes any older copy still running by itself. If
 3. **Choose**: tick cards, *Select all results*, or *the first N*. Then **Download Excel (.xlsx)**.
 
 ## 🗂 One app: Home · Search · Clients · Invoices · 📊 Sales · What's new · Entities
-Everything is stored in **`catalog.db`**, a single file in the folder (not in git); copy it to back up. Settings from your browser are copied in automatically the first time.
+Everything is stored in **`catalog.db`**, a single file in the folder (not in git); to back up, close the app and copy it. Settings from your browser are copied in automatically the first time.
 - **🏠 Home** (opens on start). Refreshes the sheet in the background and shows:
   - New items with photos.
   - “⭐ For your clients”: new items matching each client's wishlist, with a **📦 Monthly catalog** button.
@@ -63,7 +63,23 @@ Everything is stored in **`catalog.db`**, a single file in the folder (not in gi
   - Channel, entity, category/type, brand, owner/buyer, grade and cost band.
   - Period: all, last 30/90 days, 6 or 12 months, this month, last month, this year or custom dates.
   - Currency of the amounts: USD, JPY, EUR…
-- **Rankings:** by brand, category, type, channel, entity, owner, buyer, grade, month or cost band. Click a row to filter by it.
+- **Model, colour, material and size** are read from each title (Neverfull MM, Keepall 55, GG Marmont, Lady Dior, Carré 90…; Monogram = brown canvas). Filter by them with the **Model / colour** pill. «Product» = the model if the title names it; otherwise line + type (e.g. «Prada · Saffiano Tote bag»).
+- **🔥 What sells:** the best-selling products of the period, in plain sentences:
+  - Units sold and the trend versus the previous period.
+  - Typical price, ×cost and days to sell.
+  - Which channel sells them, which pays the best margin and which is fastest.
+  - Stock left and how many months it covers.
+  - Group by model, model + size, line, colour or material. Next to it, «What is not moving».
+- **🛒 Buyers:** what sells and what does not from each buyer's purchases:
+  - Pieces bought since the start of the history, how many sold, and what is normal for the same brand, category and purchase month (a fair comparison).
+  - Click a buyer: what works, what does not, their stock older than 6 months and their stalled pieces, with Excel and «Show in search».
+  - Meant to decide what to buy and where to sell, not to judge anyone.
+- **✨ Ask the AI:** write a question as you would ask a person («which Gucci models sell best and where?»).
+  - The AI does not receive your file: it asks for tables computed on your computer (sales, stock, buyers, title words and, if needed, a few photos) and answers with those figures.
+  - You can see every table it used and download them to Excel. You can ask follow-up questions.
+  - It uses the same key as the search page (*Activate AI…*). Opus 5.5 by default (a few cents per question); Sonnet 5.5 and Haiku 5.5 are cheaper.
+  - If the model declines a question because of its safety filters, the API retries it automatically on the model Anthropic recommends.
+- **Rankings:** by brand, model, model + size, line, colour, material, category, type, channel, entity, owner, buyer, grade, month or cost band. Click a row to filter by it.
 - **Stock & turnover** (uses the last sheet loaded in the search page):
   - Months of stock and sell-through by brand · category (or another grouping).
   - Signals: ▲ **Buy more** (sells fast and with margin), ▼ **Overstock**, ◆ **Slow**.

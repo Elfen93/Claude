@@ -243,7 +243,7 @@ def api_key():
     if not k and os.path.exists(KEY_FILE):
         k = open(KEY_FILE).read().strip()
     return k
-APP_VERSION = "2026-10-16.8"  # igual que APP_VERSION en index.html: si no coinciden, la app avisa de que el servidor es viejo
+APP_VERSION = "2026-10-17.1"  # igual que APP_VERSION en index.html: si no coinciden, la app avisa de que el servidor es viejo
 PORT = int(sys.argv[1]) if len(sys.argv) > 1 else 8765
 RATE_SOURCES = (
     ("https://open.er-api.com/v6/latest/USD", lambda d: (d["rates"], d.get("time_last_update_utc", ""))),
@@ -504,6 +504,53 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         return self._err(502, self.m("La IA no devolvio filtros", "The AI returned no filters", "L’IA n’a renvoyé aucun filtre"))
 
     # ---------- base de datos local ----------
+    AGENT_MODELS = ("claude-opus-5-5", "claude-sonnet-5-5", "claude-haiku-5-5")
+    _NO_FALLBACKS = set()
+
+    def _call_api(self, payload, headers=None, timeout=300):
+        h = {"x-api-key": api_key(), "anthropic-version": "2023-06-01", "content-type": "application/json", **(headers or {})}
+        req = urllib.request.Request(API_BASE + "/v1/messages", data=json.dumps(payload).encode(), headers=h)
+        with urllib.request.urlopen(req, timeout=timeout, context=_ssl_ctx) as r:
+            return json.load(r)
+
+    def _ai_agent(self, d):
+        """Analista de ventas: un paso del bucle de herramientas. Las herramientas se calculan en el navegador;
+        aqui solo se anade la clave y se pasa la conversacion tal cual (sin tocar lo anterior, para que valgan la cache y el razonamiento)."""
+        if not api_key():
+            return self._err(400, self.m("Falta la clave de API: activala en el buscador (Activar IA...)", "Missing API key: set it in the search page (Activate AI...)",
+                                         "Clé API manquante : activez-la dans la recherche (Activer l'IA...)"))
+        model = d.get("model") if d.get("model") in self.AGENT_MODELS else self.AGENT_MODELS[0]
+        payload = {"model": model, "max_tokens": 16000,
+                   "system": [{"type": "text", "text": str(d.get("system") or ""), "cache_control": {"type": "ephemeral"}}],
+                   "tools": d.get("tools") or [], "messages": d.get("messages") or [],
+                   "output_config": {"effort": d.get("effort") if d.get("effort") in ("low", "medium", "high") else "medium"},
+                   "cache_control": {"type": "ephemeral"}}  # cache automatica de la conversacion, que crece en cada paso
+        fallback = model != "claude-haiku-5-5" and model not in self._NO_FALLBACKS  # Haiku 5.5 no tiene respaldo en el servidor
+        for _ in range(3):
+            p, hdr = dict(payload), {}
+            if fallback:  # si el modelo rechaza la pregunta por sus filtros de seguridad, la API la reintenta con el modelo recomendado
+                p["fallbacks"], hdr["anthropic-beta"] = "default", "server-side-fallback-2026-07-01"
+            try:
+                return self._json(self._call_api(p, hdr))
+            except urllib.error.HTTPError as e:
+                body = e.read().decode("utf-8", "replace")
+                if e.code == 400 and fallback and "fallback" in body.lower():
+                    self._NO_FALLBACKS.add(model)
+                    fallback = False
+                    continue
+                if e.code == 400 and "cache_control" in body and "cache_control" in payload:
+                    payload.pop("cache_control")
+                    continue
+                try:
+                    detail = json.loads(body).get("error", {}).get("message") or body
+                except ValueError:
+                    detail = body
+                return self._err(e.code if e.code in (400, 401, 403, 404, 413, 429, 529) else 502,
+                                 self.m("La API respondio", "The API responded", "L’API a répondu") + f" {e.code}: {str(detail)[:600]}")
+            except Exception as e:  # noqa: BLE001
+                return self._err(502, self.m("No se pudo contactar con la API", "Could not reach the API", "Impossible de joindre l’API") + f": {e}")
+        return self._err(502, self.m("La API no acepto la peticion", "The API did not accept the request", "L’API n’a pas accepté la requête"))
+
     def _api_get(self, p, q):
         if p == "kv":
             return self._json(db.kv_all())
@@ -533,16 +580,21 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                 db.kv_set(d.get("items") or {})
                 return self._json({"ok": True})
             if p == "snapshot":
-                return self._json(db.snapshot(d.get("source"), d.get("items") or []))
+                r = db.snapshot(d.get("source"), d.get("items") or [])
+                db.checkpoint()
+                return self._json(r)
             if p == "lookup":
                 return self._json(db.lookup(d.get("codes") or []))
             if p == "invoices/save":
                 did, number = db.save_invoice(d)
                 return self._json({"id": did, "number": number})
+            if p == "ai-agent":
+                return self._ai_agent(d)
             if p == "sales/import":
                 r = db.sales_import(d.get("rows") or [], d.get("src") or "")
                 if d.get("last"):
                     db.log_import("sales", d.get("src") or "", d.get("n") or 0, d.get("added") or 0, d.get("updated") or 0, d.get("info") or {})
+                    db.checkpoint()
                 return self._json(r)
             if p == "sales/grades":
                 db.sales_grades(d.get("pairs") or [])
@@ -646,6 +698,7 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             start = end + _dt.timedelta(days=1)
         if got:
             db.fx_put(got)
+            db.checkpoint()
             return {"ok": True, "fetched": len(got)}
         return {"ok": False, "error": " | ".join(errs[-2:])}
 
@@ -732,3 +785,4 @@ if __name__ == "__main__":
     except KeyboardInterrupt:
         pass
     srv.server_close()
+    db.checkpoint()
