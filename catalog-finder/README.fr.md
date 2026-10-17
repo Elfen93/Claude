@@ -63,6 +63,7 @@ Tout est stocké dans **`catalog.db`**, un seul fichier dans le dossier (pas dan
   - Canal, entité, catégorie/type, marque, owner/buyer, grade et tranche de coût.
   - Période : tout, 30/90 derniers jours, 6 ou 12 mois, mois en cours, mois précédent, cette année ou dates libres.
   - Devise des montants : USD, JPY, EUR…
+  - **Coût / prix :** tranches et une fourchette libre avec curseur pour le coût (PAT) et le prix de vente, toujours dans la devise choisie. Exemple : devise JPY, coût entre 50k et 100k et marque Celine. Tapez 50000, 50k ou 1.2m. En changeant de devise, la fourchette est convertie automatiquement.
 - **Modèle, couleur, matière et taille** sont lus dans chaque titre (Neverfull MM, Keepall 55, GG Marmont, Lady Dior, Carré 90… ; Monogram = toile marron). Filtrez-les avec la pastille **Modèle / couleur**. « Produit » = le modèle si le titre le donne ; sinon ligne + type (p. ex. « Prada · Saffiano Tote bag »).
 - **🔥 Ce qui se vend :** les produits les plus vendus de la période, en phrases concrètes :
   - Unités vendues et tendance par rapport à la période précédente.

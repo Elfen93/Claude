@@ -887,4 +887,12 @@ window.I18N = {
   'vendida': { en: 'sold', fr: 'vendue' },
   '💴 Precios de compra': { en: '💴 Purchase prices', fr: '💴 Prix d\'achat' },
   '¿Dónde podemos bajar costes de compra? Compara a los buyers con el mismo modelo, talla y grado: quién paga más por lo mismo y cuánto nos costaría de más.': { en: 'Where can we cut purchase costs? Compare buyers on the same model, size and grade: who pays more for the same thing and how much extra it costs us.', fr: 'Où pouvons-nous baisser les coûts d\'achat ? Comparez les buyers sur le même modèle, la même taille et le même grade : qui paie plus pour la même chose et combien cela nous coûte en trop.' },
+  'Coste / precio': { en: 'Cost / price', fr: 'Coût / prix' },
+  'Coste (PAT) entre': { en: 'Cost (PAT) between', fr: 'Coût (PAT) entre' },
+  'Precio de venta entre': { en: 'Sale price between', fr: 'Prix de vente entre' },
+  'desde': { en: 'from', fr: 'de' },
+  'hasta': { en: 'to', fr: 'à' },
+  'quitar': { en: 'clear', fr: 'effacer' },
+  'Escribe 50000, 50k o 1.2m. El precio de venta solo filtra lo vendido.': { en: 'Type 50000, 50k or 1.2m. The sale price only filters sold pieces.', fr: 'Tapez 50000, 50k ou 1.2m. Le prix de vente ne filtre que les pièces vendues.' },
+  'No entiendo ese importe: escribe por ejemplo 50000, 50k o 1.2m': { en: 'I don\'t understand that amount: type for example 50000, 50k or 1.2m', fr: 'Montant non compris : tapez par exemple 50000, 50k ou 1.2m' },
 };

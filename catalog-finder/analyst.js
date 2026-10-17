@@ -94,8 +94,8 @@ function aiFilter(f, src) { // devuelve una función que dice si una venta / pie
   };
 }
 const noUIFilters = fn => { // las herramientas de la IA no usan los filtros de la pantalla: cada una lleva los suyos
-  const saved = FACETS.map(f => [f.k, [...SF[f.k]]]); FACETS.forEach(f => SF[f.k].clear());
-  try { return fn(); } finally { saved.forEach(([k, v]) => v.forEach(x => SF[k].add(x))); }
+  const saved = FACETS.map(f => [f.k, [...SF[f.k]]]), sr = { ...SR }; FACETS.forEach(f => SF[f.k].clear()); SR.cost = SR.sold = null;
+  try { return fn(); } finally { saved.forEach(([k, v]) => v.forEach(x => SF[k].add(x))); Object.assign(SR, sr); }
 };
 function aiAggUSD(list) {
   let rev = 0, prof = 0, revM = 0, nm = 0, loss = 0; const days = [], mk = [], sold = [], cost = [];

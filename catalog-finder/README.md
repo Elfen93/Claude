@@ -65,6 +65,7 @@ Todo se guarda en **`catalog.db`**, un solo archivo dentro de la carpeta (no va 
   - Canal, entidad, categoría/tipo, marca, owner/buyer, grado y tramo de coste.
   - Periodo: todo, últimos 30/90 días, 6 o 12 meses, mes en curso, mes anterior, este año o fechas a mano.
   - Moneda de los importes: USD, JPY, EUR…
+  - **Coste / precio:** tramos y un rango libre con deslizador para el coste (PAT) y para el precio de venta, siempre en la moneda elegida. Ejemplo: Moneda JPY, Coste entre 50k y 100k y Marca Celine. Puedes escribir 50000, 50k o 1.2m. Al cambiar de moneda, el rango se convierte solo.
 - **Modelo, color, material y talla:** se leen solos del título de cada pieza (Neverfull MM, Keepall 55, GG Marmont, Lady Dior, Carré 90…; Monogram = lona marrón). Se puede filtrar por ellos con la pastilla **Modelo / color**. «Producto» = el modelo si el título lo dice; si no, la línea y el tipo (p. ej. «Prada · Saffiano Tote bag»).
 - **🔥 Qué se vende:** los productos que más se venden en el periodo, con frases concretas:
   - Cuántos se vendieron y la tendencia frente al periodo anterior.

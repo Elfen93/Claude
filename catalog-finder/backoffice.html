@@ -64,6 +64,17 @@
   .pop { display:none; position:absolute; left:0; top:calc(100% + 6px); z-index:25; background:var(--card); border:1px solid var(--line); border-radius:12px; box-shadow:0 10px 30px #0003; padding:12px 14px; width:min(560px, 92vw); max-height:60vh; overflow:auto; }
   .pop.open { display:block; }
   .pop .chip { margin:0 4px 6px 0; }
+  .pop .rng { margin-top:10px; padding-top:8px; border-top:1px solid var(--line); }
+  .pop .rng button[data-clr] { background:none; border:none; color:var(--acc); cursor:pointer; padding:2px 4px; }
+  .dual { position:relative; height:26px; margin:2px 0 6px; background:linear-gradient(var(--line),var(--line)) 0 11px/100% 4px no-repeat; border-radius:2px; }
+  .dual i[data-fill] { position:absolute; top:11px; height:4px; background:var(--acc); border-radius:2px; z-index:1; pointer-events:none; }
+  .dual input[type=range] { z-index:2; position:absolute; left:0; right:0; top:4px; width:100%; margin:0; pointer-events:none; background:none; -webkit-appearance:none; appearance:none; height:18px; }
+  .dual input[type=range]::-webkit-slider-runnable-track { height:4px; background:var(--line); border-radius:2px; }
+  .dual input[type=range]::-webkit-slider-runnable-track { background:transparent; }
+  .dual input[type=range]::-moz-range-track { height:4px; background:var(--line); border-radius:2px; }
+  .dual input[type=range]::-moz-range-track { background:transparent; }
+  .dual input[type=range]::-webkit-slider-thumb { pointer-events:auto; -webkit-appearance:none; width:16px; height:16px; margin-top:-6px; border-radius:50%; background:var(--acc); border:2px solid var(--card); box-shadow:0 0 0 1px var(--acc); cursor:pointer; }
+  .dual input[type=range]::-moz-range-thumb { pointer-events:auto; width:14px; height:14px; border-radius:50%; background:var(--acc); border:2px solid var(--card); cursor:pointer; }
   .chip.on { background:var(--acc); color:#fff; border-color:var(--acc); }
   @media (prefers-color-scheme: dark) { .chip.on { color:#111; } }
   .chip small { opacity:.7; }

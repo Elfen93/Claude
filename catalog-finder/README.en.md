@@ -63,6 +63,7 @@ Everything is stored in **`catalog.db`**, a single file in the folder (not in gi
   - Channel, entity, category/type, brand, owner/buyer, grade and cost band.
   - Period: all, last 30/90 days, 6 or 12 months, this month, last month, this year or custom dates.
   - Currency of the amounts: USD, JPY, EUR…
+  - **Cost / price:** bands and a free range with a slider for cost (PAT) and for sale price, always in the chosen currency. Example: Currency JPY, Cost between 50k and 100k and Brand Celine. Type 50000, 50k or 1.2m. Changing currency converts the range automatically.
 - **Model, colour, material and size** are read from each title (Neverfull MM, Keepall 55, GG Marmont, Lady Dior, Carré 90…; Monogram = brown canvas). Filter by them with the **Model / colour** pill. «Product» = the model if the title names it; otherwise line + type (e.g. «Prada · Saffiano Tote bag»).
 - **🔥 What sells:** the best-selling products of the period, in plain sentences:
   - Units sold and the trend versus the previous period.

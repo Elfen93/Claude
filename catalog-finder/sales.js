@@ -32,8 +32,23 @@ const sCat = t => !t ? '' : (S_CATS.find(([, re]) => re.test(t)) || ['Otros'])[0
 const GR_ALT = '(B\\+|B-|B\\.C\\.?|(?:SA\\s+with\\s+tags|SA|S|AB|A|BC|B|C|N)(?![A-Za-z]))', GR_TXT = new RegExp('GRADING:\\s*' + GR_ALT, 'i'), GR_ONLY = new RegExp('^' + GR_ALT, 'i');
 const gradeOf = t => { t = String(t ?? '').trim(); const m = t.match(GR_TXT) || t.match(GR_ONLY); if (!m) return ''; const g = m[1].toUpperCase().replace(/\s+WITH\s+TAGS/, '').replace(/\./g, ''); return g === 'N' ? 'SA' : g; }; // «N (New with Tags)» cuenta como SA, igual que en el buscador
 const GRADE_ORDER = ['SA', 'S', 'A', 'AB', 'B+', 'B', 'B-', 'BC', 'C'];
-const BANDS = [[0, 100, '< $100'], [100, 300, '$100–300'], [300, 1000, '$300–1k'], [1000, 3000, '$1k–3k'], [3000, Infinity, '> $3k']];
-const bandOf = u => u == null ? '' : BANDS.find(([a, b]) => u >= a && u < b)[2];
+/* tramos y rangos de coste / precio en la moneda elegida arriba (no en USD) */
+const kNow = () => SV.cur === 'USD' ? 1 : rates?.[SV.cur] || null; // unidades de la moneda elegida por 1 USD, hoy
+const inCur = (u, x) => { if (u == null) return null; const k = x && x.k !== undefined ? x.k : kNow(); return k ? u * k : null; }; // ventas: cambio del día de venta; stock: el de hoy
+const costC = x => inCur(x.costU, x), soldC = x => inCur(x.revU, x);
+const niceNum = v => { if (!(v > 0)) return v; const p = 10 ** Math.floor(Math.log10(v)); return [1, 1.5, 2, 2.5, 3, 4, 5, 6, 7.5, 8, 10].map(n => n * p).reduce((b, n) => Math.abs(n - v) < Math.abs(b - v) ? n : b); };
+const moneyS = v => { try { return new Intl.NumberFormat('en-US', { style: 'currency', currency: SV.cur, notation: 'compact', maximumFractionDigits: 1 }).format(v); } catch { return String(v); } };
+let _bands = null;
+function bands() { // los mismos 5 tramos de siempre ($100 · 300 · 1k · 3k), pasados a la moneda elegida y redondeados
+  const k = kNow() || 1, cur = kNow() ? SV.cur : 'USD'; if (_bands?.cur === cur) return _bands.list;
+  const e = [100, 300, 1000, 3000].map(v => cur === 'USD' ? v : niceNum(v * k)), f = v => moneyS(v), g = v => f(v).replace(/^[^\d]+/, '');
+  const list = [[0, e[0], `< ${f(e[0])}`], [e[0], e[1], `${f(e[0])}–${g(e[1])}`], [e[1], e[2], `${f(e[1])}–${g(e[2])}`], [e[2], e[3], `${f(e[2])}–${g(e[3])}`], [e[3], Infinity, `> ${f(e[3])}`]];
+  _bands = { cur, list }; return list;
+}
+const bandOf = x => { const v = costC(x); return v == null ? '' : bands().find(([a, b]) => v >= a && v < b)[2]; };
+const SR = { cost: null, sold: null }; // rangos libres [desde, hasta] en la moneda elegida (null = sin límite)
+const inR = (v, r) => !r || (v != null && (r[0] == null || v >= r[0]) && (r[1] == null || v <= r[1]));
+const rangeOk = x => inR(SR.cost && costC(x), SR.cost) && (!SR.sold || !('revU' in x) || inR(soldC(x), SR.sold)); // el precio de venta solo filtra lo vendido
 
 /* ---------- estado ---------- */
 const SV = { loaded: false, sales: [], fxDates: [], fxMap: {}, imports: [], approx: false, stock: null, colors: new Map(), view: 'sum',
@@ -45,16 +60,16 @@ const SV = { loaded: false, sales: [], fxDates: [], fxMap: {}, imports: [], appr
 const FACETS = [
   { k: 'channel', l: 'Canal', v: s => s.channel }, { k: 'entity', l: 'Entidad', v: s => s.entity }, { k: 'cat', l: 'Categoría', v: s => s.cat, lab: x => tl(x) },
   { k: 'type', l: 'Tipo', v: s => s.typeC }, { k: 'brand', l: 'Marca', v: s => s.brand }, { k: 'owner', l: 'Owner', v: s => s.owner }, { k: 'buyer', l: 'Buyer', v: s => s.buyer },
-  { k: 'grade', l: 'Grado', v: s => s.grade }, { k: 'band', l: 'Coste (PAT, USD)', v: s => s.band },
+  { k: 'grade', l: 'Grado', v: s => s.grade }, { k: 'band', l: 'Coste (PAT)', v: s => bandOf(s) },
   { k: 'model', l: 'Modelo', v: s => s.bm }, { k: 'line', l: 'Línea / lona', v: s => s.bl }, { k: 'color', l: 'Color', v: s => s.color }, { k: 'material', l: 'Material', v: s => s.material }, { k: 'size', l: 'Talla', v: s => s.size },
   { k: 'prod', l: 'Producto', v: s => s.prod }];
 const SF = Object.fromEntries(FACETS.map(f => [f.k, new Set()]));
 const PILLS = [['channel', 'Canal', ['channel']], ['entity', 'Entidad', ['entity']], ['cat', 'Categoría', ['cat', 'type']], ['brand', 'Marca', ['brand'], true], ['prodp', 'Modelo / color', ['model', 'line', 'color', 'material', 'size'], true],
-  ['orig', 'Owner / Buyer', ['owner', 'buyer']], ['grade', 'Grado', ['grade']], ['band', 'Coste', ['band']]];
-const okRow = (s, skip) => FACETS.every(f => f.k === skip || !SF[f.k].size || SF[f.k].has(f.v(s)));
+  ['orig', 'Owner / Buyer', ['owner', 'buyer']], ['grade', 'Grado', ['grade']], ['band', 'Coste / precio', ['band']]];
+const okRow = (s, skip) => FACETS.every(f => f.k === skip || !SF[f.k].size || SF[f.k].has(f.v(s))) && rangeOk(s);
 const DIMS = { channel: ['Canal', s => s.channel], brand: ['Marca', s => s.brand], cat: ['Categoría', s => s.cat ? tl(s.cat) : ''], type: ['Tipo', s => s.typeC],
   entity: ['Entidad', s => s.entity], owner: ['Owner', s => s.owner], buyer: ['Buyer', s => s.buyer], grade: ['Grado', s => s.grade], month: ['Mes', s => s.m],
-  band: ['Coste (PAT, USD)', s => s.band], brandcat: ['Marca · categoría', s => s.brand ? `${s.brand} · ${tl(s.cat || 'Otros')}` : ''],
+  band: ['Coste (PAT)', s => bandOf(s)], brandcat: ['Marca · categoría', s => s.brand ? `${s.brand} · ${tl(s.cat || 'Otros')}` : ''],
   prod: ['Producto (modelo, o línea + tipo)', s => s.prod], model: ['Modelo', s => s.bm], modelSize: ['Modelo + talla', s => s.bms], line: ['Línea / lona', s => s.bl], color: ['Color', s => s.color],
   material: ['Material', s => s.material], size: ['Talla', s => s.size] };
 const dimFacet = { channel: 'channel', brand: 'brand', type: 'type', entity: 'entity', owner: 'owner', buyer: 'buyer', grade: 'grade', band: 'band', prod: 'prod', model: 'model', line: 'line', color: 'color', material: 'material', size: 'size' };
@@ -173,7 +188,7 @@ function prepSale(s) {
   s.days = s.added ? daysBetween(s.added, s.d) : null;
   s.revU = toUSD(s.sold, s.sold_cur, s.d); s.costU = toUSD(s.pat, s.pat_cur, s.d);
   s.profU = s.revU != null && s.costU != null && s.sold > 0 && s.pat > 0 ? s.revU - s.costU : null;
-  s.band = bandOf(s.costU); s.grade = s.grade || ''; addAttrs(s, s.descr);
+  s.grade = s.grade || ''; addAttrs(s, s.descr);
   return s;
 }
 function setCurK() { SV.sales.forEach(s => { s.k = SV.cur === 'USD' ? 1 : rateOn(SV.cur, s.d) || null; }); }
@@ -182,7 +197,7 @@ async function loadStock() {
   const d = await api('stock'), today = new Date().toISOString().slice(0, 10);
   SV.stock = { source: d.source, at: d.at, rows: d.rows.map(([code, brand, name, price, cur, entity, grade, type, channel, owner, buyer, added, price_init, cur_init]) => {
     const typeC = cleanType(type), costU = price > 0 ? todayUSD(price, cur) : null; // sin precio (o 0) no es «coste 0»
-    const x = { code, brand, name, price, cur, price_init, cur_init, entity, grade: grade || '', type, typeC, cat: sCat(typeC), channel, owner, buyer, added, age: added ? daysBetween(added, today) : null, costU, band: bandOf(costU) };
+    const x = { code, brand, name, price, cur, price_init, cur_init, entity, grade: grade || '', type, typeC, cat: sCat(typeC), channel, owner, buyer, added, age: added ? daysBetween(added, today) : null, costU };
     addAttrs(x, name); return x;
   }) };
   return SV.stock;
@@ -281,9 +296,15 @@ function delta(cur, prev, mode = 'pct', goodUp = true) { // ▲/▼ con el perio
 function buildBar() {
   const per = curSales0(), bar = $('sBar');
   bar.innerHTML = PILLS.map(([id, label, keys, search]) => `<span class="fwrap"><button class="pill" data-pop="${id}">${esc(tl(label))}</button><div class="pop" id="spop-${id}">${search ? `<input type="text" data-find="${id}" placeholder="${esc(tl('buscar…'))}" style="width:100%;margin-bottom:8px">` : ''}${keys.map(k => `<div data-sec="${k}">${keys.length > 1 ? `<div class="plbl">${esc(tl(FACETS.find(f => f.k === k).l))}</div>` : ''}<div data-chips="${k}"></div></div>`).join('')}</div></span>`).join('');
-  bar.querySelectorAll('.pill').forEach(p => p.onclick = e => { e.stopPropagation(); const pop = $('spop-' + p.dataset.pop), open = pop.classList.contains('open'); document.querySelectorAll('.pop.open').forEach(x => x.classList.remove('open')); if (!open) pop.classList.add('open'); });
+  bar.querySelectorAll('.pill').forEach(p => p.onclick = e => { e.stopPropagation(); const pop = $('spop-' + p.dataset.pop), open = pop.classList.contains('open'); document.querySelectorAll('.pop.open').forEach(x => x.classList.remove('open')); if (open) return;
+    pop.style.left = ''; pop.style.right = ''; pop.classList.add('open'); if (pop.getBoundingClientRect().right > document.documentElement.clientWidth - 8) { pop.style.left = 'auto'; pop.style.right = '0'; } }); // el último no se sale de la pantalla
   bar.querySelectorAll('.pop').forEach(p => p.onclick = e => e.stopPropagation());
   bar.querySelectorAll('[data-find]').forEach(i => i.oninput = () => fillChips());
+  $('spop-band').insertAdjacentHTML('beforeend', ['cost', 'sold'].map(r => `<div class="rng" data-r="${r}"><div class="plbl">${esc(tl(r === 'cost' ? 'Coste (PAT) entre' : 'Precio de venta entre'))} <span class="mute" data-cur></span></div>
+    <div class="dual"><i data-fill></i><input type="range" min="0" max="1000" data-lo><input type="range" min="0" max="1000" data-hi></div>
+    <div class="row" style="gap:6px"><input type="text" data-tlo placeholder="${esc(tl('desde'))}" style="width:130px"> – <input type="text" data-thi placeholder="${esc(tl('hasta'))}" style="width:130px"><button data-clr class="link">${esc(tl('quitar'))}</button></div></div>`).join('')
+    + `<p class="hint" style="margin:6px 0 0">${esc(tl('Escribe 50000, 50k o 1.2m. El precio de venta solo filtra lo vendido.'))}</p>`);
+  bar.querySelectorAll('.rng').forEach(hookRange);
   fillChips(per);
 }
 const curSales0 = () => { const r = periodRange(); return SV.sales.filter(s => inRange(s, r)); };
@@ -293,20 +314,53 @@ function fillChips(per) {
     const el = document.querySelector(`#sBar [data-chips="${f.k}"]`); if (!el) continue;
     const cnt = new Map(); for (const s of per) if (okRow(s, f.k)) { const v = f.v(s); if (v) cnt.set(v, (cnt.get(v) || 0) + 1); }
     const fi = el.closest('.pop')?.querySelector('[data-find]'), q = fi ? strip2(fi.value) : '';
-    let list = [...cnt].sort((a, b) => f.k === 'grade' ? GRADE_ORDER.indexOf(a[0]) - GRADE_ORDER.indexOf(b[0]) : f.k === 'band' ? BANDS.findIndex(x => x[2] === a[0]) - BANDS.findIndex(x => x[2] === b[0]) : b[1] - a[1]);
+    let list = [...cnt].sort((a, b) => f.k === 'grade' ? GRADE_ORDER.indexOf(a[0]) - GRADE_ORDER.indexOf(b[0]) : f.k === 'band' ? bands().findIndex(x => x[2] === a[0]) - bands().findIndex(x => x[2] === b[0]) : b[1] - a[1]);
     if (q) list = list.filter(([k]) => strip2(k).includes(q));
     const max = q ? 200 : 60; SF[f.k].forEach(v => { if (!list.slice(0, max).some(x => x[0] === v)) list.unshift([v, cnt.get(v) || 0]); });
     el.innerHTML = ''; list.slice(0, max).forEach(([v, n]) => { const b = document.createElement('button'); b.className = 'chip' + (SF[f.k].has(v) ? ' on' : ''); b.innerHTML = `${esc(f.lab ? f.lab(v) : v)} <small>${n}</small>`; b.onclick = () => { SF[f.k].has(v) ? SF[f.k].delete(v) : SF[f.k].add(v); paint(); }; el.append(b); });
     if (list.length > max) { const m = document.createElement('span'); m.className = 'hint'; m.textContent = tl('+{n} más (usa el buscador)', { n: list.length - max }); el.append(m); }
     el.closest('[data-sec]').style.display = cnt.size || SF[f.k].size ? '' : 'none';
   }
-  PILLS.forEach(([id, label, keys]) => { const p = document.querySelector(`#sBar .pill[data-pop="${id}"]`), sel = keys.flatMap(k => [...SF[k]].map(v => FACETS.find(f => f.k === k).lab?.(v) ?? v));
+  document.querySelectorAll('#sBar .rng').forEach(syncRange);
+  PILLS.forEach(([id, label, keys]) => { const p = document.querySelector(`#sBar .pill[data-pop="${id}"]`), sel = keys.flatMap(k => [...SF[k]].map(v => FACETS.find(f => f.k === k).lab?.(v) ?? v)).concat(id === 'band' ? ['cost', 'sold'].filter(r => SR[r]).map(rangeTxt) : []);
     p.classList.toggle('on', sel.length > 0); p.textContent = tl(label) + (sel.length === 1 ? ': ' + sel[0] : sel.length ? ' · ' + sel.length : '');
     p.parentElement.style.display = keys.some(k => per.some(s => FACETS.find(f => f.k === k).v(s))) || sel.length ? '' : 'none'; });
   const tk = $('sTokens'); tk.innerHTML = ''; let nTok = 0;
   FACETS.forEach(f => SF[f.k].forEach(v => { nTok++; const b = document.createElement('button'); b.className = 'tok'; b.textContent = (f.lab ? f.lab(v) : v) + ' ✕'; b.onclick = () => { SF[f.k].delete(v); paint(); }; tk.append(b); }));
-  if (nTok > 1) { const b = document.createElement('button'); b.className = 'tok clear'; b.textContent = tl('Quitar todos los filtros'); b.onclick = () => { FACETS.forEach(f => SF[f.k].clear()); paint(); }; tk.append(b); }
+  ['cost', 'sold'].forEach(r => { if (!SR[r]) return; nTok++; const b = document.createElement('button'); b.className = 'tok'; b.textContent = rangeTxt(r) + ' ✕'; b.onclick = () => { SR[r] = null; paint(); }; tk.append(b); });
+  if (nTok > 1) { const b = document.createElement('button'); b.className = 'tok clear'; b.textContent = tl('Quitar todos los filtros'); b.onclick = () => { FACETS.forEach(f => SF[f.k].clear()); SR.cost = SR.sold = null; paint(); }; tk.append(b); }
 }
+/* rango con dos tiradores (escala logarítmica: sirve igual para ¥5.000 que para ¥5.000.000) */
+const parseAmt = t => { t = String(t || '').trim().toLowerCase().replace(/[\s¥$€£]/g, ''); if (!t) return null; const m = t.match(/^([\d.,]+)([km]?)$/); if (!m) return NaN;
+  let n = m[2] ? m[1].replace(',', '.') : m[1].replace(/[.,](?=\d{3}(\D|$))/g, '').replace(',', '.'); n = parseFloat(n); return isFinite(n) ? n * (m[2] === 'k' ? 1e3 : m[2] === 'm' ? 1e6 : 1) : NaN; };
+const plainNum = v => v == null ? '' : v >= 1e6 && !(v % 1e5) ? v / 1e6 + 'm' : v >= 1e3 && !(v % 100) ? v / 1e3 + 'k' : String(Math.round(v * 100) / 100);
+function rangeBounds(r) { // de lo más barato a lo más caro del periodo (sin contar los demás filtros), en la moneda elegida
+  const v = curSales0().map(r === 'cost' ? costC : soldC).filter(x => x > 0); if (!v.length) return [1, 1000];
+  let a = Infinity, b = 0; for (const x of v) { if (x < a) a = x; if (x > b) b = x; } return [Math.max(1, niceNum(a) > a ? a : niceNum(a)), niceNum(b) < b ? b * 1.05 : niceNum(b)];
+}
+const toPos = (v, [a, b]) => v == null ? null : Math.round(Math.max(0, Math.min(1, Math.log(v / a) / Math.log(b / a))) * 1000);
+const fromPos = (p, [a, b]) => niceNum(a * (b / a) ** (p / 1000));
+function syncRange(el) { // pone los tiradores y las cajas según SR (si no se está escribiendo en ellas)
+  const r = el.dataset.r, B = rangeBounds(r), [lo, hi] = SR[r] || [null, null], q = s => el.querySelector(s);
+  el._b = B; q('[data-cur]').textContent = `(${SV.cur})`; q('[data-lo]').value = lo == null ? 0 : toPos(lo, B); q('[data-hi]').value = hi == null ? 1000 : toPos(hi, B);
+  paintFill(el);
+  if (document.activeElement !== q('[data-tlo]')) q('[data-tlo]').value = plainNum(lo); if (document.activeElement !== q('[data-thi]')) q('[data-thi]').value = plainNum(hi);
+  q('[data-tlo]').placeholder = tl('desde') + ' ' + moneyS(B[0]); q('[data-thi]').placeholder = tl('hasta') + ' ' + moneyS(B[1]);
+}
+const paintFill = el => { const a = +el.querySelector('[data-lo]').value / 10, b = +el.querySelector('[data-hi]').value / 10, f = el.querySelector('[data-fill]'); f.style.left = a + '%'; f.style.width = (b - a) + '%'; };
+function hookRange(el) {
+  const r = el.dataset.r, q = s => el.querySelector(s), lo = q('[data-lo]'), hi = q('[data-hi]');
+  const set = (a, b) => { SR[r] = a == null && b == null ? null : [a, b]; paint(); };
+  const slide = e => { let a = +lo.value, b = +hi.value; if (a > b) { if (e.target === lo) a = b; else b = a; lo.value = a; hi.value = b; } paintFill(el);
+    q('[data-tlo]').value = a <= 0 ? '' : plainNum(fromPos(a, el._b)); q('[data-thi]').value = b >= 1000 ? '' : plainNum(fromPos(b, el._b)); };
+  lo.oninput = hi.oninput = slide;
+  lo.onchange = hi.onchange = () => set(+lo.value <= 0 ? null : fromPos(+lo.value, el._b), +hi.value >= 1000 ? null : fromPos(+hi.value, el._b));
+  const typed = () => { let a = parseAmt(q('[data-tlo]').value), b = parseAmt(q('[data-thi]').value); if (Number.isNaN(a) || Number.isNaN(b)) return say(tl('No entiendo ese importe: escribe por ejemplo 50000, 50k o 1.2m'), 3000);
+    if (a != null && b != null && a > b) [a, b] = [b, a]; set(a, b); };
+  q('[data-tlo]').onchange = q('[data-thi]').onchange = typed; q('[data-tlo]').onkeydown = q('[data-thi]').onkeydown = e => { if (e.key === 'Enter') e.target.blur(); };
+  q('[data-clr]').onclick = () => set(null, null);
+}
+const rangeTxt = r => { const [a, b] = SR[r]; return `${tl(r === 'cost' ? 'Coste' : 'Venta')}: ${a == null ? '≤ ' + moneyS(b) : b == null ? '≥ ' + moneyS(a) : moneyS(a) + ' – ' + moneyS(b)}`; };
 const strip2 = s => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
 document.addEventListener('click', () => document.querySelectorAll('#sBar .pop.open').forEach(x => x.classList.remove('open')));
 
@@ -335,7 +389,9 @@ $('sTabs').onclick = e => { const b = e.target.closest('button'); if (!b) return
 $('sPeriod').onchange = () => { SV.period = $('sPeriod').value; store.set('salesPeriod', SV.period); $('sCustom').style.display = SV.period === 'custom' ? '' : 'none'; paint(); };
 $('sFrom').onchange = $('sTo').onchange = () => { SV.from = $('sFrom').value; SV.to = $('sTo').value; paint(); };
 $('sCmp').onchange = () => { SV.cmp = $('sCmp').value; store.set('salesCmp', SV.cmp); paint(); };
-$('sCur').onchange = () => { SV.cur = $('sCur').value; store.set('salesCur', SV.cur); setCurK(); paint(); };
+$('sCur').onchange = () => { const k0 = kNow(); SV.cur = $('sCur').value; store.set('salesCur', SV.cur); setCurK(); const k1 = kNow();
+  for (const r of ['cost', 'sold']) if (SR[r]) SR[r] = k0 && k1 ? SR[r].map(v => v == null ? null : +(v / k0 * k1).toPrecision(2)) : null; // el rango sigue siendo el mismo dinero (redondeado a 2 cifras)
+  SF.band.clear(); paint(); };
 $('sFile').onchange = e => { const f = e.target.files[0]; e.target.value = ''; if (f) importSold(f); };
 $('sClear').onclick = async () => { if (!confirm(tl('¿Borrar todas las ventas importadas? Podrás volver a importarlas desde los archivos.'))) return; await api('sales/clear', {}); SV.loaded = false; renderSales(); };
 
@@ -792,7 +848,7 @@ function reportData(month) {
     losses: [...cur].filter(s => s.profU != null && s.profU < 0).sort((x, y) => x.profU - y.profU), R, stl };
 }
 function reportHTML(D) {
-  const filt = FACETS.flatMap(f => [...SF[f.k]].map(v => `${tl(f.l)}: ${f.lab ? f.lab(v) : v}`));
+  const filt = FACETS.flatMap(f => [...SF[f.k]].map(v => `${tl(f.l)}: ${f.lab ? f.lab(v) : v}`)).concat(['cost', 'sold'].filter(r => SR[r]).map(rangeTxt));
   const dP = (c, p, mode = 'pct', goodUp = true) => { if (p == null || c == null) return '—'; const d = mode === 'pct' ? (p ? (c - p) / Math.abs(p) : null) : c - p; if (d == null || !isFinite(d)) return '—'; return `${d > 0 ? '▲' : d < 0 ? '▼' : '＝'} ${mode === 'pct' ? (Math.abs(d) * 100).toFixed(1) + '%' : mode === 'pp' ? (Math.abs(d) * 100).toFixed(1) + ' pp' : Math.abs(Math.round(d))}`; };
   const K = [[tl('Unidades vendidas'), x => x.n, v => v.toLocaleString('en-US'), 'pct', true], [tl('Ingresos (lo que os llega)'), x => x.rev, money, 'pct', true], [tl('Coste (PAT)'), x => x.cost, money, 'pct', true],
     [tl('Beneficio'), x => x.prof, money, 'pct', true], [tl('Margen sobre ventas'), x => x.margin, v => pct(v), 'pp', true], [tl('Ticket medio'), x => x.ticket, money, 'pct', true],
